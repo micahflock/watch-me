@@ -5,9 +5,14 @@ iterable watch-face design environment for this repo's target device. It encodes
 the hard device constraints (see `docs/api-2.4-notes.md` and the README) so the
 mockups stay buildable in Monkey C.
 
-One caveat: the 14-color palette listed is the standard Connect IQ 16-color-class
-constant set. Verify against `~/.Garmin/ConnectIQ/Devices/fr735xt/compiler.json`
-once the SDK is set up and correct the prompt if the device file disagrees.
+Palette provenance: the 14 colors are the standard Connect IQ color-constant
+set, with each hex value confirmed against the official
+[Toybox.Graphics docs](https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics.html)
+(14 constants besides `COLOR_TRANSPARENT`, matching the 14-entry palette this
+README cites from `compiler.json`). Note `COLOR_YELLOW` is `0xFFAA00` (amber) —
+true yellow `0xFFFF00` is not available on this device class. The gated device
+file itself (`~/.Garmin/ConnectIQ/Devices/fr735xt/compiler.json`) is still worth
+a one-time diff after SDK setup, but a mismatch is unlikely.
 
 ---
 
