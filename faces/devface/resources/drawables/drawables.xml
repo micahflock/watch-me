@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Drawable resources.
+  - LauncherIcon: required by the manifest. A small placeholder PNG must exist
+    at resources/drawables/launcher_icon.png (generate one with
+    tools/make-dow-strip.sh's helper, or any 16-color PNG).
+  - DowStrip: optional day-of-week label strip consumed by StripGlyphs. Produce
+    it offline with tools/make-dow-strip.sh (pre-quantized to the device palette).
+    Commented out until the asset exists, so release builds don't fail.
+-->
+<drawables>
+    <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+    <!-- <bitmap id="DowStrip" filename="dow_strip.png"/> -->
+</drawables>

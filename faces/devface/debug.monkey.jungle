@@ -1,0 +1,12 @@
+# Debug + unit-test jungle for devface.
+# Adds the tests/ directory. Built WITHOUT monkeyc -r, so the built-in (:debug)
+# annotation is kept and (:release) stubs are dropped — the real instrumentation
+# and the (:test) cases compile in. scripts/build.sh devface --debug also adds
+# --unit-test. Do not set excludeAnnotations for debug/release here.
+
+project.manifest = manifest.xml
+
+# Face source + shared core + unit tests.
+base.sourcePath = source;../../core/src;tests
+
+base.resourcePath = resources
