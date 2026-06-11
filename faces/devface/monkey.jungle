@@ -1,0 +1,15 @@
+# Release jungle for devface.
+# Shared core source is pulled in via sourcePath concatenation (no barrels).
+#
+# Debug vs release is selected by the monkeyc -r flag, NOT by excludeAnnotations:
+# the (:debug)/(:release) annotations are built-in and tied to the build type.
+# scripts/build.sh passes -r for release (keeps (:release) stubs, strips (:debug)).
+# Do not add excludeAnnotations here for debug/release — it double-excludes both.
+
+project.manifest = manifest.xml
+
+# Face source + shared core. Paths are relative to this jungle file.
+base.sourcePath = source;../../core/src
+
+# Shared + face resources.
+base.resourcePath = resources

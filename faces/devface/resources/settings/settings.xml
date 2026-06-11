@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Settings UI (edited in Garmin Connect Mobile / Garmin Express). Maps friendly
+  controls to the properties above. Kept minimal per scope (no UI polish).
+-->
+<settings>
+    <setting propertyKey="@Properties.lat" title="Latitude">
+        <settingConfig type="numeric" min="-90.0" max="90.0"/>
+    </setting>
+    <setting propertyKey="@Properties.lng" title="Longitude">
+        <settingConfig type="numeric" min="-180.0" max="180.0"/>
+    </setting>
+    <setting propertyKey="@Properties.simSeed" title="Sim Seed (0 = random)">
+        <settingConfig type="numeric"/>
+    </setting>
+    <setting propertyKey="@Properties.simPersist" title="Persist Sim State">
+        <settingConfig type="boolean"/>
+    </setting>
+</settings>

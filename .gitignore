@@ -1,0 +1,21 @@
+# Build artifacts
+/bin/
+*.prg
+*.prg.debug.xml
+*.iq
+
+# Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
+*.der
+*.pem
+
+# Simulator / tooling logs
+*.log
+sim.out
+*.tmp
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Local SDK config (paths are machine-specific; see scripts/env.sh)
+.sdk-path
