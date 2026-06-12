@@ -58,15 +58,48 @@ ciq_can_build() {
 }
 
 # Start the simulator under a virtual X display if it is not already running.
-# Usage: ciq_start_sim  (logs to /tmp/ciq_sim.log; waits briefly for boot)
+# Usage: ciq_start_sim [fresh]  (logs to /tmp/ciq_sim.log; waits briefly for boot)
+# "fresh" kills any running simulator/monkeydo first. Loading a PRG onto an
+# already-running simulator flakes (monkeydo hangs producing no output —
+# observed repeatedly with SDK 9.2.0 headless); anything that needs a reliable
+# load (tests, measurement runs) should pass "fresh".
 ciq_start_sim() {
+  if [ "${1:-}" = "fresh" ]; then
+    # Bracket trick so pkill -f doesn't match this shell's own command line.
+    # Kill the whole stack (monkeydo, sim, xvfb wrapper, X server) — leaving
+    # orphaned Xvfb displays around makes subsequent starts unreliable.
+    pkill -f "MonkeyDoDeu[x]" 2>/dev/null
+    pkill -f "bin/simulato[r]" 2>/dev/null
+    pkill -f "xvfb-ru[n]" 2>/dev/null
+    pkill -f "Xvf[b]" 2>/dev/null
+    sleep 1
+  fi
   if pgrep -f "bin/simulator" >/dev/null 2>&1; then
     return 0
   fi
   command -v xvfb-run >/dev/null || { echo "xvfb-run not installed" >&2; return 1; }
   ciq_sim_env
-  ( xvfb-run -a "$CIQ_SDK_HOME/bin/simulator" >/tmp/ciq_sim.log 2>&1 & )
-  # Give the sim time to open its IPC socket.
-  sleep 10
-  pgrep -f "bin/simulator" >/dev/null 2>&1
+  # The headless launch races intermittently (xvfb-run can die silently right
+  # after a previous stack was torn down), so retry the launch itself.
+  local attempt=0
+  while [ "$attempt" -lt 3 ]; do
+    # Clear stale X display locks, but only when no X server is alive.
+    pgrep -x Xvfb >/dev/null 2>&1 || rm -f /tmp/.X*-lock 2>/dev/null
+    ( xvfb-run -a "$CIQ_SDK_HOME/bin/simulator" >/tmp/ciq_sim.log 2>&1 & )
+    # Wait for the sim process (boot can be slow), then give its IPC socket a
+    # moment to open before monkeydo connects.
+    local i=0
+    while [ "$i" -lt 20 ]; do
+      sleep 1
+      if pgrep -f "bin/simulator" >/dev/null 2>&1; then
+        sleep 5
+        return 0
+      fi
+      i=$((i + 1))
+    done
+    attempt=$((attempt + 1))
+    echo "simulator start attempt $attempt failed; retrying" >&2
+  done
+  echo "simulator did not start after 3 attempts" >&2
+  return 1
 }

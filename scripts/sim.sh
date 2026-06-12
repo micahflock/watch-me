@@ -4,8 +4,9 @@
 #   scripts/sim.sh <face> [--debug]
 #
 # Uses ciq_start_sim from env.sh: starts the simulator under xvfb-run with the
-# webkit-4.0 compatibility libs (scripts/setup-sim-libs.sh) when present. The
-# simulator stays running between invocations; monkeydo pushes the PRG to it.
+# webkit-4.0 compatibility libs (scripts/setup-sim-libs.sh) when present. Each
+# invocation restarts the simulator: pushing a PRG onto an already-running sim
+# hangs monkeydo with no output (SDK 9.2.0 headless, observed repeatedly).
 # App console output (Sys.println / instrumentation) prints to this terminal.
 #
 # To stop the simulator: pkill -f bin/simulator
@@ -19,8 +20,8 @@ PRG="$REPO_ROOT/bin/$FACE$SUFFIX.prg"
 
 [ -f "$PRG" ] || { echo "PRG not found: $PRG. Build it first (scripts/build.sh $FACE ${2:-})." >&2; exit 1; }
 
-echo "Ensuring simulator is running (headless if needed)..."
-ciq_start_sim || { echo "Simulator failed to start; see /tmp/ciq_sim.log" >&2; exit 1; }
+echo "Starting a fresh simulator (PRG loads onto a reused sim flake)..."
+ciq_start_sim fresh || { echo "Simulator failed to start; see /tmp/ciq_sim.log" >&2; exit 1; }
 
 ciq_sim_env
 echo "Loading $PRG onto $DEVICE ... (Ctrl-C detaches; sim keeps running)"
