@@ -1,10 +1,9 @@
 # watch-me
 
 A Monkey C / Connect IQ framework for building watch faces for the **Garmin
-Forerunner 735XT** (SDK device id `fr735xt`), with a small engine for
-algorithmic / generative display art. Multiple faces share one core library;
-`faces/devface` is the always-buildable integration testbed (deliberately
-unstyled — debug colors only).
+Forerunner 735XT** (SDK device id `fr735xt`). Multiple faces share one core
+library; `faces/devface` is the always-buildable integration testbed
+(deliberately unstyled — debug colors only).
 
 ## Tool versions (verified)
 
@@ -27,7 +26,7 @@ same SDK; this repo's scripts do not depend on it.
 | Display | **215×180**, semiround, MIP, **4 bpp** (16-color class; device palette lists 14 colors), no antialiasing |
 | Watch-face memory limit | **65,536 bytes** (read from `Devices/fr735xt/compiler.json`); project ceiling **70% ≈ 44.8 KB** |
 | Update model | **one full `onUpdate` per minute** in low power; `onPartialUpdate` (1 Hz seconds) is **not supported** on this device |
-| Execution watchdog | ~25–30k VM instructions per `onUpdate` (measured) — the binding constraint for generative work |
+| Execution watchdog | ~25–30k VM instructions per `onUpdate` (measured) — the binding constraint for per-tick work |
 | Sensors/network in a watch face | none at this API level; location comes from user-entered `lat`/`lng` properties |
 
 ## Setup (one-time)
@@ -76,17 +75,13 @@ files, the 70% ceiling, and the current PRG size.
 core/src/data/    Snapshot, DataSource   per-tick state (all fields nullable)
 core/src/render/  Compositor, Region,    ordered components, clips, keep-outs;
                   CompassRose            sun-compass dial renderer
-core/src/sim/     Prng, BitGrid,         seeded PRNG; packed double-buffered
-                  LifeEngine             bitfield; Conway CA with rule masks,
-                                         banded stepping, external-input hook
 core/src/glyph/   SegmentFont/Layout,    parametric 7-segment digits;
                   StripGlyphs            bitmap-strip blitter
 core/src/astro/   MathX, Solar,          2.4-safe math; NOAA sun position +
                   SunCompass             sunrise/sunset; true-north-from-sun
                                          dial math (all pure, unit-tested)
 core/src/debug/   Instrument             (:debug) overlay/logging, (:release) stubs
-faces/devface/    integration testbed    7-seg HH:MM + date + 40×30 Life fed by
-                                         step deltas + sun-compass rose +
+faces/devface/    integration testbed    7-seg HH:MM + date + sun-compass rose +
                                          instrumentation overlay
 docs/             architecture, api-2.4-notes, memory-budget, sideload
 tools/            make-dow-strip.sh      offline 16-color glyph-strip pipeline
@@ -99,10 +94,9 @@ keep `base.sourcePath = source;../../core/src` in its jungles, and build with
 ## Measured status (acceptance)
 
 - devface builds clean for fr735xt at API 2.4 (SDK 9.2.0) and runs in the sim.
-- 31 unit tests pass (BitGrid, PRNG, LifeEngine incl. banded-vs-whole
-  equivalence, segment lookup, MathX, Solar fixtures, SunCompass
+- 16 unit tests pass (segment lookup, MathX, Solar fixtures, SunCompass
   dial/rollover).
-- With a 40×30 Life region + sun compass running: release-build runtime ≈
-  **30 KB** (< 44.8 KB ceiling); debug build (tests + instrumentation
-  compiled in) peaks ≈ **45 KB**; onUpdate ≈ **8–12 ms**, no watchdog trips.
-  Details in `docs/memory-budget.md`.
+- Release PRG on disk ≈ **16 KB** (`scripts/memcheck.sh`); runtime RAM sits
+  well under the 44.8 KB ceiling (re-read from the sim — release status bar /
+  debug overlay); onUpdate ≈ **8–12 ms**, no watchdog trips. Details in
+  `docs/memory-budget.md`.

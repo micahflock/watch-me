@@ -10,10 +10,4 @@
     <setting propertyKey="@Properties.lng" title="Longitude">
         <settingConfig type="numeric" min="-180.0" max="180.0"/>
     </setting>
-    <setting propertyKey="@Properties.simSeed" title="Sim Seed (0 = random)">
-        <settingConfig type="numeric"/>
-    </setting>
-    <setting propertyKey="@Properties.simPersist" title="Persist Sim State">
-        <settingConfig type="boolean"/>
-    </setting>
 </settings>

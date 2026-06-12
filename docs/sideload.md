@@ -12,13 +12,13 @@ into place.
 5. On the watch: Settings → Watch Face → select the new face.
 
 Notes
-- App settings (lat/lng/simSeed/simPersist) are editable via Garmin Connect
-  Mobile / Garmin Express for sideloaded apps with bundled settings.
+- App settings (lat/lng) are editable via Garmin Connect Mobile / Garmin
+  Express for sideloaded apps with bundled settings.
 - App logs: create `GARMIN/APPS/LOGS/DEVFACE.TXT` on the watch volume and
   `Sys.println` output (debug builds) is appended there.
 - If the face misbehaves on hardware but not in the sim, suspect the watchdog
-  (the device budget can be tighter than the simulator's). Reduce
-  `ROWS_PER_STEP` first. A watchdog kill reverts the watch to a stock face.
+  (the device budget can be tighter than the simulator's). Trim the heaviest
+  per-tick work first. A watchdog kill reverts the watch to a stock face.
 - The signing key (`~/.ciq-keys/`) does not need to match across sideloads,
   but keep using one key per developer identity; store-distributed builds are
   tied to it.

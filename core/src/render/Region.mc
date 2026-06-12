@@ -24,23 +24,4 @@ module Region {
                  py + ph <= r[1] ||
                  r[1] + r[3] <= py);
     }
-
-    // Convert a pixel keep-out rect into an inclusive cell-index range for a
-    // grid whose cell (0,0) starts at (originX,originY) with the given cellSize.
-    // Returns flat [c0, r0, c1, r1]; a sim renderer can skip cells inside it.
-    // If the keep-out does not touch the grid, returns null.
-    function clampCellRange(keepOut, originX, originY, cellSize, cols, rows) {
-        var c0 = (keepOut[0] - originX) / cellSize;
-        var r0 = (keepOut[1] - originY) / cellSize;
-        var c1 = (keepOut[0] + keepOut[2] - originX) / cellSize;
-        var r1 = (keepOut[1] + keepOut[3] - originY) / cellSize;
-        if (c1 < 0 || r1 < 0 || c0 > cols - 1 || r0 > rows - 1) {
-            return null;
-        }
-        if (c0 < 0) { c0 = 0; }
-        if (r0 < 0) { r0 = 0; }
-        if (c1 > cols - 1) { c1 = cols - 1; }
-        if (r1 > rows - 1) { r1 = rows - 1; }
-        return [c0, r0, c1, r1];
-    }
 }
