@@ -3,8 +3,9 @@
 *.prg
 *.prg.debug.xml
 *.iq
-# ...except the sideload-verification face, kept in-repo for easy download
+# ...except faces kept in-repo for easy sideload download
 !/bin/flashtest.prg
+!/bin/devface.prg
 
 # Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
 *.der
