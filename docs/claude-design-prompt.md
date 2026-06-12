@@ -54,7 +54,7 @@ time. No custom vector fonts; any fancy lettering must be plausible as a small
 pre-rendered bitmap strip.
 
 **Update cadence.** ONE full redraw per minute. No seconds display, no
-animation. Generative layers advance one discrete step per minute.
+animation. Any stepped or animated layer advances one discrete step per minute.
 
 **Data available per frame** (every field can be null — design a graceful
 missing state for each): hour/minute, date (day, month, day-of-week), steps +
@@ -82,16 +82,17 @@ A single self-contained HTML artifact:
    Show a thumbnail gallery of all variants; clicking one loads it into the
    main preview.
 5. **Three distinct starting variants:**
-   - **A — generative:** bold 7-segment HH:MM in the upper center, a small
-     day-of-week + date line under it, and a Conway's-Life cell field
-     (~3 px cells, single green) filling the lower region. The clock area is a
-     rectangular keep-out the cells never paint into.
+   - **A — sun compass:** bold 7-segment HH:MM in the upper center, a small
+     day-of-week + date line under it, and a sun-compass rose filling the lower
+     region (point 12 at the sun; the red needle reads true north), with a
+     sunrise/sunset readout beside it. The clock area is a rectangular keep-out
+     the rose never paints into.
    - **B — data-dense:** time plus a steps-progress arc hugging the circular
      edge, HR and battery readouts placed inside the safe circle.
    - **C — minimal:** mostly black, white time, one accent color, nothing else.
 6. **Layout discipline.** Keep critical content inside the circle (corners of
    the 215×180 rect don't exist); reserve "keep-out" rectangles for text over
-   generative layers rather than overdrawing.
+   busy background layers rather than overdrawing.
 
 ## How we'll iterate
 

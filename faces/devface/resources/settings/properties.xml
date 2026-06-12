@@ -6,13 +6,8 @@
 
   lat/lng    : user-entered location for the Solar module (no GPS on a watch
                face at this API level). Null/unset → solar features degrade.
-  simSeed    : PRNG seed for the generative engine. 0 → reseed each restart.
-  simPersist : if true, sim grid state is serialized in onStop and restored;
-               if false, the sim reseeds on every restart.
 -->
 <properties>
     <property id="lat" type="float">0.0</property>
     <property id="lng" type="float">0.0</property>
-    <property id="simSeed" type="number">0</property>
-    <property id="simPersist" type="boolean">false</property>
 </properties>

@@ -16,7 +16,7 @@ is cached after first use, so warm sessions have everything already.
 
 ```bash
 scripts/build.sh <face> [--debug]   # release .prg / debug (tests+instrumentation)
-scripts/test.sh                     # API-2.4 symbol lint + 31 unit tests in the sim
+scripts/test.sh                     # API-2.4 symbol lint + 16 unit tests in the sim
 scripts/sim.sh <face> --debug       # headless sim; console prints "used/totalK p<peak> <ms>"
 scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 ```

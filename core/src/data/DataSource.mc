@@ -6,9 +6,9 @@ using Toybox.Lang as Lang;
 
 // DataSource — assembles a Snapshot from Toybox APIs available at CIQ 2.4.
 //
-// Property reads (location, sim config) are SLOW (object store) so they are
-// cached and refreshed only via reloadProperties() (startup + onSettingsChanged),
-// never per tick. Activity/clock/system reads happen every refresh().
+// Property reads (location) are SLOW (object store) so they are cached and
+// refreshed only via reloadProperties() (startup + onSettingsChanged), never
+// per tick. Activity/clock/system reads happen every refresh().
 //
 // Defensive throughout: every API touch is guarded so a missing capability or a
 // null leaves the corresponding Snapshot field null.
@@ -17,20 +17,11 @@ module DataSource {
     // Cached property values (refreshed on settings change / startup).
     var _lat = null;
     var _lon = null;
-    var _simSeed = 0;
-    var _simPersist = false;
-
-    // For the generative external-input hook: last step count, to derive a delta.
-    var _lastSteps = null;
 
     // Read app properties into the cache. `app` is the AppBase instance.
     function reloadProperties(app) {
         _lat = readFloatProp(app, "lat");
         _lon = readFloatProp(app, "lng");
-        var seed = app.getProperty("simSeed");
-        _simSeed = (seed != null && seed instanceof Lang.Number) ? seed : 0;
-        var persist = app.getProperty("simPersist");
-        _simPersist = (persist != null && persist == true);
     }
 
     function readFloatProp(app, key) {
@@ -44,9 +35,6 @@ module DataSource {
         }
         return null;
     }
-
-    function simSeed() { return _simSeed; }
-    function simPersist() { return _simPersist; }
 
     // Fill `snap` in place. Call once per onUpdate.
     function refresh(snap) {
@@ -112,16 +100,5 @@ module DataSource {
             return null;
         }
         return hr;
-    }
-
-    // Step-count delta since the previous call (generative external-input hook).
-    // Returns 0 on the first call or if steps unavailable.
-    function stepDelta(snap) {
-        if (snap.steps == null) { return 0; }
-        if (_lastSteps == null) { _lastSteps = snap.steps; return 0; }
-        var d = snap.steps - _lastSteps;
-        _lastSteps = snap.steps;
-        if (d < 0) { d = 0; } // midnight reset etc.
-        return d;
     }
 }

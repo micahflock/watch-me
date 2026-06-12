@@ -35,25 +35,18 @@ Code Executed Too Long").
 
 Consequences baked into the framework:
 
-- A full 40×30 Life generation (1200 cells × ~40 instructions) does **not**
-  fit in one tick together with rendering. `LifeEngine` therefore evolves in
-  **row bands** (`:rowsPerStep`); buffers swap only when a generation
-  completes, preserving Conway correctness (unit-tested).
-- Per-cell function calls are unaffordable in hot loops. `LifeEngine.evolveBand`
-  and `renderMasked` inline all BitGrid bit arithmetic.
-- `fillRectangle` per live cell is unaffordable. The renderer merges horizontal
-  runs of same-color cells into single rectangles and skips dead words
-  (32 cells) and nibbles (4 cells) cheaply.
-- `BitGrid.randomize` fills 32 cells per PRNG draw; one draw per cell trips
-  the watchdog during `onLayout`.
+- Heavy per-pixel or per-element work in a hot loop must be inlined and its
+  total cost kept inside the budget; spread expensive work across ticks rather
+  than doing it all in one `onUpdate`.
+- `fillRectangle`/`fillPolygon` calls are not free — batch adjacent fills and
+  avoid one draw call per primitive where a region can be merged.
 
 ## Number overflow silently promotes to Long
 
 Monkey C `Number` is 32-bit signed. Arithmetic overflow does not wrap — it
-promotes to a boxed 8-byte `Long` (slow, allocates), which breaks "32-bit wrap"
-PRNGs (xorshift, common LCGs). `Prng` uses Park-Miller via Schrage's
-decomposition: every intermediate stays within ±2³¹. A unit test asserts the
-state never leaves `Number`.
+promotes to a boxed 8-byte `Long` (slow, allocates). Code that relies on
+"32-bit wrap" (xorshift, common LCGs) is therefore unsafe; keep intermediates
+within ±2³¹ (e.g. Park-Miller via Schrage's decomposition).
 
 Bitwise ops (`& | ^ >> <<`) are fine; note `>>` sign-extends, so always mask
 after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`

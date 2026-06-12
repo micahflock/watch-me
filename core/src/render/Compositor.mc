@@ -7,7 +7,7 @@ using Toybox.Graphics as Gfx;
 // have an optional clip rect [x,y,w,h]; when present the Dc is clipped to it
 // for that component's render call (Dc.setClip is API 2.3, safe at 2.4).
 //
-// Keep-out regions are reserved screen areas that generative layers should not
+// Keep-out regions are reserved screen areas that background layers should not
 // draw into; components that support masking can ask the Compositor for them.
 class Compositor {
     var _components; // Array of component objects
