@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+  flashtest manifest — minimal sideload-verification face.
+  Purpose: prove the toolchain → signing → USB-copy → watch pipeline works with
+  the fewest possible moving parts. No core library, no settings, no sim.
+  Targets ONLY the Forerunner 735XT at CIQ API 2.4 (see docs/api-2.4-notes.md).
+-->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        entry="FlashTestApp"
+        id="0f1a57e57000000000000000000fee1d"
+        launcherIcon="@Drawables.LauncherIcon"
+        minSdkVersion="2.4.0"
+        name="@Strings.AppName"
+        type="watchface">
+        <iq:products>
+            <iq:product id="fr735xt"/>
+        </iq:products>
+        <iq:permissions/>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>
