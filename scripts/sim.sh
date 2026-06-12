@@ -20,6 +20,11 @@ PRG="$REPO_ROOT/bin/$FACE$SUFFIX.prg"
 
 [ -f "$PRG" ] || { echo "PRG not found: $PRG. Build it first (scripts/build.sh $FACE ${2:-})." >&2; exit 1; }
 
+# Provision the toolchain (incl. the simulator binary) on demand.
+if [ ! -x "$CIQ_SDK_HOME/bin/simulator" ]; then
+  ciq_ensure_toolchain || true
+fi
+
 echo "Starting a fresh simulator (PRG loads onto a reused sim flake)..."
 ciq_start_sim fresh || { echo "Simulator failed to start; see /tmp/ciq_sim.log" >&2; exit 1; }
 

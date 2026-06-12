@@ -36,6 +36,10 @@ else
 fi
 
 # --- 2. Run No Evil unit tests -----------------------------------------------
+# Provision the toolchain on demand before deciding whether to skip.
+if ! ciq_can_build; then
+  ciq_ensure_toolchain || true
+fi
 if ! ciq_can_build; then
   echo
   echo "SKIP: unit-test run (SDK, key, or device files missing)."

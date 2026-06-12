@@ -32,13 +32,15 @@ same SDK; this repo's scripts do not depend on it.
 
 ## Setup (one-time)
 
-On **Claude Code on the web**, `.claude/hooks/session-start.sh` runs all of
-this automatically when a session starts (it needs `GARMIN_USERNAME` /
-`GARMIN_PASSWORD` set as environment variables in the environment settings).
-The container state is cached after the hook completes, so the ~200 MB SDK
-download happens once per environment, not once per session.
+The toolchain provisions itself **on demand**: `build.sh` / `test.sh` /
+`sim.sh` call `scripts/ensure-toolchain.sh` the first time the SDK is missing
+(it needs `GARMIN_USERNAME` / `GARMIN_PASSWORD` in the environment for the
+login-gated device files). On Claude Code on the web the container state is
+cached after that first run, so the ~200 MB download happens at most once per
+environment — and the SessionStart hook just reports toolchain status without
+delaying startup.
 
-Manual setup (local machines):
+Manual setup (local machines, or to pre-warm a container explicitly):
 
 ```bash
 # 1. SDK + device files (device files need a Garmin account):

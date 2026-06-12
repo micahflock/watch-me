@@ -57,6 +57,15 @@ ciq_can_build() {
   [ -x "$MONKEYC" ] && [ -f "$CIQ_KEY" ] && [ -d "$DEVICE_DIR" ]
 }
 
+# Provision the toolchain on demand and refresh this shell's SDK paths
+# (setup may write a new .sdk-path; re-source with CIQ_SDK_HOME unset so the
+# resolution ladder picks it up).
+ciq_ensure_toolchain() {
+  "$REPO_ROOT/scripts/ensure-toolchain.sh" || return 1
+  unset CIQ_SDK_HOME
+  . "$REPO_ROOT/scripts/env.sh"
+}
+
 # Start the simulator under a virtual X display if it is not already running.
 # Usage: ciq_start_sim [fresh]  (logs to /tmp/ciq_sim.log; waits briefly for boot)
 # "fresh" kills any running simulator/monkeydo first. Loading a PRG onto an
