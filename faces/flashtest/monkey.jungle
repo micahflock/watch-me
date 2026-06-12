@@ -1,0 +1,8 @@
+# Release jungle for flashtest. Standalone on purpose: no ../../core/src in the
+# sourcePath, so a failure on hardware implicates the flashing pipeline, not the
+# framework.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source
+base.resourcePath = resources

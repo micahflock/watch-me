@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LauncherIcon is required by the manifest; reuses devface's placeholder PNG
+     (copied, not referenced — resourcePath can't escape the face dir). -->
+<drawables>
+    <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+</drawables>
