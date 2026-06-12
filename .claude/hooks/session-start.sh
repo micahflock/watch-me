@@ -1,16 +1,13 @@
 #!/bin/bash
-# SessionStart hook for Claude Code on the web: stand up the full Connect IQ
-# toolchain (SDK + fr735xt device files + signing key + simulator libs) so
-# builds, unit tests, and the headless simulator work from the first prompt.
+# SessionStart hook for Claude Code on the web: report toolchain state in one
+# second — it does NOT install anything, so cold sessions start instantly.
 #
-# The container state is CACHED after this hook completes, so the ~200 MB SDK
-# download happens once per environment, not once per session — every step
-# below is idempotent and near-instant on a warm container.
-#
-# Requires GARMIN_USERNAME / GARMIN_PASSWORD in the environment (configure
-# them as environment variables in the Claude Code environment settings);
-# without them the SDK still installs but the login-gated fr735xt device
-# files cannot be fetched, and the hook says so rather than failing.
+# Provisioning is lazy instead: scripts/build.sh, test.sh, and sim.sh call
+# scripts/ensure-toolchain.sh automatically the first time the SDK is needed
+# (it requires GARMIN_USERNAME / GARMIN_PASSWORD from the environment
+# settings for the login-gated device files). The container state is cached
+# after that first run, so the ~200 MB of downloads happen at most once per
+# environment.
 set -uo pipefail
 
 # Local sessions manage their own SDK installs; this is web-container-only.
@@ -21,39 +18,19 @@ fi
 cd "$CLAUDE_PROJECT_DIR"
 . scripts/env.sh
 
-echo "== watch-me session setup =="
-
-# Fast path: everything present (warm/cached container).
-if ciq_can_build && [ -x "$CIQ_SDK_HOME/bin/simulator" ] \
-    && [ -f "${CIQ_SIM_LIBS}/libwebkit2gtk-4.0.so.37" ]; then
-  echo "Toolchain already present (cached container) — nothing to do."
+echo "== watch-me session =="
+if ciq_can_build && [ -x "$CIQ_SDK_HOME/bin/simulator" ]; then
+  echo "CIQ toolchain ready (cached container)."
   echo "  SDK:    $CIQ_SDK_HOME"
   echo "  Device: $DEVICE_DIR"
-  exit 0
-fi
-
-if [ -z "${GARMIN_USERNAME:-}" ] || [ -z "${GARMIN_PASSWORD:-}" ]; then
-  echo "NOTE: GARMIN_USERNAME / GARMIN_PASSWORD not set in this environment."
-  echo "      The SDK will install, but the login-gated fr735xt device files"
-  echo "      will be missing and builds will not run. Add the credentials as"
-  echo "      environment variables in the environment settings."
-fi
-
-# 1. SDK manager CLI + agreement/login + SDK + simulator overlay + device files.
-#    setup-sdk.sh is idempotent and self-heals a missing simulator binary.
-scripts/setup-sdk.sh || echo "WARNING: setup-sdk.sh failed; builds may not work."
-
-# 2. Developer signing key (no-op if one exists; lives outside the repo).
-scripts/gen-key.sh || echo "WARNING: gen-key.sh failed."
-
-# 3. Headless-simulator libraries (webkit-4.0 stack + gst/enchant/webp deps).
-scripts/setup-sim-libs.sh || echo "WARNING: setup-sim-libs.sh failed; sim may not start."
-
-# Summary.
-if ciq_can_build; then
-  echo "OK: monkeyc, device files, and signing key ready."
-  [ -x "$CIQ_SDK_HOME/bin/simulator" ] && echo "OK: simulator binary present."
 else
-  echo "WARNING: toolchain incomplete — see messages above."
+  echo "CIQ toolchain not provisioned in this container yet."
+  echo "It installs itself on the first scripts/build.sh / test.sh / sim.sh run"
+  echo "(via scripts/ensure-toolchain.sh, using GARMIN_USERNAME/GARMIN_PASSWORD"
+  echo "from the environment). No action needed."
+fi
+if [ -z "${GARMIN_USERNAME:-}" ] || [ -z "${GARMIN_PASSWORD:-}" ]; then
+  echo "NOTE: GARMIN_USERNAME / GARMIN_PASSWORD are not set — device files"
+  echo "      cannot be fetched, so fr735xt builds will not run."
 fi
 exit 0

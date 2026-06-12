@@ -23,7 +23,11 @@ else
   OUT="$REPO_ROOT/bin/$FACE.prg"
 fi
 
-# Preflight
+# Preflight: provision the toolchain on demand (no-op when already present;
+# downloads happen once per container thanks to environment caching).
+if ! ciq_can_build; then
+  ciq_ensure_toolchain || true
+fi
 if [ ! -x "$MONKEYC" ]; then echo "monkeyc not found ($MONKEYC). Run scripts/setup-sdk.sh." >&2; exit 1; fi
 if [ ! -f "$CIQ_KEY" ];  then echo "Developer key not found ($CIQ_KEY). Run scripts/gen-key.sh." >&2; exit 1; fi
 if [ ! -d "$DEVICE_DIR" ]; then
