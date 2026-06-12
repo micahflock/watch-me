@@ -9,6 +9,7 @@ core/src/
            DataSource.mc    fills the Snapshot from Toybox; caches properties
   render/  Compositor.mc    ordered component list + per-component clips
            Region.mc        rect helpers + keep-out → cell-range mapping
+           CompassRose.mc   sun-compass dial (aim 12 at sun, red needle = N)
   sim/     Prng.mc          Park-Miller (Schrage), overflow-safe, seedable
            BitGrid.mc       packed 2D bitfield, double-buffered, 2-bit age
            LifeEngine.mc    reference SimEngine: Conway-family CA, banded
@@ -17,6 +18,7 @@ core/src/
            StripGlyphs.mc   bitmap-strip blitter (setClip + drawBitmap)
   astro/   MathX.mc         atan2/floor/fmod hand-rolls (2.4-safe)
            Solar.mc         NOAA solar position + sunrise/sunset, pure
+           SunCompass.mc    true-north dial angle from sun azimuth, pure
   debug/   Instrument.mc    (:debug) overlay/logging + (:release) stubs
 
 faces/devface/               integration testbed (zero styling)

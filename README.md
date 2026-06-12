@@ -64,17 +64,20 @@ files, the 70% ceiling, and the current PRG size.
 
 ```
 core/src/data/    Snapshot, DataSource   per-tick state (all fields nullable)
-core/src/render/  Compositor, Region     ordered components, clips, keep-outs
+core/src/render/  Compositor, Region,    ordered components, clips, keep-outs;
+                  CompassRose            sun-compass dial renderer
 core/src/sim/     Prng, BitGrid,         seeded PRNG; packed double-buffered
                   LifeEngine             bitfield; Conway CA with rule masks,
                                          banded stepping, external-input hook
 core/src/glyph/   SegmentFont/Layout,    parametric 7-segment digits;
                   StripGlyphs            bitmap-strip blitter
-core/src/astro/   MathX, Solar           2.4-safe math; NOAA sun position +
-                                         sunrise/sunset (pure, unit-tested)
+core/src/astro/   MathX, Solar,          2.4-safe math; NOAA sun position +
+                  SunCompass             sunrise/sunset; true-north-from-sun
+                                         dial math (all pure, unit-tested)
 core/src/debug/   Instrument             (:debug) overlay/logging, (:release) stubs
 faces/devface/    integration testbed    7-seg HH:MM + date + 40×30 Life fed by
-                                         step deltas + instrumentation overlay
+                                         step deltas + sun-compass rose +
+                                         instrumentation overlay
 docs/             architecture, api-2.4-notes, memory-budget, sideload
 tools/            make-dow-strip.sh      offline 16-color glyph-strip pipeline
 ```

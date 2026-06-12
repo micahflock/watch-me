@@ -42,7 +42,8 @@ number; `Instrument`'s ms reading is for trend-watching, not the limit itself.
 | LifeEngine band: 5 rows × 40 cells, inlined | ~8k |
 | Life render: word/nibble-skip scan + run-merged fills | ~4-6k |
 | 7-seg clock (4 digits × fillPolygon) + date + overlay | ~3k |
-| **Total** | **~17-19k** — fits with margin |
+| Sun compass: Solar.position + rose draw (1 sin + 1 cos + ~10 Dc calls) | ~2k (estimate — re-measure with Instrument) |
+| **Total** | **~19-21k** — fits with margin |
 
 Growing the grid: stay under budget by lowering `:rowsPerStep` (slower
 generations) — render cost scales with live cells and is bounded by run

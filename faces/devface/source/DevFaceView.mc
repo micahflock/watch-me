@@ -10,7 +10,8 @@ using Toybox.System as Sys;
 //   - procedural 7-segment HH:MM (SegmentFont/Layout) upper-center
 //   - day-of-week + DD date line below it (segment digits)
 //   - a Conway Life region (>=40x30) filling the lower area, fed by step delta,
-//     masked out of the clock's keep-out rect
+//     masked out of the sun-compass keep-out carved in its center
+//   - a sun-compass rose (point 12 at the sun -> red needle = true north)
 //   - (:debug) instrumentation overlay at the very bottom
 class DevFaceView extends Ui.WatchFace {
 
@@ -19,7 +20,8 @@ class DevFaceView extends Ui.WatchFace {
     var _life;
     var _segParams;
     var _segs;
-    var _clockKeepOut; // reserved rect [x,y,w,h] the sim won't draw into
+    var _clockKeepOut;   // reserved rect [x,y,w,h] the sim won't draw into
+    var _compassKeepOut; // hole in the Life field for the compass rose
 
     // Life grid geometry (cells). >=40x30 per acceptance criteria.
     const GRID_W = 40;
@@ -34,6 +36,9 @@ class DevFaceView extends Ui.WatchFace {
     // Initial random fill. Life settles to ~5% live anyway, and fewer live
     // cells keep the render scan within the instruction budget.
     const SEED_DENSITY = 15;
+    // Sun-compass rose: radius and center-y (center-x is the screen center).
+    const ROSE_R = 24;
+    const ROSE_CY = 134;
 
     function initialize() {
         WatchFace.initialize();
@@ -49,6 +54,11 @@ class DevFaceView extends Ui.WatchFace {
 
         // Reserve the top area for the clock so Life doesn't draw under it.
         _clockKeepOut = [0, 0, dc.getWidth(), 86];
+
+        // Carve a hole in the Life field for the compass rose (rim + the
+        // aiming dot that pokes 3px above it, plus a few px of breathing room).
+        _compassKeepOut = [centerX(dc) - ROSE_R - 4, ROSE_CY - ROSE_R - 6,
+            ROSE_R * 2 + 8, ROSE_R * 2 + 10];
 
         // Generative engine: Life with age ramp, fed by step deltas.
         var app = App.getApp();
@@ -72,12 +82,16 @@ class DevFaceView extends Ui.WatchFace {
     function buildCompositor(dc) {
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
-        // Order matters: Life first (background), then clock/date on top.
+        // Order matters: Life first (background), then clock/date/compass on top.
         _compositor.addKeepOut(_clockKeepOut);
-        _compositor.add(new LifeComponent(_life, _clockKeepOut,
+        _compositor.addKeepOut(_compassKeepOut);
+        // Life masks the compass hole. (renderMasked takes one rect; the clock
+        // keep-out sits entirely above the grid, so it never needed masking.)
+        _compositor.add(new LifeComponent(_life, _compassKeepOut,
             centerX(dc) - (GRID_W * CELL) / 2, 90, CELL), null);
         _compositor.add(new ClockComponent(_segs, _segParams, centerX(dc)), null);
         _compositor.add(new DateComponent(centerX(dc)), null);
+        _compositor.add(new SunCompassComponent(centerX(dc), ROSE_CY, ROSE_R), null);
         _compositor.add(new DebugComponent(), null);
     }
 
@@ -147,6 +161,27 @@ class DateComponent {
         dc.setColor(Gfx.COLOR_LT_GRAY, Gfx.COLOR_TRANSPARENT);
         dc.drawText(_cx, 66, Gfx.FONT_SMALL, label + " " + day,
             Gfx.TEXT_JUSTIFY_CENTER);
+    }
+}
+
+class SunCompassComponent {
+    var _rose; var _cx; var _cy; var _r;
+    function initialize(cx, cy, r) {
+        _rose = new CompassRose();
+        _cx = cx; _cy = cy; _r = r;
+    }
+    function render(dc, state) {
+        var res = SunCompass.compute(state.year, state.month, state.day,
+            state.hour, state.minute, state.utcOffsetSec, state.lat, state.lon);
+        if (res == null) {
+            _rose.drawUnknown(dc, _cx, _cy, _r); // no location/clock yet
+            return;
+        }
+        // Sightable: above the horizon (same -0.833 disc/refraction limb as
+        // sunrise) and below ~80 deg elevation, where azimuth degenerates and
+        // a near-zenith sun can't be aimed at anyway.
+        var bright = (res[1] > -0.833 && res[1] < 80.0);
+        _rose.draw(dc, _cx, _cy, _r, res[0], bright);
     }
 }
 
