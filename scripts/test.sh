@@ -50,7 +50,7 @@ echo "== Building unit-test PRG =="
 PRG="$REPO_ROOT/bin/$FACE-debug.prg"
 echo
 echo "== Running unit tests in simulator =="
-ciq_start_sim || { echo "Simulator failed to start; see /tmp/ciq_sim.log" >&2; exit 1; }
+ciq_start_sim fresh || { echo "Simulator failed to start; see /tmp/ciq_sim.log" >&2; exit 1; }
 
 ciq_sim_env
 OUT="$(mktemp)"

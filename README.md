@@ -32,6 +32,14 @@ same SDK; this repo's scripts do not depend on it.
 
 ## Setup (one-time)
 
+On **Claude Code on the web**, `.claude/hooks/session-start.sh` runs all of
+this automatically when a session starts (it needs `GARMIN_USERNAME` /
+`GARMIN_PASSWORD` set as environment variables in the environment settings).
+The container state is cached after the hook completes, so the ~200 MB SDK
+download happens once per environment, not once per session.
+
+Manual setup (local machines):
+
 ```bash
 # 1. SDK + device files (device files need a Garmin account):
 GARMIN_USERNAME=you@example.com GARMIN_PASSWORD=... scripts/setup-sdk.sh

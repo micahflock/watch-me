@@ -17,16 +17,24 @@ set -euo pipefail
 . "$(dirname "$0")/env.sh"
 
 DEST="${CIQ_SIM_LIBS:-$HOME/ciq-tools/webkit40-libs}"
+
+# Distro packages first (also needed on cached containers where DEST already
+# exists). The gst/enchant/manette/wayland/webp set is what the SDK 9.2.0
+# simulator dlopens beyond webkit itself (found via ldd "not found" probing).
+APT="apt-get"
+[ "$(id -u)" != "0" ] && APT="sudo apt-get"
+echo "Installing distro runtime deps (best effort)..."
+$APT install -y -qq libsecret-1-0 libusb-1.0-0 libsoup2.4-1 xvfb \
+  libwebpmux3 libwebpdemux2 libgstreamer-gl1.0-0 libenchant-2-2 \
+  libmanette-0.2-0 libwayland-server0 2>/dev/null \
+  || echo "(apt install failed or unavailable; continuing — packages may already exist)"
+
 if [ -f "$DEST/libwebkit2gtk-4.0.so.37" ]; then
   echo "Already set up: $DEST"
   exit 0
 fi
 
 command -v dpkg-deb >/dev/null || { echo "dpkg-deb required" >&2; exit 1; }
-
-echo "Installing distro runtime deps (best effort)..."
-sudo apt-get install -y -qq libsecret-1-0 libusb-1.0-0 libsoup2.4-1 xvfb 2>/dev/null \
-  || echo "(apt install failed or unavailable; continuing — packages may already exist)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

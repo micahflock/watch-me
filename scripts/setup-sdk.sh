@@ -23,20 +23,21 @@ MGR="${CIQ_SDK_MANAGER:-$HOME/ciq-tools/connect-iq-sdk-manager}"
 SDK_LADDER=(${CIQ_SDK_LADDER:-9.2.0 8.4.1 7.4.3 4.2.4})
 
 if [ ! -x "$MGR" ]; then
-  echo "SDK manager CLI not found at $MGR."
-  echo "Download it from https://github.com/lindell/connect-iq-sdk-manager-cli/releases"
-  echo "(Linux x86_64 tarball) and set CIQ_SDK_MANAGER to its path, or place it at"
-  echo "  ~/ciq-tools/connect-iq-sdk-manager"
-  exit 1
+  echo "SDK manager CLI not found at $MGR — fetching v0.8.4 from GitHub..."
+  mkdir -p "$(dirname "$MGR")"
+  curl -sfL "https://github.com/lindell/connect-iq-sdk-manager-cli/releases/download/v0.8.4/connect-iq-sdk-manager-cli_0.8.4_Linux_x86_64.tar.gz" \
+    | tar xz -C "$(dirname "$MGR")" connect-iq-sdk-manager
+  [ -x "$MGR" ] || { echo "ERROR: could not install the SDK manager CLI." >&2; exit 1; }
 fi
 
 # --- Login (device files require it) -----------------------------------------
+# NOTE: the CLI requires the agreement to be accepted BEFORE login succeeds
+# (login errors with "agreement is not accepted" otherwise), so accept first.
 if [ -n "${GARMIN_USERNAME:-}" ] && [ -n "${GARMIN_PASSWORD:-}" ]; then
-  echo "Logging in to Garmin as $GARMIN_USERNAME ..."
-  "$MGR" login --username "$GARMIN_USERNAME" --password "$GARMIN_PASSWORD"
-  "$MGR" agreement view >/dev/null 2>&1 || true
   echo "Accepting SDK agreement..."
   "$MGR" agreement accept || echo "(agreement accept returned nonzero; continuing)"
+  echo "Logging in to Garmin as $GARMIN_USERNAME ..."
+  "$MGR" login --username "$GARMIN_USERNAME" --password "$GARMIN_PASSWORD"
   HAVE_LOGIN=1
 else
   echo "WARNING: GARMIN_USERNAME / GARMIN_PASSWORD not set."
@@ -66,6 +67,24 @@ if [ -z "$CHOSEN_SDK" ]; then
 fi
 echo "$CHOSEN_SDK" > "$REPO_ROOT/.sdk-path"
 echo "Wrote SDK path to .sdk-path"
+
+# --- Simulator binary --------------------------------------------------------
+# The SDK manager CLI's download omits bin/simulator (verified with v0.8.4 /
+# SDK 9.2.0). The official zip — same version stamp as the SDK directory name —
+# contains it; overlay the zip onto the installed SDK when it's missing.
+if [ ! -x "$CHOSEN_SDK/bin/simulator" ]; then
+  STAMP="$(basename "$CHOSEN_SDK")"
+  URL="https://developer.garmin.com/downloads/connect-iq/sdks/${STAMP}.zip"
+  echo "Simulator missing from CLI download; overlaying official zip:"
+  echo "  $URL"
+  TMPZ="$(mktemp /tmp/ciq-sdk-XXXXXX.zip)"
+  if curl -sfL -o "$TMPZ" "$URL" && unzip -oq "$TMPZ" -d "$CHOSEN_SDK"; then
+    echo "Simulator installed: $CHOSEN_SDK/bin/simulator"
+  else
+    echo "WARNING: could not fetch the official SDK zip; builds work, sim won't." >&2
+  fi
+  rm -f "$TMPZ"
+fi
 
 # --- Device files ------------------------------------------------------------
 if [ "$HAVE_LOGIN" = "1" ]; then
