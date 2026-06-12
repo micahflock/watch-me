@@ -89,8 +89,10 @@ keep `base.sourcePath = source;../../core/src` in its jungles, and build with
 ## Measured status (acceptance)
 
 - devface builds clean for fr735xt at API 2.4 (SDK 9.2.0) and runs in the sim.
-- 26 unit tests pass (BitGrid, PRNG, LifeEngine incl. banded-vs-whole
-  equivalence, segment lookup, MathX, Solar fixtures).
-- With a 40×30 Life region running: runtime peak ≈ **37 KB** (< 44.8 KB
-  ceiling), onUpdate ≈ **8–10 ms**, no watchdog trips. Details in
-  `docs/memory-budget.md`.
+- 31 unit tests pass (BitGrid, PRNG, LifeEngine incl. banded-vs-whole
+  equivalence, segment lookup, MathX, Solar fixtures, SunCompass
+  dial/rollover).
+- With a 40×30 Life region + sun compass running: release-build runtime ≈
+  **30 KB** (< 44.8 KB ceiling); debug build (tests + instrumentation
+  compiled in) peaks ≈ **45 KB**; onUpdate ≈ **8–12 ms**, no watchdog trips.
+  Details in `docs/memory-budget.md`.
