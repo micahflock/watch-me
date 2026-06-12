@@ -52,6 +52,20 @@ a GREEN ridge. A white grain marks "now". Midnight starts a fresh canvas.
   movement→scatter width.
 - Cost: ~450 fillRects by late evening. State: 54-column RLE, ~900 B.
 
+## 4. Strata + Flock hybrid (`strata-flock.png`)
+
+Sediment is the past, the murmuration is the present. A slower-accreting
+strata landscape (chronological left→right) fills the bottom; above the
+skyline the flock lives in the sky, colored by the *current* HR zone, with
+the attractor confined to the upper half. Dots that drift below the
+terrain are buried and not drawn; dots grazing the surface leave a LT_GRAY
+speck on the crust — the flock precipitating into sediment.
+
+- Data → form: everything from concepts 2 and 3 combined; the skyline
+  itself becomes an input to the flock (terrain culls/landing).
+- Cost: ~700 primitives by late evening (sum of both engines — still far
+  under budget). State: strata RLE only, ~900 B; flock stateless.
+
 ## Porting notes (Monkey C, API 2.4)
 
 - All randomness is `ihash()` (FNV-style integer hash) — deterministic,

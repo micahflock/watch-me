@@ -272,29 +272,23 @@ def render_murmuration(seed, t_now, steps, hr, mov):
 
 # ------------------------------------------------------- concept 3: sediment
 
-def render_sediment(seed, t_now, steps, hr, mov):
-    """The day as strata.
+NCOLS, COLW = 54, 4
 
-    Every minute drops grains (more when stepping) into columns near a
-    slowly drifting cursor; movement widens the scatter, stillness builds
-    towers; columns topple onto shorter neighbors so dunes find a natural
-    angle of repose.  Grain color is the HR zone of that minute, so sleep
-    lays dark blue bedrock, a run deposits an orange-red seam.
-    State: 54 columns of RLE color bands (~600 B worst case).
-    """
-    ncols = 54
-    colw = 4
-    heights = [0] * ncols
-    bands = [[] for _ in range(ncols)]       # list of [color, px]
+
+def _sediment_sim(seed, t_now, steps, hr, mov, gcap=7, gdiv=25):
+    """Minute-by-minute deposition; returns (heights, RLE bands, cursor)."""
+    heights = [0] * NCOLS
+    bands = [[] for _ in range(NCOLS)]       # list of [color, px]
     wobble = 0
+    c = 4
     for t in range(t_now + 1):
         wobble += (hrand(3, seed, t, 5) - 1)
         wobble = max(-6, min(6, wobble))
         # cursor sweeps left->right with the day; the screen reads as a
         # chronological core sample (morning strata left, evening right)
-        c = 4 + (t * (ncols - 8)) // 1440 + wobble
-        c = max(2, min(ncols - 3, c))
-        g = 1 + min(7, steps[t] // 25)
+        c = 4 + (t * (NCOLS - 8)) // 1440 + wobble
+        c = max(2, min(NCOLS - 3, c))
+        g = 1 + min(gcap, steps[t] // gdiv)
         if steps[t] == 0 and mov[t] < 0.06 and t % 4:
             continue                         # sleep drips slowly
         spread = 2 + int(10 * mov[t])
@@ -302,12 +296,12 @@ def render_sediment(seed, t_now, steps, hr, mov):
         for k in range(g):
             off = (hrand(spread, seed, t, k, 1) +
                    hrand(spread, seed, t, k, 2) - spread + 1)
-            col = max(0, min(ncols - 1, c + off))
+            col = max(0, min(NCOLS - 1, c + off))
             for _ in range(8):               # topple to angle of repose
                 lo = col
                 if col > 0 and heights[col - 1] < heights[col] - 5:
                     lo = col - 1
-                if col < ncols - 1 and heights[col + 1] < heights[lo] - 5:
+                if col < NCOLS - 1 and heights[col + 1] < heights[lo] - 5:
                     lo = col + 1
                 if lo == col:
                     break
@@ -318,17 +312,119 @@ def render_sediment(seed, t_now, steps, hr, mov):
                 b[-1][1] += 1
             else:
                 b.append([zc, 1])
+    return heights, bands, c
 
-    cv = Canvas()
-    for i in range(ncols):
+
+def _draw_strata(cv, heights, bands, c):
+    for i in range(NCOLS):
         y = H
         for colr, px in bands[i]:
             y -= px
-            cv.fill_rect(i * colw, y, colw, px, colr)
+            cv.fill_rect(i * COLW, y, COLW, px, colr)
         if bands[i]:
-            cv.fill_rect(i * colw, y - 1, colw, 1, DK_GRAY)  # crust line
+            cv.fill_rect(i * COLW, y - 1, COLW, 1, DK_GRAY)   # crust line
     # white grain marks where "now" is depositing
-    cv.fill_rect(c * colw + 1, H - heights[c] - 3, 2, 2, WHITE)
+    cv.fill_rect(c * COLW + 1, H - heights[c] - 3, 2, 2, WHITE)
+
+
+def render_sediment(seed, t_now, steps, hr, mov):
+    """The day as strata.
+
+    Every minute drops grains (more when stepping) into columns near a
+    slowly drifting cursor; movement widens the scatter, stillness builds
+    towers; columns topple onto shorter neighbors so dunes find a natural
+    angle of repose.  Grain color is the HR zone of that minute, so sleep
+    lays dark blue bedrock, a run deposits an orange-red seam.
+    State: 54 columns of RLE color bands (~600 B worst case).
+    """
+    heights, bands, c = _sediment_sim(seed, t_now, steps, hr, mov)
+    cv = Canvas()
+    _draw_strata(cv, heights, bands, c)
+    state = sum(2 + 2 * len(b) for b in bands)
+    return cv, state
+
+
+# ------------------------------------------- concept 4: strata + flock hybrid
+
+def render_strata_flock(seed, t_now, steps, hr, mov):
+    """Sediment is the past, the murmuration is the present.
+
+    A slower-accreting strata landscape (the day's history, chronological
+    left->right) fills the bottom; above the skyline a murmuration lives in
+    the sky, colored by the *current* HR zone.  Dots that drift below the
+    terrain are buried; ones grazing the surface leave a LT_GRAY speck on
+    the crust — the flock precipitating into sediment.
+    State: strata RLE only (~700 B); the flock is stateless.
+    """
+    heights, bands, c = _sediment_sim(seed, t_now, steps, hr, mov,
+                                      gcap=5, gdiv=35)
+    cv = Canvas()
+    _draw_strata(cv, heights, bands, c)
+
+    gx, gy = 14, 12
+    spacing = 15
+    x0 = (W - (gx - 1) * spacing) / 2.0
+    y0 = (H - (gy - 1) * spacing) / 2.0
+    cum = sum(steps[:t_now + 1])
+    n = gx * gy
+    awake_n = max(12, int(n * min(1.0, cum / 9000.0)))
+    wake_rank = sorted(range(n), key=lambda i: ihash(seed, i, 313))
+    awake = set(wake_rank[:awake_n])
+
+    t = t_now
+    r_hr = hr[t]
+    recent = sum(mov[max(0, t - 45):t + 1]) / 46.0
+    m = max(mov[t], 0.6 * recent)
+    f1 = 2 + hrand(3, seed, 1)
+    f2 = 3 + hrand(3, seed, 2)
+    ax = CX + 62 * math.sin(t * 0.004 * f1 + hrand(7, seed, 3))
+    ay = 28 + 34 * math.sin(t * 0.0026 * f2 + hrand(7, seed, 4))  # sky only
+    amp = 2.0 + 9.0 * m
+    hrn = max(0.0, min(1.0, (r_hr - 50) / 110.0))
+
+    def surface(px):
+        return H - heights[max(0, min(NCOLS - 1, int(px) // COLW))]
+
+    pos = {}
+    for i in range(n):
+        if i not in awake:
+            continue
+        ix, iy = i % gx, i // gx
+        bx, by = x0 + ix * spacing, y0 + iy * spacing
+        dx = amp * (math.sin(ix * 0.9 + t * 0.13) +
+                    0.5 * math.sin(iy * 1.7 + t * 0.07))
+        dy = amp * (math.sin(iy * 1.1 + t * 0.11 + 2) +
+                    0.5 * math.sin(ix * 1.3 + t * 0.05))
+        px, py = bx + dx, by + dy
+        surf = surface(px)
+        if py > surf - 3:
+            if py < surf + 6:                # grazing: settles into crust
+                cv.fill_circle(px, surf - 2, 0.4, LT_GRAY)
+            continue                         # deeper: buried, not drawn
+        pos[i] = (px, py)
+
+    for i, (px, py) in pos.items():          # filaments first, dots on top
+        for j in (i + 1, i + gx):
+            if j in pos and (i + 1 != j or i % gx != gx - 1):
+                qx, qy = pos[j]
+                if (px - qx) ** 2 + (py - qy) ** 2 < 13 ** 2:
+                    cv.line(px, py, qx, qy, DK_GRAY)
+    for i, (px, py) in pos.items():
+        d = math.hypot(px - ax, py - ay)
+        pulse = hrn * 2.0 * math.sin(t * 0.35 + (i % gx) + (i // gx))
+        grain = 0.5 + (hrand(100, seed, i, 47) / 100.0)
+        rad = (max(0.0, 6.0 - d / 14.0) * (0.5 + hrn) + 0.9 + pulse) * grain
+        rad = max(0.4, min(6.0, rad))
+        if rad > 3.6:
+            col = zone_color(r_hr)
+        elif rad > 2.2:
+            col = BLUE if hrn > 0.35 else DK_BLUE
+        elif rad > 1.2:
+            col = DK_BLUE
+        else:
+            col = DK_GRAY
+        cv.fill_circle(px, py, rad, col)
+
     state = sum(2 + 2 * len(b) for b in bands)
     return cv, state
 
@@ -339,6 +435,7 @@ CONCEPTS = [
     ("weathered-truchet", render_weathered_truchet),
     ("murmuration", render_murmuration),
     ("sediment", render_sediment),
+    ("strata-flock", render_strata_flock),
 ]
 SNAPSHOTS = [(7 * 60 + 50, "07:50 mid-run"),
              (13 * 60 + 5, "13:05 after lunch walk"),
