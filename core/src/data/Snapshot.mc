@@ -10,6 +10,7 @@ class Snapshot {
     var minute;        // 0..59
     var second;        // 0..59 (whole-minute cadence, but available)
     var utcOffsetSec;  // local offset from UTC in seconds
+    var is24Hour;      // device clock setting (Boolean); null -> treat as 24h
 
     // Date
     var year;          // e.g. 2026
@@ -42,6 +43,7 @@ class Snapshot {
     // read leaves the field null rather than stale).
     function clear() {
         hour = null; minute = null; second = null; utcOffsetSec = null;
+        is24Hour = null;
         year = null; month = null; day = null; dayOfWeek = null;
         steps = null; stepGoal = null; distanceCm = null; calories = null;
         heartRate = null;
