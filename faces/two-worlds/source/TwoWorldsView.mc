@@ -5,18 +5,21 @@ using Toybox.Math as Math;
 // TwoWorldsView — the "two worlds" face (design: docs/claude-design-handoff.md).
 //
 // A hard-edged ARTIFICIAL layer (7-seg bitmap clock, day/date readout, phone
-// uplink bars, battery chunks, sun/north marker) floats over an organic
-// NATURAL field, split by a single white border. The field is a generative
-// STAND-IN here (flat green); a real algorithmic layer replaces FieldComponent
-// later — it must avoid the same keep-outs and draw first (back).
+// uplink bars, battery chunks, sun/north marker) floats over the organic
+// NATURAL field: the shared strataflock generative engine (core/src/genart) —
+// StrataField sediment accreting the day from the bottom, a Flock murmuration
+// living in the present minute above it. The art draws full-frame, then
+// FieldMaskComponent blacks everything outside the field region so it reads as
+// painted only inside the disc; the white border traces that same edge.
 //
-// Render order (back -> front): field, border, uplink, battery, north, readout,
-// time, debug. All geometry and data bindings are lifted verbatim from the
-// Claude Design handoff (face-render.js + the §6/§7 spec).
+// Render order (back -> front): strata, flock, field mask, border, uplink,
+// battery, north, readout, time, debug.
 class TwoWorldsView extends Ui.WatchFace {
 
     var _state;
     var _compositor;
+    var _field;       // StrataField (generative; also feeds the flock)
+    var _flock;       // Flock (stateless murmuration)
     var _timeStrip;   // StripGlyphs: 7-seg digits, 18px cells
     var _colon;       // BitmapResource: the 4px colon glyph
     var _dowStrip;    // StripGlyphs: 2-letter day sprites, 18px cells
@@ -29,28 +32,36 @@ class TwoWorldsView extends Ui.WatchFace {
     // Allocate everything ONCE (lifecycle contract: zero per-tick allocation).
     function onLayout(dc) {
         _state = new Snapshot();
+        GenArt.initSinTable();
 
         _timeStrip = new StripGlyphs(Rez.Drawables.FontTime, 18);
         _colon     = Ui.loadResource(Rez.Drawables.FontColon);
         _dowStrip  = new StripGlyphs(Rez.Drawables.FontDow, 18);
         _dateStrip = new StripGlyphs(Rez.Drawables.FontDate, 6);
 
+        _field = new StrataField();
+        _flock = new Flock(_field, null); // keep-out unneeded: the mask + the
+                                          // chrome band already sit off-field
+
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
-        _compositor.add(new FieldComponent(), null);                 // 1 generative stub
-        _compositor.add(new BorderComponent(), null);                // 2 white chrome
-        _compositor.add(new UplinkComponent(), null);                // 3 phone bars
-        _compositor.add(new BatteryComponent(), null);               // 4 battery chunks
-        _compositor.add(new NorthComponent(), null);                 // 5 sun/north marker
-        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
-        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 7 time
-        _compositor.add(new DebugComponent(), null);                 // (:debug) overlay
+        _compositor.add(_field, null);                   // 1 strata (back)
+        _compositor.add(_flock, null);                   // 2 flock
+        _compositor.add(new FieldMaskComponent(), null); // 3 confine art to field
+        _compositor.add(new BorderComponent(), null);    // 4 white border
+        _compositor.add(new UplinkComponent(), null);    // 5 phone bars
+        _compositor.add(new BatteryComponent(), null);   // 6 battery chunks
+        _compositor.add(new NorthComponent(), null);     // 7 sun/north marker
+        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 8 day/date
+        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 9 time
+        _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
 
     // Full redraw — once per minute in low power.
     function onUpdate(dc) {
         Instrument.tickStart();
         DataSource.refresh(_state);
+        _field.advance(_state);            // simulate the day's sediment
         _compositor.renderAll(dc, _state);
         Instrument.tickEnd();
     }
@@ -80,23 +91,24 @@ module Face {
 
 // --- components (duck-typed: each has render(dc, state)) ---------------------
 
-// FieldComponent — generative STAND-IN. The field shape is static, so its
-// scanline runs are precomputed once here and just blitted each tick (no
-// per-tick sqrt or allocation). The real generative layer replaces this; it
-// owns the same region and must avoid the foreground keep-outs:
-//   time [19,25,98,32]  readout [81,10,37,12]  uplink [127,11,31,38]
-//   battery [73,168,70,10]  north marker (rim annulus r~96..108)
-// Region: offset disc r=95.8 @ (107.5,90.7), cut by the chord+slant on top and
-// the battery notch at the bottom — identical geometry to BorderComponent.
-class FieldComponent {
-    var _runs; // flat [x, y, w, x, y, w, ...]
+// FieldMaskComponent — paints BLACK over everything OUTSIDE the field region,
+// confining the full-frame generative art (strata + flock, drawn before this)
+// to the disc. The mask runs are precomputed once (the field shape is static):
+// zero per-tick allocation, just a fillRectangle per black run.
+//
+// Field region (same geometry as BorderComponent): offset disc r=95.8 @
+// (107.5,90.7), cut by the chord+slant on top and the battery notch at the
+// bottom. Each scanline's black runs are the complement of the field interval(s)
+// within [0,215].
+class FieldMaskComponent {
+    var _runs; // packed black runs: (x << 16) | (y << 8) | w (each fits a byte)
 
     function initialize() {
         _runs = [];
         for (var y = 0; y < 180; y++) {
             var dy = y - 90.7;
             var disc = 9177.64 - dy * dy; // 95.8^2 - dy^2
-            if (disc <= 0.0) { continue; }
+            if (disc <= 0.0) { black(0.0, 215.0, y); continue; }
             var hw = Math.sqrt(disc);
             var xl = 107.5 - hw;
             var xr = 107.5 + hw;
@@ -111,37 +123,45 @@ class FieldComponent {
                     if (xcut > 166.0) { xcut = 166.0; }
                 }
                 if (xl < xcut) { xl = xcut; }
-                if (xl >= xr) { continue; }
+                if (xl >= xr) { black(0.0, 215.0, y); continue; }
             }
 
-            // Bottom battery notch (y>=163): splits the run in two.
+            // Bottom battery notch (y>=163): field is [xl,lw] and [rw,xr];
+            // black the three gaps around them.
             if (y >= 163) {
                 var t = (y - 163.0) / 9.0;
                 var lw = 70.0 - 13.0 * t;
                 var rw = 145.0 + 13.0 * t;
-                emit(xl, lw < xr ? lw : xr, y);
-                emit(rw > xl ? rw : xl, xr, y);
+                var cur = 0.0;
+                black(cur, xl, y); cur = xl;
+                if (lw > cur) { cur = lw; }       // skip field run [xl,lw]
+                if (rw > cur) { black(cur, rw, y); cur = rw; }
+                if (xr > cur) { cur = xr; }        // skip field run [rw,xr]
+                if (cur < 215.0) { black(cur, 215.0, y); }
                 continue;
             }
 
-            emit(xl, xr, y);
+            // Normal scanline: field [xl,xr]; black the two sides.
+            black(0.0, xl, y);
+            black(xr, 215.0, y);
         }
     }
 
-    function emit(x0, x1, y) {
+    function black(x0, x1, y) {
         var a = (x0 + 0.5).toNumber();
         var b = (x1 + 0.5).toNumber();
+        if (a < 0) { a = 0; }
+        if (b > 215) { b = 215; }
         if (b > a) {
-            _runs.add(a);
-            _runs.add(y);
-            _runs.add(b - a);
+            _runs.add((a << 16) | (y << 8) | (b - a));
         }
     }
 
     function render(dc, state) {
-        dc.setColor(Gfx.COLOR_GREEN, Gfx.COLOR_TRANSPARENT);
-        for (var i = 0; i < _runs.size(); i += 3) {
-            dc.fillRectangle(_runs[i], _runs[i + 1], _runs[i + 2], 1);
+        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
+        for (var i = 0; i < _runs.size(); i++) {
+            var v = _runs[i];
+            dc.fillRectangle((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, 1);
         }
     }
 }

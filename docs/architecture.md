@@ -17,8 +17,14 @@ core/src/
            Solar.mc         NOAA solar position + sunrise/sunset, pure
            SunCompass.mc    true-north dial angle from sun azimuth, pure
   debug/   Instrument.mc    (:debug) overlay/logging + (:release) stubs
+  genart/  GenArt.mc        shared generative utils (hash, sine table, HR zones)
+           StrataField.mc   day-as-sediment simulation (the "past" layer)
+           Flock.mc         murmuration in the sky (the "present" layer)
 
 faces/devface/               integration testbed (zero styling)
+faces/strataflock/           biometric generative art: strata + flock
+faces/two-worlds/            artificial chrome (clock/readout/gauges) over the
+                             strataflock field, masked to a bordered disc
 ```
 
 ## How a face composes (see faces/devface)
