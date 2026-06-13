@@ -58,6 +58,7 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 ## Sideloading
 
 Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
-(docs/sideload.md). `bin/flashtest.prg` and `bin/devface.prg` are tracked in
-the repo for direct download. The compass face needs `lat`/`lng` set in the
-app settings on the watch, else it shows the "?" rose.
+(docs/sideload.md). `bin/flashtest.prg`, `bin/devface.prg`, and
+`bin/two-worlds.prg` are tracked in the repo for direct download. The compass
+face needs `lat`/`lng` set in the app settings on the watch, else it shows the
+"?" rose; `two-worlds` likewise needs `lat`/`lng` for its sun/north marker.
