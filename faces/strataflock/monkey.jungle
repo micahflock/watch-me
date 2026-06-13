@@ -1,0 +1,9 @@
+# Release jungle for strataflock.
+# Shared core source is pulled in via sourcePath concatenation (no barrels).
+# Debug vs release is selected by the monkeyc -r flag (see devface jungle notes).
+
+project.manifest = manifest.xml
+
+base.sourcePath = source;../../core/src
+
+base.resourcePath = resources

@@ -66,6 +66,27 @@ speck on the crust — the flock precipitating into sediment.
 - Cost: ~700 primitives by late evening (sum of both engines — still far
   under budget). State: strata RLE only, ~900 B; flock stateless.
 
+## Ported to a face: `faces/strataflock`
+
+Concept 4 is implemented as a real watch face under `faces/strataflock`
+(`StrataField.mc` = strata, `Flock.mc` = murmuration, `GenArt.mc` = shared
+integer hash / sine table / HR-zone ramp). All math is integer; the strata
+evolves incrementally (≤12 minutes of catch-up per `onUpdate`); the flock is
+stateless. Verified in the SDK 9.2.0 simulator on `fr735xt`:
+
+- 6 unit tests pass (`scripts/test.sh strataflock`) — hash determinism, sine
+  table, zone mapping, strata conservation/caps/idle-drip/day-rollover.
+- Release PRG 21 KB on disk; debug runtime RAM ~39/59 KB (under the 70%
+  ceiling, and the debug build carries the test suite).
+- Full-day evening frame renders in 12–16 ms with no watchdog trip; cold
+  start ~4 ms. (A whole day cannot be replayed in a single `onUpdate` — that
+  trips the watchdog — but the real face never does that.)
+
+`strataflock-ondevice.png` is a simulator capture at a synthetic full day
+(18:20, post-gym): the flock in the sky with hot dots at the attractor, the
+strata mountain below with sleep/run/gym color bands. The "39/59K" text is
+the debug memory overlay, stripped in release.
+
 ## Porting notes (Monkey C, API 2.4)
 
 - All randomness is `ihash()` (FNV-style integer hash) — deterministic,
