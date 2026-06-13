@@ -6,8 +6,10 @@
 
   lat/lng : user-entered location for the sun-derived true-north marker (no GPS
             on a watch face at this API level). Unset (0,0) -> marker hidden.
+            Defaults seeded to Portland OR for the sideloaded build (editable in
+            Garmin Express, which can configure sideloaded apps).
 -->
 <properties>
-    <property id="lat" type="float">0.0</property>
-    <property id="lng" type="float">0.0</property>
+    <property id="lat" type="float">45.52</property>
+    <property id="lng" type="float">-122.68</property>
 </properties>
