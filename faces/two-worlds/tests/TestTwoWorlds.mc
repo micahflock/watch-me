@@ -17,3 +17,20 @@ function testBatteryLevels(logger) {
     Test.assert(Face.batteryLevel(100) == 3);
     return true;
 }
+
+(:test)
+function testDisplayHour(logger) {
+    // 24h (true or null): pass-through, 0..23.
+    Test.assert(Face.displayHour(0, true) == 0);
+    Test.assert(Face.displayHour(13, true) == 13);
+    Test.assert(Face.displayHour(23, true) == 23);
+    Test.assert(Face.displayHour(9, null) == 9);   // null -> 24h
+    // 12h (false): 0 -> 12, 12 -> 12, 13 -> 1, 23 -> 11.
+    Test.assert(Face.displayHour(0, false) == 12);
+    Test.assert(Face.displayHour(1, false) == 1);
+    Test.assert(Face.displayHour(11, false) == 11);
+    Test.assert(Face.displayHour(12, false) == 12);
+    Test.assert(Face.displayHour(13, false) == 1);
+    Test.assert(Face.displayHour(23, false) == 11);
+    return true;
+}
