@@ -6,6 +6,7 @@
 # ...except faces kept in-repo for easy sideload download
 !/bin/flashtest.prg
 !/bin/devface.prg
+!/bin/two-worlds.prg
 
 # Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
 *.der
