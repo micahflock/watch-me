@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Drawable resources.
+  - LauncherIcon: required by the manifest.
+  - Font* : custom bitmap glyph strips exported from the design (white glyphs on
+    a transparent background, already palette-exact: pure #FFFFFF + transparent,
+    no antialiasing, so monkeyc keys out transparency with no dithering). Blitted
+    cell-by-cell via core StripGlyphs. See docs/claude-design-handoff.md.
+      FontTime  180x30, ten 18px 7-seg digits (0..9)
+      FontColon 4x30,   the ":" glyph (two dots), drawn directly
+      FontDow   126x10, seven 18px day sprites (SU MO TU WE TH FR SA)
+      FontDate  60x10,  ten 6px day-of-month digits (0..9)
+-->
+<drawables>
+    <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+    <bitmap id="FontTime" filename="tw_time.png"/>
+    <bitmap id="FontColon" filename="tw_colon.png"/>
+    <bitmap id="FontDow" filename="tw_dow.png"/>
+    <bitmap id="FontDate" filename="tw_date.png"/>
+</drawables>

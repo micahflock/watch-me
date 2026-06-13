@@ -1,0 +1,10 @@
+# Debug + unit-test jungle for two-worlds.
+# Adds the tests/ directory. Built WITHOUT monkeyc -r so (:debug) instrumentation
+# compiles in and (:release) stubs drop out. Do not set excludeAnnotations here.
+
+project.manifest = manifest.xml
+
+# Face source + shared core + unit tests.
+base.sourcePath = source;../../core/src;tests
+
+base.resourcePath = resources
