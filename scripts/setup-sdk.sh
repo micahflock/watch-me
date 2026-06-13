@@ -47,16 +47,47 @@ else
 fi
 
 # --- SDK ladder --------------------------------------------------------------
+# Best-effort: raise the open-file soft limit to the hard cap. The CLI's SDK
+# downloader opens the entire doc/ tree at once and aborts with "too many open
+# files" when ulimit -n is low; bumping it fixes the bug outright where the OS
+# allows. Harmless no-op when the hard limit already equals the soft limit (e.g.
+# a locked-down container) — the partial-install tolerance below covers that.
+ulimit -n "$(ulimit -Hn 2>/dev/null)" 2>/dev/null || true
+
+SDKS_DIR="${CIQ_SDKS_DIR:-$HOME/.Garmin/ConnectIQ/Sdks}"
+
+# Echo an installed SDK dir for version $1 whose monkeyc actually runs (nothing
+# if none). The CLI names dirs connectiq-sdk-<plat>-<version>-<date>-<hash>.
+find_usable_sdk() {
+  local d
+  for d in "$SDKS_DIR"/*-"$1"-*; do
+    [ -d "$d" ] || continue
+    if [ -x "$d/bin/monkeyc" ] && "$d/bin/monkeyc" --version >/dev/null 2>&1; then
+      echo "$d"; return 0
+    fi
+  done
+  return 1
+}
+
 CHOSEN_SDK=""
 for v in "${SDK_LADDER[@]}"; do
   echo "Trying SDK $v ..."
-  if "$MGR" sdk download "$v" && "$MGR" sdk set "$v"; then
-    P="$("$MGR" sdk current-path 2>/dev/null || true)"
-    if [ -n "$P" ] && [ -x "$P/bin/monkeyc" ]; then
-      CHOSEN_SDK="$P"
-      echo "SDK $v active at $P"
-      break
-    fi
+  # Do NOT gate on the downloader's exit code. The fd-leak crash happens during
+  # the doc/ extraction, which is fetched LAST and which the compiler does not
+  # need — a complete bin/ (monkeyc + jars) is already on disk by then. So
+  # attempt the download, try to set it current, then accept the SDK whenever a
+  # runnable monkeyc landed, however the command exited.
+  "$MGR" sdk download "$v" \
+    || echo "  sdk download returned nonzero; checking for a usable (partial) install"
+  "$MGR" sdk set "$v" >/dev/null 2>&1 || true
+  P="$("$MGR" sdk current-path 2>/dev/null || true)"
+  if [ -z "$P" ] || [ ! -x "$P/bin/monkeyc" ]; then
+    P="$(find_usable_sdk "$v" || true)"
+  fi
+  if [ -n "$P" ] && [ -x "$P/bin/monkeyc" ] && "$P/bin/monkeyc" --version >/dev/null 2>&1; then
+    CHOSEN_SDK="$P"
+    echo "SDK $v usable at $P"
+    break
   fi
   echo "SDK $v unusable; trying next."
 done
