@@ -1,0 +1,13 @@
+# Release jungle for two-worlds.
+# Shared core source is pulled in via sourcePath concatenation (no barrels).
+#
+# Debug vs release is selected by the monkeyc -r flag, NOT by excludeAnnotations
+# (see faces/devface/monkey.jungle and docs/architecture.md).
+
+project.manifest = manifest.xml
+
+# Face source + shared core. Paths are relative to this jungle file.
+base.sourcePath = source;../../core/src
+
+# Face resources (fonts, launcher icon, settings).
+base.resourcePath = resources
