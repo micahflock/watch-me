@@ -47,6 +47,7 @@ class BioBloom:
         self.epi_min = 0
         self.epi_peak = 0
         self.epi_idx = -1            # index of this episode's bloom, or -1
+        self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)   # per-day phase
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
             v = 2 + imod(hash16(7, i, 1), 3)
@@ -59,11 +60,23 @@ class BioBloom:
         return (x, y, c)
 
     def _longish(self, salt):
-        # pick one of the longer arms (varied) so blooms scatter across arms
+        # pick one of the longer arms (varied) -- used for thread branching
         order = sorted(range(len(self.fil)),
                        key=lambda j: self.fil[j]["L"], reverse=True)
         k = imod(hash16(salt, len(self.blooms) + 1, 13), max(1, len(order) // 2))
         return self.fil[order[k]]
+
+    def _nearest(self, target):
+        # arm whose heading is closest to a target angle, so successive blooms
+        # erupt in genuinely different directions around the dish
+        best, bd = self.fil[0], 999
+        for f in self.fil:
+            d = imod(f["a"] - target + 128, 256) - 128
+            if d < 0:
+                d = -d
+            if d < bd:
+                bd, best = d, f
+        return best
 
     def _grow_fil(self, f, move, vrange, color):
         f["L"] += idiv(move * f["v"], 3)
@@ -135,7 +148,11 @@ class BioBloom:
         self._creep()
 
     def _plant(self, vrange):
-        f = self._longish(self.epi_peak)
+        # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
+        # jitter, so the run / gym / etc. colonies fan out around the dish
+        target = imod(self.bloom_base + len(self.blooms) * 98
+                      + imod(hash16(self.epi_peak, len(self.blooms), 7), 22), 256)
+        f = self._nearest(target)
         bx, by, _ = f["pts"][-1]
         self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": 3,
                             "w": 4 + idiv(vrange, 6),
