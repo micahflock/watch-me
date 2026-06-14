@@ -125,7 +125,7 @@ class BioBloom:
                 self.fil.append({"a": na, "L": rr * UNIT, "next": rr + STEP,
                                  "v": v, "pts": [self._pt(na, rr, color)]})
 
-        # ---- hard-effort episode -> living colony bloom ----
+        # ---- high-HR episode: short burst -> small node, sustained -> colony ----
         if zi >= HARD:
             if not self.epi_on:
                 self.epi_on = True
@@ -135,30 +135,33 @@ class BioBloom:
             self.epi_min += 1
             if zi > self.epi_peak:
                 self.epi_peak = zi
-            if self.epi_min == MINLEN:
-                self.epi_idx = self._plant(vrange)
+            if self.epi_min == MINLEN:                # graduates to a living colony
+                self.epi_idx = self._seed(3, 4 + idiv(vrange, 6), ENERGY_FEED)
             if self.epi_idx >= 0:
                 b = self.blooms[self.epi_idx]
                 b["energy"] = ENERGY_FEED            # keep feeding while working
                 b["color"] = ZONE_COLORS[self.epi_peak]
         else:
+            if self.epi_on and self.epi_idx < 0:
+                # ended before graduating: a brief high-HR burst -> static node,
+                # slightly bigger for a longer burst, no creep energy
+                self._seed(4 + self.epi_min, 2 + idiv(vrange, 12), 0)
             self.epi_on = False
             self.epi_idx = -1
 
         self._creep()
 
-    def _plant(self, vrange):
+    def _seed(self, reach, w, energy):
         # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
-        # jitter, so the run / gym / etc. colonies fan out around the dish
+        # jitter, so successive eruptions fan out around the dish
         target = imod(self.bloom_base + len(self.blooms) * 98
                       + imod(hash16(self.epi_peak, len(self.blooms), 7), 22), 256)
         f = self._nearest(target)
         bx, by, _ = f["pts"][-1]
-        self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": 3,
-                            "w": 4 + idiv(vrange, 6),
-                            "color": ZONE_COLORS[self.epi_peak],
+        self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": reach,
+                            "w": w, "color": ZONE_COLORS[self.epi_peak],
                             "salt": imod(hash16(bx, by, self.epi_peak), 4096),
-                            "energy": ENERGY_FEED})
+                            "energy": energy})
         return len(self.blooms) - 1
 
     def _creep(self):

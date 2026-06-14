@@ -42,6 +42,8 @@ _SEG_ACTIVE = [
     (9.0,  3,   62),   # desk
     (12.0, 105, 96),   # lunch walk
     (12.75, 4,  64),   # desk
+    (15.0, 6,   134),  # brief spike: stairs / stress (high HR, low activity)
+    (15.05, 4,  64),   # back to desk -- only ~3 min, a burst not a workout
     (17.5, 45,  138),  # gym
     (18.5, 9,   74),   # evening
     (22.0, 1,   58),   # wind-down
