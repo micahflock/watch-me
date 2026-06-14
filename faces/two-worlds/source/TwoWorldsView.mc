@@ -83,12 +83,21 @@ module Face {
         }
         return lit;
     }
+
+    // Displayed hour from a 0..23 clock hour, honoring the device 24h flag.
+    //   24h (true/null) : unchanged, 0..23.
+    //   12h (false)     : 1..12 (0 -> 12, 13..23 -> 1..11).
+    function displayHour(hour24, is24Hour) {
+        if (is24Hour != false) { return hour24; }
+        var h = hour24 % 12;
+        return (h == 0) ? 12 : h;
+    }
 }
 
 // --- components (duck-typed: each has render(dc, state)) ---------------------
 
 // FieldMaskComponent — paints BLACK over everything OUTSIDE the field region,
-// confining the full-frame generative art (strata + flock, drawn before this)
+// confining the full-frame generative art (the BioBloom dish, drawn before this)
 // to the disc. The mask runs are precomputed once (the field shape is static):
 // zero per-tick allocation, just a fillRectangle per black run.
 //
@@ -314,9 +323,11 @@ class ReadoutComponent {
     }
 }
 
-// ClockComponent — HH:MM in the 7-seg bitmap font (24h, leading zero). The colon
-// is its own 4px glyph and is always drawn; a null hour/minute leaves blank
-// digit cells. Cell advance: digit 18+5, colon 4+5 (matches the handoff).
+// ClockComponent — HH:MM in the 7-seg bitmap font, honoring the device clock
+// mode (Snapshot.is24Hour). In 24h the hour keeps its leading zero; in 12h the
+// hour is 1..12 and a leading zero is blanked (the tens cell stays empty). The
+// colon is its own 4px glyph and is always drawn; a null hour/minute leaves
+// blank digit cells. Cell advance: digit 18+5, colon 4+5 (matches the handoff).
 class ClockComponent {
     var _digits;
     var _colon;
@@ -329,8 +340,13 @@ class ClockComponent {
     function render(dc, state) {
         var y = 26;
         if (state.hour != null) {
-            _digits.draw(dc, (state.hour / 10) % 10, 20, y);
-            _digits.draw(dc, state.hour % 10, 43, y);
+            var h = Face.displayHour(state.hour, state.is24Hour);
+            var tens = (h / 10) % 10;
+            // 12h: blank the leading zero (the tens cell stays empty).
+            if (state.is24Hour != false || tens != 0) {
+                _digits.draw(dc, tens, 20, y);
+            }
+            _digits.draw(dc, h % 10, 43, y);
         }
         dc.drawBitmap(66, y, _colon);
         if (state.minute != null) {
