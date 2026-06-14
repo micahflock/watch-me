@@ -42,11 +42,11 @@ _SEG_ACTIVE = [
     (7.166, 158, 150), # cruising                     (zone 5, ~7:10)
     (8.0,  18,  84),   # shower / commute
     (9.0,  3,   62),   # desk
-    (12.0, 105, 96),   # lunch walk
-    (12.75, 4,  64),   # desk
+    (12.0, 105, 96),   # lunch walk (clears the move-bar)
+    (12.75, 0,  64),   # long afternoon meeting -- dead still, move-bar fills up
     (15.0, 6,   134),  # anxiety spike: high HR, almost no movement -> tiny node
-    (15.05, 4,  64),   # back to desk -- only ~3 min, a burst not a workout
-    (16.0, 165, 132),  # dash for the bus: high HR + hard movement -> momentum
+    (15.05, 0,  64),   # still sitting -- move-bar stays up
+    (16.0, 165, 132),  # dash for the bus: vigorous straight out of a long sit
     (16.05, 5,  72),   # recovered -- same ~3 min, but movement keeps it growing
     (17.5, 45,  138),  # gym
     (18.5, 9,   74),   # evening
