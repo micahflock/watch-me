@@ -121,10 +121,17 @@ class BioBloom {
         if (state.hour == null || state.minute == null) { return; }
         var now = state.hour * 60 + state.minute;
         var day = (state.day != null) ? state.day : 0;
-        if (day != _lastDay || now < _lastMin) {
-            reset();
+        if (day != _lastDay) {
+            reset();                 // genuine new calendar day -> fresh dish
             _lastDay = day;
             _lastMin = now - 1;
+        } else if (now < _lastMin) {
+            // Same day but the clock stepped backward (sync correction / manual
+            // set). Don't wipe the day's dish -- just resync to the new time and
+            // rebase the step baseline so growth resumes without a spike.
+            _lastMin = now;
+            if (state.steps != null) { _lastSteps = state.steps; }
+            return;
         }
         var d = now - _lastMin;
         if (d <= 0) { return; }
