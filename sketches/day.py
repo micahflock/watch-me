@@ -29,10 +29,12 @@ class Snapshot:
         self.heartRate = None    # most recent bpm sample, or None
 
 
-# A plausible day as (start_hour, steps_per_minute, heart_rate) segments.
+# Plausible days as (start_hour, steps_per_minute, heart_rate) segments.
 # steps here are PER-MINUTE; synthetic_day accumulates them into the cumulative
 # count the watch actually reads.
-_SEGMENTS = [
+
+# "active" — a run, a lunch walk, and a gym session (two hard-effort episodes).
+_SEG_ACTIVE = [
     (0.0,  0,   52),   # sleep
     (6.5,  12,  68),   # waking
     (7.0,  158, 150),  # morning run
@@ -45,10 +47,26 @@ _SEGMENTS = [
     (22.0, 1,   58),   # wind-down
 ]
 
+# "rest" — a sedentary day: gentle walks only, no hard-effort (high-zone)
+# episode, so an activity-driven face should stay small with no blooms.
+_SEG_REST = [
+    (0.0,  0,   52),   # sleep
+    (7.0,  10,  66),   # waking
+    (8.0,  20,  78),   # pottering about
+    (9.0,  4,   64),   # desk
+    (12.0, 60,  100),  # easy lunch stroll (zone 2, not hard)
+    (12.5, 3,   66),   # desk
+    (17.5, 25,  92),   # gentle evening walk
+    (18.5, 6,   72),   # evening
+    (22.0, 1,   56),   # wind-down
+]
 
-def _segment(h):
-    seg = _SEGMENTS[0]
-    for s in _SEGMENTS:
+_PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST}
+
+
+def _segment(h, segs):
+    seg = segs[0]
+    for s in segs:
         if h >= s[0]:
             seg = s
         else:
@@ -56,16 +74,18 @@ def _segment(h):
     return seg
 
 
-def synthetic_day(seed=1, year=2026, month=6, day=14):
+def synthetic_day(seed=1, year=2026, month=6, day=14, profile="active"):
     """1440 Snapshots, one per minute, for a plausible biometric day.
 
-    Jitter is deterministic (hash16) so a given (seed, date) always renders the
-    same art — the fxhash principle the real face is built on.
+    `profile` selects the activity shape ("active" or "rest"). Jitter is
+    deterministic (hash16) so a given (seed, date) always renders the same
+    art — the fxhash principle the real face is built on.
     """
+    segs = _PROFILES.get(profile, _SEG_ACTIVE)
     snaps = []
     cum = 0
     for t in range(1440):
-        _, spm, hr = _segment(t / 60.0)
+        _, spm, hr = _segment(t / 60.0, segs)
         j = hash16(seed, t, 7)
         # per-minute steps with a little noise; idle minutes mostly contribute 0
         if spm:
