@@ -11,13 +11,16 @@ record the effort as zone-coloured bands as they grow outward.
   wander amplitude = HR variability                     (flag D7)
   frozen threads   = idle / no steps (move-bar)         (flag 9 / D12)
   BLOOM            = ANY elevated-HR episode (zone >= ACTIVE) erupts on an arm
-                     and grows outward one zone-coloured band per minute, so a
-                     brief burst leaves a small node and a sustained workout a
-                     large colony. Because each minute's band carries that
-                     minute's HR zone, a bloom is BANDED -- a warm-up/build/
-                     cruise run reads lime -> amber -> orange from base to rim.
-                     After the episode the frontier keeps creeping briefly in
-                     the last zone's colour (cooldown momentum), then stops.
+                     and grows outward one zone-coloured band per minute while
+                     HR stays elevated (initial growth -- pure HR, banded by
+                     zone). Meanwhile it banks a MOMENTUM reservoir from the
+                     movement effort (steps) during those minutes. When HR
+                     drops the initial growth stops, but momentum growth creeps
+                     on for as long as that reservoir lasts. So an exercise
+                     event (elevated HR + movement) keeps growing into a large
+                     colony, while an anxiety/excitement event (elevated HR,
+                     little movement) banks almost no momentum and stays a
+                     small node -- same colour, very different size.
 
 Activity-driven: the day's shape is the day's exertion. 14-colour palette, one
 repaint per minute, no within-minute animation. Daily reset (fresh dish).
@@ -35,10 +38,10 @@ SEEDS = 9           # initial threads, spread evenly around the centre
 
 ACTIVE = 3          # zone idx >= ACTIVE is an elevated-HR minute (HR >= 105)
 BASE = 2            # px a bloom starts out from its anchor
-GROW = 3            # px the frontier advances per elevated minute (one band)
-REACH_CAP = 42      # px a bloom can reach outward along its arm
-COOL = 24           # post-episode creep energy (cooldown momentum)
-CREEP_DIV = 16      # creep gain per minute = energy / CREEP_DIV
+GROW = 2            # px the frontier advances per elevated minute (one band)
+REACH_CAP = 46      # px a bloom can reach outward along its arm
+MOM_DIV = 16        # steps/min -> momentum reservoir units (movement effort)
+MOM_STEP = 2        # px of momentum growth delivered per minute after HR drops
 
 
 class BioBloom:
@@ -139,14 +142,16 @@ class BioBloom:
                 w = 16
             if w > b["w"]:
                 b["w"] = w
-            self._band(b, ZONE_COLORS[zi])            # this minute's zone colour
-            b["energy"] = COOL
+            self._band(b, ZONE_COLORS[zi], GROW)      # initial growth, zone colour
+            b["mom"] += idiv(spm, MOM_DIV)            # bank movement effort
+            if b["mom"] > REACH_CAP:
+                b["mom"] = REACH_CAP
             fed = self.epi_idx
         else:
             self.epi_on = False
             self.epi_idx = -1
 
-        self._creep(fed)
+        self._momentum(fed)
 
     def _seed(self, zi):
         # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
@@ -158,34 +163,32 @@ class BioBloom:
         self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
                             "w": 3, "bands": [],
                             "salt": imod(hash16(bx, by, zi), 4096),
-                            "energy": 0})
+                            "mom": 0})
         return len(self.blooms) - 1
 
-    def _band(self, b, color):
-        # append one outward band of the current zone colour
+    def _band(self, b, color, grow):
+        # append one outward band, capped at the reach ceiling
         r0 = b["reach"]
-        r1 = r0 + GROW
+        r1 = r0 + grow
         if r1 > REACH_CAP:
             r1 = REACH_CAP
         if r1 > r0:
             b["bands"].append((r0, r1, color))
             b["reach"] = r1
 
-    def _creep(self, fed):
-        # blooms not grown this minute creep on a little in their last zone's
-        # colour, tapering to a stop -- the cooldown after the effort
+    def _momentum(self, fed):
+        # blooms not growing from HR this minute spend their banked movement
+        # effort to creep on in the last zone's colour, until the reservoir runs
+        # out -- exercise (lots of movement) keeps growing, anxiety does not
         i = 0
         while i < len(self.blooms):
             b = self.blooms[i]
-            if i != fed and b["energy"] > 0 and b["reach"] < REACH_CAP and b["bands"]:
-                r0 = b["reach"]
-                r1 = r0 + idiv(b["energy"], CREEP_DIV)
-                if r1 > REACH_CAP:
-                    r1 = REACH_CAP
-                if r1 > r0:
-                    b["bands"].append((r0, r1, b["bands"][-1][2]))
-                    b["reach"] = r1
-                b["energy"] = idiv(b["energy"] * 7, 8)
+            if i != fed and b["mom"] > 0 and b["reach"] < REACH_CAP and b["bands"]:
+                g = MOM_STEP
+                if g > b["mom"]:
+                    g = b["mom"]
+                self._band(b, b["bands"][-1][2], g)
+                b["mom"] -= g
             i += 1
 
     def render(self, dc, snap):

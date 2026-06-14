@@ -44,8 +44,10 @@ _SEG_ACTIVE = [
     (9.0,  3,   62),   # desk
     (12.0, 105, 96),   # lunch walk
     (12.75, 4,  64),   # desk
-    (15.0, 6,   134),  # brief spike: stairs / stress (high HR, low activity)
+    (15.0, 6,   134),  # anxiety spike: high HR, almost no movement -> tiny node
     (15.05, 4,  64),   # back to desk -- only ~3 min, a burst not a workout
+    (16.0, 165, 132),  # dash for the bus: high HR + hard movement -> momentum
+    (16.05, 5,  72),   # recovered -- same ~3 min, but movement keeps it growing
     (17.5, 45,  138),  # gym
     (18.5, 9,   74),   # evening
     (22.0, 1,   58),   # wind-down
