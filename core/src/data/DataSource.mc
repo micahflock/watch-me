@@ -77,8 +77,9 @@ module DataSource {
             snap.batteryPct = stats.battery;
         }
         var ds = Sys.getDeviceSettings();
-        if (ds != null && ds has :phoneConnected) {
-            snap.phoneConnected = ds.phoneConnected;
+        if (ds != null) {
+            if (ds has :phoneConnected) { snap.phoneConnected = ds.phoneConnected; }
+            if (ds has :is24Hour)       { snap.is24Hour = ds.is24Hour; }
         }
 
         // --- location (cached property) ---
