@@ -37,7 +37,9 @@ class Snapshot:
 _SEG_ACTIVE = [
     (0.0,  0,   52),   # sleep
     (6.5,  12,  68),   # waking
-    (7.0,  158, 150),  # morning run
+    (7.0,  120, 112),  # morning run -- warm-up      (zone 3)
+    (7.083, 150, 132), # building                    (zone 4, ~7:05)
+    (7.166, 158, 150), # cruising                     (zone 5, ~7:10)
     (8.0,  18,  84),   # shower / commute
     (9.0,  3,   62),   # desk
     (12.0, 105, 96),   # lunch walk

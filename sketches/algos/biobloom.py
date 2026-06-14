@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hybrid B+C -- "biobloom": a filament skeleton (B) that only extends when you
-move, with LIVING colony blooms (C) that erupt on it at hard-effort episodes
-and then creep outward along their arm.
+move, with LIVING blooms (C) that erupt on it during elevated-HR episodes and
+record the effort as zone-coloured bands as they grow outward.
 
   threads          = grow from centre, length ONLY advances with movement, so a
                      lazy day stays short and an active day reaches outward
@@ -10,11 +10,14 @@ and then creep outward along their arm.
   branching        = HR trend rising => reaching out    (flag D6)
   wander amplitude = HR variability                     (flag D7)
   frozen threads   = idle / no steps (move-bar)         (flag 9 / D12)
-  COLONY BLOOM     = a sustained hard-effort episode (HR in a high zone for
-                     >= MINLEN min) plants a colony on a thread that then
-                     CREEPS OUTWARD along that arm -- fast while the effort
-                     continues, tapering after it ends -- as a teardrop lobe
-                     pointing at the rim, coloured by the episode's peak zone.
+  BLOOM            = ANY elevated-HR episode (zone >= ACTIVE) erupts on an arm
+                     and grows outward one zone-coloured band per minute, so a
+                     brief burst leaves a small node and a sustained workout a
+                     large colony. Because each minute's band carries that
+                     minute's HR zone, a bloom is BANDED -- a warm-up/build/
+                     cruise run reads lime -> amber -> orange from base to rim.
+                     After the episode the frontier keeps creeping briefly in
+                     the last zone's colour (cooldown momentum), then stops.
 
 Activity-driven: the day's shape is the day's exertion. 14-colour palette, one
 repaint per minute, no within-minute animation. Daily reset (fresh dish).
@@ -30,11 +33,12 @@ STEP = 2            # px of radius per appended vertex
 KMAX = 22           # cap on live filaments
 SEEDS = 9           # initial threads, spread evenly around the centre
 
-HARD = 4            # zone idx >= HARD is a hard-effort minute (HR >= 125)
-MINLEN = 5          # min hard minutes before a colony takes hold
-ENERGY_FEED = 48    # creep energy topped up each minute the effort continues
-CREEP_DIV = 16      # reach gain per minute = energy / CREEP_DIV
-REACH_CAP = 34      # px a colony can creep outward along its arm
+ACTIVE = 3          # zone idx >= ACTIVE is an elevated-HR minute (HR >= 105)
+BASE = 2            # px a bloom starts out from its anchor
+GROW = 3            # px the frontier advances per elevated minute (one band)
+REACH_CAP = 42      # px a bloom can reach outward along its arm
+COOL = 24           # post-episode creep energy (cooldown momentum)
+CREEP_DIV = 16      # creep gain per minute = energy / CREEP_DIV
 
 
 class BioBloom:
@@ -44,9 +48,7 @@ class BioBloom:
         self.fil = []
         self.blooms = []
         self.epi_on = False
-        self.epi_min = 0
-        self.epi_peak = 0
-        self.epi_idx = -1            # index of this episode's bloom, or -1
+        self.epi_idx = -1            # index of the in-progress episode's bloom
         self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)   # per-day phase
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
@@ -125,52 +127,66 @@ class BioBloom:
                 self.fil.append({"a": na, "L": rr * UNIT, "next": rr + STEP,
                                  "v": v, "pts": [self._pt(na, rr, color)]})
 
-        # ---- high-HR episode: short burst -> small node, sustained -> colony ----
-        if zi >= HARD:
+        # ---- elevated-HR episode -> a bloom that grows one zone-band per minute
+        fed = -1
+        if zi >= ACTIVE:
             if not self.epi_on:
                 self.epi_on = True
-                self.epi_min = 0
-                self.epi_peak = zi
-                self.epi_idx = -1
-            self.epi_min += 1
-            if zi > self.epi_peak:
-                self.epi_peak = zi
-            if self.epi_min == MINLEN:                # graduates to a living colony
-                self.epi_idx = self._seed(3, 4 + idiv(vrange, 6), ENERGY_FEED)
-            if self.epi_idx >= 0:
-                b = self.blooms[self.epi_idx]
-                b["energy"] = ENERGY_FEED            # keep feeding while working
-                b["color"] = ZONE_COLORS[self.epi_peak]
+                self.epi_idx = self._seed(zi)        # erupt on the first minute
+            b = self.blooms[self.epi_idx]
+            w = 3 + idiv(vrange, 8)                   # variability => wider bloom
+            if w > 16:
+                w = 16
+            if w > b["w"]:
+                b["w"] = w
+            self._band(b, ZONE_COLORS[zi])            # this minute's zone colour
+            b["energy"] = COOL
+            fed = self.epi_idx
         else:
-            if self.epi_on and self.epi_idx < 0:
-                # ended before graduating: a brief high-HR burst -> static node,
-                # slightly bigger for a longer burst, no creep energy
-                self._seed(4 + self.epi_min, 2 + idiv(vrange, 12), 0)
             self.epi_on = False
             self.epi_idx = -1
 
-        self._creep()
+        self._creep(fed)
 
-    def _seed(self, reach, w, energy):
+    def _seed(self, zi):
         # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
         # jitter, so successive eruptions fan out around the dish
         target = imod(self.bloom_base + len(self.blooms) * 98
-                      + imod(hash16(self.epi_peak, len(self.blooms), 7), 22), 256)
+                      + imod(hash16(zi, len(self.blooms), 7), 22), 256)
         f = self._nearest(target)
         bx, by, _ = f["pts"][-1]
-        self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": reach,
-                            "w": w, "color": ZONE_COLORS[self.epi_peak],
-                            "salt": imod(hash16(bx, by, self.epi_peak), 4096),
-                            "energy": energy})
+        self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
+                            "w": 3, "bands": [],
+                            "salt": imod(hash16(bx, by, zi), 4096),
+                            "energy": 0})
         return len(self.blooms) - 1
 
-    def _creep(self):
-        for b in self.blooms:
-            if b["energy"] > 0:
-                b["reach"] += idiv(b["energy"], CREEP_DIV)
-                if b["reach"] > REACH_CAP:
-                    b["reach"] = REACH_CAP
-                b["energy"] = idiv(b["energy"] * 7, 8)   # taper after episode
+    def _band(self, b, color):
+        # append one outward band of the current zone colour
+        r0 = b["reach"]
+        r1 = r0 + GROW
+        if r1 > REACH_CAP:
+            r1 = REACH_CAP
+        if r1 > r0:
+            b["bands"].append((r0, r1, color))
+            b["reach"] = r1
+
+    def _creep(self, fed):
+        # blooms not grown this minute creep on a little in their last zone's
+        # colour, tapering to a stop -- the cooldown after the effort
+        i = 0
+        while i < len(self.blooms):
+            b = self.blooms[i]
+            if i != fed and b["energy"] > 0 and b["reach"] < REACH_CAP and b["bands"]:
+                r0 = b["reach"]
+                r1 = r0 + idiv(b["energy"], CREEP_DIV)
+                if r1 > REACH_CAP:
+                    r1 = REACH_CAP
+                if r1 > r0:
+                    b["bands"].append((r0, r1, b["bands"][-1][2]))
+                    b["reach"] = r1
+                b["energy"] = idiv(b["energy"] * 7, 8)
+            i += 1
 
     def render(self, dc, snap):
         dc.setColor(COLOR_DK_GRAY, COLOR_BLACK)
@@ -187,17 +203,32 @@ class BioBloom:
         for b in self.blooms:
             self._draw_bloom(dc, b)
 
+    def _band_color(self, b, r):
+        # colour of the band covering radius r (the zone active when the
+        # frontier reached there)
+        for band in b["bands"]:
+            if r <= band[1]:
+                return band[2]
+        return b["bands"][-1][2]
+
     def _draw_bloom(self, dc, b):
-        dc.setColor(b["color"], COLOR_BLACK)
+        if not b["bands"]:
+            return
         ang = b["ang"]
         fx, fy = isin(ang + 64), isin(ang)        # outward unit (cos, sin)*127
         px, py = isin(ang + 128), isin(ang + 64)  # perpendicular unit
         reach, w, salt = b["reach"], b["w"], b["salt"]
 
         # a chain of sub-lobes marching outward and shrinking -> rough, lumpy
-        # frontier rather than a smooth teardrop
+        # frontier; each lobe is coloured by the zone band at its radius, so the
+        # colony reads banded from base to rim
         nlob = 2 + imod(hash16(salt, 0, 5), 3)    # 2..4 lobes
-        lob = []
+        n = reach * 2 + w * 5
+        if n > 150:
+            n = 150
+        per = idiv(n, nlob)
+        if per < 4:
+            per = 4
         j = 0
         while j < nlob:
             lf = idiv((j + 1) * 230, nlob + 1) + imod(hash16(salt, j, 6), 26)
@@ -206,24 +237,22 @@ class BioBloom:
             lx = b["bx"] + idiv(along * fx, 127) + idiv(po * px, 127)
             ly = b["by"] + idiv(along * fy, 127) + idiv(po * py, 127)
             lr = 2 + idiv(w * (nlob - j), nlob)              # outer lobes smaller
-            lob.append((lx, ly, lr))
+            dc.setColor(self._band_color(b, along), COLOR_BLACK)
+            k = 0
+            while k < per:
+                s = j * 97 + k
+                rr = imod(hash16(salt, s, 1), lr + 1)
+                a2 = imod(hash16(salt, s, 2), 256)
+                x = lx + idiv(rr * isin(a2 + 64), 127)
+                y = ly + idiv(rr * isin(a2), 127)
+                dc.fillCircle(x, y, 1)
+                k += 1
             j += 1
 
-        n = reach * 2 + w * 5
-        if n > 150:
-            n = 150
-        k = 0
-        while k < n:
-            lx, ly, lr = lob[imod(hash16(salt, k, 3), nlob)]
-            rr = imod(hash16(salt, k, 1), lr + 1)
-            a2 = imod(hash16(salt, k, 2), 256)
-            x = lx + idiv(rr * isin(a2 + 64), 127)
-            y = ly + idiv(rr * isin(a2), 127)
-            dc.fillCircle(x, y, 1)
-            k += 1
-
     def state_bytes(self):
-        return sum(len(f["pts"]) for f in self.fil) * 3 + len(self.blooms) * 12
+        return (sum(len(f["pts"]) for f in self.fil) * 3
+                + sum(len(b["bands"]) for b in self.blooms) * 6
+                + len(self.blooms) * 8)
 
 
 def build():
