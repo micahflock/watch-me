@@ -36,7 +36,7 @@ repaint per minute, no within-minute animation. Daily reset (fresh dish).
 from device import (idiv, imod, isin, hash16, zoneIndex, ZONE_COLORS,
                     COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY)
 
-CX, CY = 107, 90
+CX, CY = 107, 108     # centre at 2/5 of the screen height up from the bottom
 R0, RMAX = 7, 86
 UNIT = 64
 KACT = 6            # movement -> growth (smaller => threads grow faster)

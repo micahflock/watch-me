@@ -22,7 +22,7 @@ using Toybox.Graphics as Gfx;
 class BioBloom {
 
     const CX = 107;
-    const CY = 90;
+    const CY = 108;            // centre at 2/5 of the screen height up from bottom
     const R0 = 7;
     const RMAX = 86;
     const UNIT = 64;

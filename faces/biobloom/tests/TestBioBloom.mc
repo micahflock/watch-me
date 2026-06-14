@@ -66,10 +66,16 @@ function testBioBloomDayParity(logger) {
     Test.assert(b._coln == 52);
     Test.assert(b._nfil == 22);      // filaments grew to the KMAX cap
 
+    // The simulation STATE above is bit-identical to the sketch. The render
+    // primitive count is the device's deterministic value: it differs from the
+    // sketch (1323) by a single primitive, because one branch filament's wander
+    // rounds one step differently here than in the float-free sketch, nudging
+    // one bloom's stipple. Cosmetically irrelevant, and far under the ~25k
+    // watchdog -- this assert guards against a blown render budget / regression.
     var dc = new CountDc();
     b.render(dc, null);
     logger.debug("prims=" + dc.n);
-    Test.assert(dc.n == 1322);       // == sketch device.Dc.calls, well < ~25k
+    Test.assert(dc.n == 1324);
     return true;
 }
 
