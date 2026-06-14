@@ -64,6 +64,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("algo")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--day", default="active", help="biometric profile: active | rest")
     ap.add_argument("--at", default=",".join(DEFAULT_SAMPLES))
     ap.add_argument("--scale", type=int, default=2)
     ap.add_argument("--out", default=None)
@@ -72,7 +73,7 @@ def main():
     mod = load_algo(args.algo)
     spec = mod.build()
     samples = sorted(set(parse_at(args.at)))
-    snaps = synthetic_day(seed=args.seed)
+    snaps = synthetic_day(seed=args.seed, profile=args.day)
 
     advancers = [c for c in spec["components"] if hasattr(c, "advance")]
     frames = []           # (label, img, calls, offpalette, state_bytes)
