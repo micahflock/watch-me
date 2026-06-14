@@ -1,0 +1,9 @@
+# Debug + unit-test jungle for biobloom. Adds the tests/ directory.
+# Built WITHOUT monkeyc -r so (:debug) instrumentation and (:test) cases
+# compile in. Do not set excludeAnnotations for debug/release here.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source;../../core/src;tests
+
+base.resourcePath = resources
