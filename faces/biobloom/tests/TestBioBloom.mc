@@ -100,3 +100,29 @@ function testBioBloomDailyReset(logger) {
     Test.assert(b._nfil == 9);       // re-seeded SEEDS filaments
     return true;
 }
+
+(:test)
+function testBioBloomClockResync(logger) {
+    // A backward clock step WITHIN the same calendar day (sync correction /
+    // manual set) must NOT wipe the dish -- only a real day change does.
+    GenArt.initSinTable();
+    var b = new BioBloom();
+    bioFeedActiveDay(b);             // ends at 23:59 on day 14
+    Test.assert(b._nbloom == 4);
+    Test.assert(b._coln == 52);
+    Test.assert(b._nfil == 22);
+
+    var snap = new Snapshot();
+    snap.year = 2026; snap.month = 6; snap.day = 14;  // same day
+    snap.hour = 8; snap.minute = 0; snap.second = 0;  // clock jumped back to 08:00
+    snap.steps = 5000; snap.heartRate = 60;
+    b.advance(snap);
+
+    // Dish preserved, not reset back to the 9-filament skeleton.
+    logger.debug("after resync: nbloom=" + b._nbloom + " coln=" + b._coln
+        + " nfil=" + b._nfil);
+    Test.assert(b._nbloom == 4);
+    Test.assert(b._coln == 52);
+    Test.assert(b._nfil == 22);
+    return true;
+}
