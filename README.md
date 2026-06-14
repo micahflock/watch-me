@@ -24,7 +24,7 @@ same SDK; this repo's scripts do not depend on it.
 |---|---|
 | Max Connect IQ API | **2.4.x** — nothing from CIQ 3.0+ compiles or runs (see `docs/api-2.4-notes.md`) |
 | Display | **215×180**, semiround, MIP, **4 bpp** (16-color class; device palette lists 14 colors), no antialiasing |
-| Watch-face memory limit | **65,536 bytes** (read from `Devices/fr735xt/compiler.json`); project ceiling **70% ≈ 44.8 KB** |
+| Watch-face memory limit | **65,536 bytes** (read from `Devices/fr735xt/compiler.json`); project ceiling **90% ≈ 57.6 KB** |
 | Update model | **one full `onUpdate` per minute** in low power; `onPartialUpdate` (1 Hz seconds) is **not supported** on this device |
 | Execution watchdog | ~25–30k VM instructions per `onUpdate` (measured) — the binding constraint for per-tick work |
 | Sensors/network in a watch face | none at this API level; location comes from user-entered `lat`/`lng` properties |
@@ -67,7 +67,7 @@ scripts/test.sh                      # API-2.4 symbol lint + Run No Evil unit
 ```
 
 `scripts/memcheck.sh devface` prints the memory limit as read from the device
-files, the 70% ceiling, and the current PRG size.
+files, the 90% ceiling, and the current PRG size.
 
 ## Module map
 
@@ -97,6 +97,6 @@ keep `base.sourcePath = source;../../core/src` in its jungles, and build with
 - 16 unit tests pass (segment lookup, MathX, Solar fixtures, SunCompass
   dial/rollover).
 - Release PRG on disk ≈ **16 KB** (`scripts/memcheck.sh`); runtime RAM sits
-  well under the 44.8 KB ceiling (re-read from the sim — release status bar /
+  well under the 57.6 KB ceiling (re-read from the sim — release status bar /
   debug overlay); onUpdate ≈ **8–12 ms**, no watchdog trips. Details in
   `docs/memory-budget.md`.

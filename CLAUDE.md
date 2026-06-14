@@ -63,7 +63,7 @@ state bytes (RAM proxy), and any off-palette color use.
   `Toybox.Complications`, `Toybox.Background`, `onPartialUpdate`, or
   `Math.atan2/floor/ceil/round` (doc-trap: annotated 1.3.0, actually CIQ 3.0
   — use `MathX`). `scripts/test.sh` lints for these.
-- 64 KB watch-face RAM; project policy ceiling 70% (~44.8 KB) for release
+- 64 KB watch-face RAM; project policy ceiling 90% (~57.6 KB) for release
   builds. Watchdog: ~25–30k VM instructions per `onUpdate` — the binding
   constraint. One `onUpdate` per minute; no seconds hand. Measured numbers
   and how to re-measure: docs/memory-budget.md.
