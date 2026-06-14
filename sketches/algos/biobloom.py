@@ -10,6 +10,14 @@ record the effort as zone-coloured bands as they grow outward.
   branching        = HR trend rising => reaching out    (flag D6)
   wander amplitude = HR variability                     (flag D7)
   frozen threads   = idle / no steps (move-bar)         (flag 9 / D12)
+  MAIN COLONY      = a mass at the centre that grows ALL DAY but only while
+                     moving, trailing the skeleton (the arms grow first, it
+                     fills in behind them) and clinging to it -- stippled along
+                     the arms, not concentric, so it stays amorphous. Its final
+                     size tracks the day's overall movement; each band is
+                     coloured by the HR zone during the movement that grew it,
+                     EXCEPT bands grown while the inactivity meter is up, which
+                     are grey / dark grey.
   BLOOM            = ANY elevated-HR episode (zone >= ACTIVE) erupts on an arm
                      and grows outward one zone-coloured band per minute while
                      HR stays elevated (initial growth -- pure HR, banded by
@@ -26,7 +34,7 @@ Activity-driven: the day's shape is the day's exertion. 14-colour palette, one
 repaint per minute, no within-minute animation. Daily reset (fresh dish).
 """
 from device import (idiv, imod, isin, hash16, zoneIndex, ZONE_COLORS,
-                    COLOR_BLACK, COLOR_DK_GRAY)
+                    COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY)
 
 CX, CY = 107, 90
 R0, RMAX = 7, 86
@@ -43,6 +51,22 @@ REACH_CAP = 46      # px a bloom can reach outward along its arm
 MOM_DIV = 16        # steps/min -> momentum reservoir units (movement effort)
 MOM_STEP = 2        # px of momentum growth delivered per minute after HR drops
 
+# the main colony at the centre -- grows all day, only while moving, banded by
+# HR zone (grey while the inactivity meter is up), clinging to the skeleton and
+# trailing behind its arms
+CR_MAX = 78         # main-colony reach ceiling (px from centre)
+TRAIL = 10          # px the colony stays behind the longest arm tip
+CMOVE_DIV = 20      # steps/min -> colony reach growth (px)
+CW = 3              # colony thickness scattered around each arm
+MOVE_MIN = 2        # steps/min below which the colony does not grow at all
+IDLE_STEPS = 1      # spm <= this is an idle minute (move-bar fills)
+BAR_MAX = 60        # inactivity meter ceiling (~minutes)
+BAR_ON = 40         # meter at/above this is "on" -> growth bands go grey
+BAR_HI = 50         # deeper inactivity -> dark grey instead of light grey
+BAR_CLEAR = 4       # solid movement works the meter back down per minute
+                    # (slow, so the onset of activity after a long idle -- e.g.
+                    # the first run minutes out of sleep -- grows grey first)
+
 
 class BioBloom:
     def __init__(self):
@@ -52,6 +76,8 @@ class BioBloom:
         self.blooms = []
         self.epi_on = False
         self.epi_idx = -1            # index of the in-progress episode's bloom
+        self.colony = {"reach": R0, "bands": []}   # central main colony
+        self.bar = 0                 # inactivity meter (Garmin-style move bar)
         self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)   # per-day phase
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
@@ -152,6 +178,42 @@ class BioBloom:
             self.epi_idx = -1
 
         self._momentum(fed)
+        self._grow_colony(spm, zi)
+
+    def _grow_colony(self, spm, zi):
+        # the main colony trails the skeleton (which already grew this minute),
+        # advances only while moving, and is banded by the HR zone at the time
+        # -- or grey/dark grey if it grows while the inactivity meter is up
+        col = self.colony
+        if spm <= IDLE_STEPS:
+            self.bar += 1
+            if self.bar > BAR_MAX:
+                self.bar = BAR_MAX
+        elif spm >= KACT:
+            self.bar -= BAR_CLEAR
+            if self.bar < 0:
+                self.bar = 0
+        if spm < MOVE_MIN:
+            return                                    # only grows when moving
+        front = 0
+        for f in self.fil:
+            l = idiv(f["L"], UNIT)
+            if l > front:
+                front = l
+        front -= TRAIL                                # stay behind the longest arm
+        target = col["reach"] + idiv(spm, CMOVE_DIV)
+        if target > front:
+            target = front
+        if target > CR_MAX:
+            target = CR_MAX
+        if target <= col["reach"]:
+            return
+        if self.bar >= BAR_ON:
+            c = COLOR_DK_GRAY if self.bar >= BAR_HI else COLOR_LT_GRAY
+        else:
+            c = ZONE_COLORS[zi]
+        col["bands"].append((col["reach"], target, c))
+        col["reach"] = target
 
     def _seed(self, zi):
         # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
@@ -192,8 +254,7 @@ class BioBloom:
             i += 1
 
     def render(self, dc, snap):
-        dc.setColor(COLOR_DK_GRAY, COLOR_BLACK)
-        dc.fillCircle(CX, CY, 2)                  # visible seed at the centre
+        self._draw_colony(dc)                     # central colony, under the arms
         for f in self.fil:
             pts = f["pts"]
             k = 1
@@ -205,6 +266,39 @@ class BioBloom:
                 k += 1
         for b in self.blooms:
             self._draw_bloom(dc, b)
+
+    def _draw_colony(self, dc):
+        # an amorphous mass that clings to the skeleton: stipple scattered along
+        # every arm out to where the colony has filled (trailing the tips), each
+        # dot coloured by the band covering its radius -- not concentric rings
+        col = self.colony
+        if not col["bands"]:
+            return
+        dc.setColor(col["bands"][0][2], COLOR_BLACK)
+        dc.fillCircle(CX, CY, R0)                  # filled core (was the grey dot)
+        reach = col["reach"]
+        for f in self.fil:
+            lim = idiv(f["L"], UNIT) - TRAIL
+            if lim > reach:
+                lim = reach
+            if lim <= R0:
+                continue
+            pts = f["pts"]
+            k = 1
+            while k < len(pts):
+                rr = R0 + k * STEP
+                if rr > lim:
+                    break
+                if (k & 1) == 0:                   # sample every other vertex
+                    x, y, _ = pts[k]
+                    dc.setColor(self._band_color(col, rr), COLOR_BLACK)
+                    j = 0
+                    while j < 2:
+                        ox = imod(hash16(f["a"], k, j + 3), 2 * CW + 1) - CW
+                        oy = imod(hash16(f["a"], k, j + 5), 2 * CW + 1) - CW
+                        dc.fillCircle(x + ox, y + oy, 1)
+                        j += 1
+                k += 1
 
     def _band_color(self, b, r):
         # colour of the band covering radius r (the zone active when the
@@ -255,7 +349,8 @@ class BioBloom:
     def state_bytes(self):
         return (sum(len(f["pts"]) for f in self.fil) * 3
                 + sum(len(b["bands"]) for b in self.blooms) * 6
-                + len(self.blooms) * 8)
+                + len(self.blooms) * 8
+                + len(self.colony["bands"]) * 6)
 
 
 def build():
