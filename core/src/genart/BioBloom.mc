@@ -13,9 +13,12 @@ using Toybox.Graphics as Gfx;
 // reservoir that keeps it creeping after HR drops — so an exercise event grows
 // large while an anxiety spike (HR up, no movement) stays a small node.
 //
-// State is flat Number arrays (memory ground rules); evolution is incremental —
-// advance() simulates only the minutes since the last tick (capped). Midnight
-// resets to a fresh dish. All integer math (watchdog is the binding constraint).
+// State is flat Number arrays, PACKED to fit the memory budget: each thread
+// vertex is one Number (colorIdx<<16 | x<<8 | y), each band one Number
+// (colorIdx<<8 | rEnd). Colour index 0..7 maps to ZONE_COLORS (7 == DK_GRAY);
+// 8 == LT_GRAY (colony idle bands only). Evolution is incremental — advance()
+// simulates only the minutes since the last tick (capped) — and resets the dish
+// at midnight. All integer math (the watchdog is the binding constraint).
 class BioBloom {
 
     const CX = 107;
@@ -49,15 +52,16 @@ class BioBloom {
     const BAR_HI = 50;         // deeper inactivity -> dark grey vs light grey
     const BAR_CLEAR = 4;       // solid movement works the meter down per minute
     const CBANDS = 96;         // cap on colony bands
+    const LTGREY = 8;          // colour index for COLOR_LT_GRAY (colony idle)
 
     // threads
     var _tha; var _thL; var _thv; var _thnext; var _thnp; var _nfil;
-    var _px; var _py; var _pc;
+    var _pt;                   // packed vertices: colorIdx<<16 | x<<8 | y
     // blooms
     var _blbx; var _blby; var _blang; var _blw; var _blsalt; var _blreach;
-    var _blmom; var _blnb; var _blrend; var _blbc; var _nbloom;
+    var _blmom; var _blnb; var _blband; var _nbloom;   // _blband: ci<<8 | rEnd
     // colony
-    var _colreach; var _coln; var _colrend; var _colbc;
+    var _colreach; var _coln; var _colband;            // _colband: ci<<8 | rEnd
     // episode / inactivity
     var _epiOn; var _epiIdx; var _bar;
     // HR window (last 10 samples, ring)
@@ -70,12 +74,12 @@ class BioBloom {
     function initialize() {
         _tha = new [KMAX]; _thL = new [KMAX]; _thv = new [KMAX];
         _thnext = new [KMAX]; _thnp = new [KMAX];
-        _px = new [KMAX * PMAX]; _py = new [KMAX * PMAX]; _pc = new [KMAX * PMAX];
+        _pt = new [KMAX * PMAX];
         _blbx = new [BMAX]; _blby = new [BMAX]; _blang = new [BMAX];
         _blw = new [BMAX]; _blsalt = new [BMAX]; _blreach = new [BMAX];
         _blmom = new [BMAX]; _blnb = new [BMAX];
-        _blrend = new [BMAX * BBANDS]; _blbc = new [BMAX * BBANDS];
-        _colrend = new [CBANDS]; _colbc = new [CBANDS];
+        _blband = new [BMAX * BBANDS];
+        _colband = new [CBANDS];
         _win = new [10];
         _ord = new [KMAX];
         _bloomBase = GenArt.hash16(SEEDS, 17, 3) % 256;
@@ -89,9 +93,7 @@ class BioBloom {
             var v = 2 + (GenArt.hash16(7, i, 1) % 3);
             _tha[i] = a; _thL[i] = R0 * UNIT; _thnext[i] = R0 + STEP;
             _thv[i] = v; _thnp[i] = 1;
-            var idx = i * PMAX;
-            _px[idx] = ptx(a, R0); _py[idx] = pty(a, R0);
-            _pc[idx] = Gfx.COLOR_DK_GRAY;
+            _pt[i * PMAX] = packPt(coordX(a, R0), coordY(a, R0), 7); // DK_GRAY
             _nfil++;
         }
         _nbloom = 0;
@@ -102,8 +104,16 @@ class BioBloom {
         _lastMin = -1; _lastDay = -1;
     }
 
-    function ptx(a, r) { return CX + (r * GenArt.isin(a + 64)) / 127; }
-    function pty(a, r) { return CY + (r * GenArt.isin(a)) / 127; }
+    function coordX(a, r) { return CX + (r * GenArt.isin(a + 64)) / 127; }
+    function coordY(a, r) { return CY + (r * GenArt.isin(a)) / 127; }
+
+    function packPt(x, y, ci) { return (ci << 16) | ((x & 0xFF) << 8) | (y & 0xFF); }
+    function upx(v) { return (v >> 8) & 0xFF; }
+    function upy(v) { return v & 0xFF; }
+    function upci(v) { return (v >> 16) & 0xFF; }
+    function colorOf(ci) {
+        return (ci == LTGREY) ? Gfx.COLOR_LT_GRAY : GenArt.ZONE_COLORS[ci];
+    }
 
     // ---- per-minute simulation ------------------------------------------------
 
@@ -143,11 +153,11 @@ class BioBloom {
 
     function stepMinute(spm, zi, vrange, rising, salt) {
         var move = spm / KACT;
-        var color = (spm <= 1) ? Gfx.COLOR_DK_GRAY : GenArt.ZONE_COLORS[zi];
+        var cidx = (spm <= 1) ? 7 : zi;          // 7 == DK_GRAY == ZONE_COLORS[7]
 
         if (move > 0) {
             var nf = _nfil;
-            for (var i = 0; i < nf; i++) { growFil(i, move, vrange, color); }
+            for (var i = 0; i < nf; i++) { growFil(i, move, vrange, cidx); }
             if (rising && _nfil < KMAX) {
                 var src = longish(salt);
                 var na = (_tha[src] + 10
@@ -157,8 +167,7 @@ class BioBloom {
                 var j = _nfil;
                 _tha[j] = na; _thL[j] = rr * UNIT; _thnext[j] = rr + STEP;
                 _thv[j] = v; _thnp[j] = 1;
-                var idx = j * PMAX;
-                _px[idx] = ptx(na, rr); _py[idx] = pty(na, rr); _pc[idx] = color;
+                _pt[j * PMAX] = packPt(coordX(na, rr), coordY(na, rr), cidx);
                 _nfil++;
             }
         }
@@ -170,7 +179,7 @@ class BioBloom {
                 var w = 3 + vrange / 8;
                 if (w > 16) { w = 16; }
                 if (w > _blw[_epiIdx]) { _blw[_epiIdx] = w; }
-                bandBloom(_epiIdx, GenArt.ZONE_COLORS[zi], GROW);
+                bandBloom(_epiIdx, zi, GROW);    // bloom colour = HR zone index
                 _blmom[_epiIdx] += spm / MOM_DIV;
                 if (_blmom[_epiIdx] > REACH_CAP) { _blmom[_epiIdx] = REACH_CAP; }
                 fed = _epiIdx;
@@ -183,7 +192,7 @@ class BioBloom {
         growColony(spm, zi);
     }
 
-    function growFil(i, move, vrange, color) {
+    function growFil(i, move, vrange, cidx) {
         _thL[i] += (move * _thv[i]) / 3;
         if (_thL[i] > RMAX * UNIT) { _thL[i] = RMAX * UNIT; }
         var amp = 1 + vrange / 10;
@@ -192,9 +201,8 @@ class BioBloom {
             var da = (GenArt.isin(GenArt.hash16(_tha[i], rr, 1) & 255) * amp) / 127;
             _tha[i] = (_tha[i] + da) % 256;
             if (_thnp[i] < PMAX) {
-                var idx = i * PMAX + _thnp[i];
-                _px[idx] = ptx(_tha[i], rr); _py[idx] = pty(_tha[i], rr);
-                _pc[idx] = color;
+                _pt[i * PMAX + _thnp[i]] =
+                    packPt(coordX(_tha[i], rr), coordY(_tha[i], rr), cidx);
                 _thnp[i] += 1;
             }
             _thnext[i] += STEP;
@@ -206,8 +214,8 @@ class BioBloom {
         var target = (_bloomBase + _nbloom * 98
                      + (GenArt.hash16(zi, _nbloom, 7) % 22)) % 256;
         var src = nearest(target);
-        var pidx = src * PMAX + (_thnp[src] - 1);
-        var bx = _px[pidx]; var by = _py[pidx];
+        var v = _pt[src * PMAX + (_thnp[src] - 1)];
+        var bx = upx(v); var by = upy(v);
         var j = _nbloom;
         _blbx[j] = bx; _blby[j] = by; _blang[j] = _tha[src];
         _blreach[j] = BASE; _blw[j] = 3; _blnb[j] = 0; _blmom[j] = 0;
@@ -216,7 +224,7 @@ class BioBloom {
         return j;
     }
 
-    function bandBloom(bi, color, grow) {
+    function bandBloom(bi, cidx, grow) {
         var r0 = _blreach[bi];
         var r1 = r0 + grow;
         if (r1 > REACH_CAP) { r1 = REACH_CAP; }
@@ -224,9 +232,9 @@ class BioBloom {
         var n = _blnb[bi];
         var base = bi * BBANDS;
         if (n < BBANDS) {
-            _blrend[base + n] = r1; _blbc[base + n] = color; _blnb[bi] = n + 1;
+            _blband[base + n] = (cidx << 8) | r1; _blnb[bi] = n + 1;
         } else {
-            _blrend[base + n - 1] = r1;   // cap hit: thicken the outermost band
+            _blband[base + n - 1] = (_blband[base + n - 1] & 0xFF00) | r1;
         }
         _blreach[bi] = r1;
     }
@@ -237,7 +245,7 @@ class BioBloom {
                 && _blnb[i] > 0) {
                 var g = MOM_STEP;
                 if (g > _blmom[i]) { g = _blmom[i]; }
-                var last = _blbc[i * BBANDS + _blnb[i] - 1];
+                var last = (_blband[i * BBANDS + _blnb[i] - 1] >> 8) & 0xFF;
                 bandBloom(i, last, g);
                 _blmom[i] -= g;
             }
@@ -263,16 +271,16 @@ class BioBloom {
         if (target > front) { target = front; }
         if (target > CR_MAX) { target = CR_MAX; }
         if (target <= _colreach) { return; }
-        var c;
+        var cidx;
         if (_bar >= BAR_ON) {
-            c = (_bar >= BAR_HI) ? Gfx.COLOR_DK_GRAY : Gfx.COLOR_LT_GRAY;
+            cidx = (_bar >= BAR_HI) ? 7 : LTGREY;   // 7 == DK_GRAY
         } else {
-            c = GenArt.ZONE_COLORS[zi];
+            cidx = zi;
         }
         if (_coln < CBANDS) {
-            _colrend[_coln] = target; _colbc[_coln] = c; _coln += 1;
+            _colband[_coln] = (cidx << 8) | target; _coln += 1;
         } else {
-            _colrend[_coln - 1] = target;
+            _colband[_coln - 1] = (_colband[_coln - 1] & 0xFF00) | target;
         }
         _colreach = target;
     }
@@ -337,9 +345,9 @@ class BioBloom {
             var np = _thnp[i];
             var base = i * PMAX;
             for (var k = 1; k < np; k++) {
-                dc.setColor(_pc[base + k], Gfx.COLOR_TRANSPARENT);
-                dc.drawLine(_px[base + k - 1], _py[base + k - 1],
-                            _px[base + k], _py[base + k]);
+                var a = _pt[base + k - 1]; var b = _pt[base + k];
+                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
+                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
             }
         }
         for (var bi = 0; bi < _nbloom; bi++) { drawBloom(dc, bi); }
@@ -347,7 +355,7 @@ class BioBloom {
 
     function drawColony(dc) {
         if (_coln == 0) { return; }
-        dc.setColor(_colbc[0], Gfx.COLOR_TRANSPARENT);
+        dc.setColor(colorOf((_colband[0] >> 8) & 0xFF), Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(CX, CY, R0);
         var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
@@ -361,9 +369,11 @@ class BioBloom {
                 var rr = R0 + k * STEP;
                 if (rr > lim) { break; }
                 if ((k & 1) == 0) {
-                    while (bn < _coln - 1 && rr > _colrend[bn]) { bn += 1; }
-                    dc.setColor(_colbc[bn], Gfx.COLOR_TRANSPARENT);
-                    var x = _px[base + k]; var y = _py[base + k];
+                    while (bn < _coln - 1 && rr > (_colband[bn] & 0xFF)) { bn += 1; }
+                    dc.setColor(colorOf((_colband[bn] >> 8) & 0xFF),
+                        Gfx.COLOR_TRANSPARENT);
+                    var v = _pt[base + k];
+                    var x = upx(v); var y = upy(v);
                     for (var jj = 0; jj < 2; jj++) {
                         var ox = (GenArt.hash16(_tha[i], k, jj + 3) % (2 * CW + 1)) - CW;
                         var oy = (GenArt.hash16(_tha[i], k, jj + 5) % (2 * CW + 1)) - CW;
@@ -377,9 +387,11 @@ class BioBloom {
     function blColor(bi, r) {
         var base = bi * BBANDS; var n = _blnb[bi];
         for (var i = 0; i < n; i++) {
-            if (r <= _blrend[base + i]) { return _blbc[base + i]; }
+            if (r <= (_blband[base + i] & 0xFF)) {
+                return colorOf((_blband[base + i] >> 8) & 0xFF);
+            }
         }
-        return _blbc[base + n - 1];
+        return colorOf((_blband[base + n - 1] >> 8) & 0xFF);
     }
 
     function drawBloom(dc, bi) {

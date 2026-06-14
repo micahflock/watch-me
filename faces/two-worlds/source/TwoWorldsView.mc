@@ -6,20 +6,19 @@ using Toybox.Math as Math;
 //
 // A hard-edged ARTIFICIAL layer (7-seg bitmap clock, day/date readout, phone
 // uplink bars, battery chunks, sun/north marker) floats over the organic
-// NATURAL field: the shared strataflock generative engine (core/src/genart) —
-// StrataField sediment accreting the day from the bottom, a Flock murmuration
-// living in the present minute above it. The art draws full-frame, then
-// FieldMaskComponent blacks everything outside the field region so it reads as
-// painted only inside the disc; the white border traces that same edge.
+// NATURAL field: the BioBloom generative engine (core/src/genart) — a movement-
+// fed filament dish with a central colony and HR-zone blooms growing the day
+// from the centre out. The art draws full-frame, then FieldMaskComponent blacks
+// everything outside the field region so it reads as painted only inside the
+// disc; the white border traces that same edge.
 //
-// Render order (back -> front): strata, flock, field mask, border, uplink,
-// battery, north, readout, time, debug.
+// Render order (back -> front): biobloom, field mask, border, uplink, battery,
+// north, readout, time, debug.
 class TwoWorldsView extends Ui.WatchFace {
 
     var _state;
     var _compositor;
-    var _field;       // StrataField (generative; also feeds the flock)
-    var _flock;       // Flock (stateless murmuration)
+    var _bloom;       // BioBloom (movement-fed generative dish)
     var _timeStrip;   // StripGlyphs: 7-seg digits, 18px cells
     var _colon;       // BitmapResource: the 4px colon glyph
     var _dowStrip;    // StripGlyphs: 2-letter day sprites, 18px cells
@@ -39,21 +38,18 @@ class TwoWorldsView extends Ui.WatchFace {
         _dowStrip  = new StripGlyphs(Rez.Drawables.FontDow, 18);
         _dateStrip = new StripGlyphs(Rez.Drawables.FontDate, 6);
 
-        _field = new StrataField();
-        _flock = new Flock(_field, null); // keep-out unneeded: the mask + the
-                                          // chrome band already sit off-field
+        _bloom = new BioBloom();
 
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
-        _compositor.add(_field, null);                   // 1 strata (back)
-        _compositor.add(_flock, null);                   // 2 flock
-        _compositor.add(new FieldMaskComponent(), null); // 3 confine art to field
-        _compositor.add(new BorderComponent(), null);    // 4 white border
-        _compositor.add(new UplinkComponent(), null);    // 5 phone bars
-        _compositor.add(new BatteryComponent(), null);   // 6 battery chunks
-        _compositor.add(new NorthComponent(), null);     // 7 sun/north marker
-        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 8 day/date
-        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 9 time
+        _compositor.add(_bloom, null);                   // 1 biobloom (back)
+        _compositor.add(new FieldMaskComponent(), null); // 2 confine art to field
+        _compositor.add(new BorderComponent(), null);    // 3 white border
+        _compositor.add(new UplinkComponent(), null);    // 4 phone bars
+        _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
+        _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
+        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
+        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
 
@@ -61,7 +57,7 @@ class TwoWorldsView extends Ui.WatchFace {
     function onUpdate(dc) {
         Instrument.tickStart();
         DataSource.refresh(_state);
-        _field.advance(_state);            // simulate the day's sediment
+        _bloom.advance(_state);            // grow the day's dish
         _compositor.renderAll(dc, _state);
         Instrument.tickEnd();
     }
