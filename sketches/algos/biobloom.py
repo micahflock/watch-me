@@ -189,21 +189,33 @@ class BioBloom:
         ang = b["ang"]
         fx, fy = isin(ang + 64), isin(ang)        # outward unit (cos, sin)*127
         px, py = isin(ang + 128), isin(ang + 64)  # perpendicular unit
-        reach = b["reach"]
-        n = reach * 3 + b["w"] * 4
+        reach, w, salt = b["reach"], b["w"], b["salt"]
+
+        # a chain of sub-lobes marching outward and shrinking -> rough, lumpy
+        # frontier rather than a smooth teardrop
+        nlob = 2 + imod(hash16(salt, 0, 5), 3)    # 2..4 lobes
+        lob = []
+        j = 0
+        while j < nlob:
+            lf = idiv((j + 1) * 230, nlob + 1) + imod(hash16(salt, j, 6), 26)
+            along = idiv(reach * lf, 256)
+            po = imod(hash16(salt, j, 7), 2 * w + 1) - w     # perp wobble
+            lx = b["bx"] + idiv(along * fx, 127) + idiv(po * px, 127)
+            ly = b["by"] + idiv(along * fy, 127) + idiv(po * py, 127)
+            lr = 2 + idiv(w * (nlob - j), nlob)              # outer lobes smaller
+            lob.append((lx, ly, lr))
+            j += 1
+
+        n = reach * 2 + w * 5
         if n > 150:
             n = 150
-        salt = b["salt"]
         k = 0
         while k < n:
-            f = imod(hash16(salt, k, 1), 256)     # 0..255 fraction along reach
-            along = idiv(reach * f, 256)
-            mw = idiv(b["w"] * (300 - f), 300)     # taper -> teardrop pointing out
-            if mw < 1:
-                mw = 1
-            side = imod(hash16(salt, k, 2), 2 * mw + 1) - mw
-            x = b["bx"] + idiv(along * fx, 127) + idiv(side * px, 127)
-            y = b["by"] + idiv(along * fy, 127) + idiv(side * py, 127)
+            lx, ly, lr = lob[imod(hash16(salt, k, 3), nlob)]
+            rr = imod(hash16(salt, k, 1), lr + 1)
+            a2 = imod(hash16(salt, k, 2), 256)
+            x = lx + idiv(rr * isin(a2 + 64), 127)
+            y = ly + idiv(rr * isin(a2), 127)
             dc.fillCircle(x, y, 1)
             k += 1
 
