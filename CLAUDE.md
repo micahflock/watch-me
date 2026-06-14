@@ -21,6 +21,42 @@ scripts/sim.sh <face> --debug       # headless sim; console prints "used/totalK 
 scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 ```
 
+### Generative-art sandbox — iterate without building a PRG
+
+For developing the algorithmic biometric art, work in the Python sandbox
+under `sketches/` first; only build/sim a face once an algorithm is a keeper.
+
+```bash
+python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
+```
+
+Renders `sketches/algos/<algo>.py` across a simulated biometric day into a
+captioned strip PNG (`sketches/out/<algo>-scrub.png`) in well under a second —
+no SDK, no PRG. Captions show the primitive count (watchdog proxy vs ~25k),
+state bytes (RAM proxy), and any off-palette color use.
+
+- `sketches/device.py` is a **faithful** fr735xt model, not a loose mock:
+  `hash16` / `isin` (integer sine LUT) / `zoneIndex` / the 14-color palette
+  are bit-identical to `core/src/genart/GenArt.mc`. Use `idiv`/`imod` wherever
+  Monkey C writes `a / b` / `a % b` on Numbers — Python's `//`/`%` floor and
+  so DISAGREE on negatives (e.g. `-6200 / 127` is `-48` on the watch, `-49`
+  with `//`). The `Dc` exposes only real `Gfx` primitives, counts every call,
+  and snaps colors to the palette.
+- An algo module defines `build() -> {"background", "components": [...]}`;
+  each component is the same duck-typed `render(dc, state)` (+ optional
+  `advance(state)`, `state_bytes()`) the Compositor draws. scrub replays the
+  day minute by minute so stateful engines accrete exactly as on-device.
+- Because the primitives match 1:1, a sandbox algo ports to a `.mc` face
+  **mechanically** (`Gfx.` → `using`, `idiv(a,b)` → `a / b`, `var`/syntax).
+  `sketches/algos/strataflock.py` is the line-for-line port of the shipped
+  face, kept as the **parity reference** — if it stops matching
+  `sketches/out/strataflock-ondevice.png`, the mirror has drifted from
+  `GenArt.mc`/`StrataField.mc`/`Flock.mc` and `device.py` is what to fix.
+- Arc/circle rasterization is the one thing only the SDK sim renders exactly,
+  so the final fidelity check is still `scripts/build.sh` + `scripts/sim.sh`.
+- The older `sketches/genart_sketches.py` is the pre-port concept sketchbook
+  (loose float math, separate `ihash`); it predates this faithful harness.
+
 ## Hard constraints (details: docs/api-2.4-notes.md)
 
 - **Never** use `import`, `Application.Storage/Properties`, `WatchUi.Layer`,

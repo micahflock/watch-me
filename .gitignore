@@ -23,3 +23,7 @@ sim.out
 
 # Local SDK config (paths are machine-specific; see scripts/env.sh)
 .sdk-path
+
+# Python sandbox bytecode
+__pycache__/
+*.pyc

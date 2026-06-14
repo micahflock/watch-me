@@ -1,8 +1,41 @@
-# Generative-art concept sketches
+# Generative-art sandbox & concept sketches
 
-Three candidate engines for a biometric algorithmic-art face, prototyped in
-Python on a faithful mock of the 735XT display (215×180, bezel mask, the 14
-palette colors, no antialiasing, primitive-only drawing). Run:
+## Iterating on algorithms: the faithful sandbox
+
+To develop the biometric art, iterate in the Python sandbox — no Garmin SDK,
+no PRG build, sub-second renders:
+
+```bash
+python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
+```
+
+It renders `sketches/algos/<algo>.py` across a simulated biometric day into a
+captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
+
+- **`device.py`** — a *faithful* fr735xt model. `hash16`, `isin` (integer sine
+  LUT), `zoneIndex`, and the 14-color palette are bit-identical to
+  `core/src/genart/GenArt.mc`; `idiv`/`imod` reproduce Monkey C's
+  truncate-toward-zero integer math (Python's `//`/`%` floor and disagree on
+  negatives). `Dc` exposes only real `Gfx` primitives, counts every call
+  (watchdog proxy), and snaps colors to the palette.
+- **`day.py`** — the per-minute `Snapshot` feed (steps, HR, time), mirroring
+  what `DataSource` builds on the watch. Swap it to replay a real day.
+- **`algos/<name>.py`** — `build() -> {"background", "components": [...]}`;
+  each component is a duck-typed `render(dc, state)` (+ optional
+  `advance(state)`, `state_bytes()`), the same contract the Compositor draws.
+- **`algos/strataflock.py`** — a line-for-line port of the shipped face, kept
+  as the **parity reference**: prove the mirror by checking its scrub against
+  `strataflock-ondevice.png`.
+
+Because the primitives match 1:1, a winning sandbox algo ports to a `.mc` face
+mechanically. Arc/circle rasterization is the one thing only the SDK sim nails,
+so the final check is still `scripts/build.sh` + `scripts/sim.sh`.
+
+## Concept sketches (pre-port)
+
+The original candidate engines, prototyped in Python on a *loose* mock of the
+735XT display (separate float math / `ihash`; predates the faithful sandbox
+above). Run:
 
 ```bash
 python3 sketches/genart_sketches.py    # writes sketches/out/*.png
