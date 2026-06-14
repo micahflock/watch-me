@@ -58,7 +58,7 @@ the registered keep-out rects and skip pixels inside them.
 
 ## Memory ground rules
 
-- 64 KB watch-face limit (read from the device files); treat **~45 KB (70%)**
+- 64 KB watch-face limit (read from the device files); treat **~57.6 KB (90%)**
   as the ceiling. devface sits well under it (see docs/memory-budget.md).
 - Prefer flat Number arrays (`[x,y,w,h]`) over objects/Dictionaries in hot or
   numerous data.

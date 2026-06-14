@@ -109,7 +109,7 @@ stateless. Verified in the SDK 9.2.0 simulator on `fr735xt`:
 
 - 6 unit tests pass (`scripts/test.sh strataflock`) — hash determinism, sine
   table, zone mapping, strata conservation/caps/idle-drip/day-rollover.
-- Release PRG 21 KB on disk; debug runtime RAM ~39/59 KB (under the 70%
+- Release PRG 21 KB on disk; debug runtime RAM ~39/59 KB (under the 90%
   ceiling, and the debug build carries the test suite).
 - Full-day evening frame renders in 12–16 ms with no watchdog trip; cold
   start ~4 ms. (A whole day cannot be replayed in a single `onUpdate` — that

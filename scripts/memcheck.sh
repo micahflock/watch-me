@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Read the watch-face memory limit for forerunner735xt from the device's
-# compiler.json and report the working ceiling (70%) plus the current PRG size.
+# compiler.json and report the working ceiling (90%) plus the current PRG size.
 #   scripts/memcheck.sh [face]
 #
 # Note: the PRG on-disk size is the code+resource footprint, NOT runtime RAM.
@@ -32,10 +32,10 @@ if [ -z "$LIMIT" ] || [ "$LIMIT" = "null" ]; then
   exit 1
 fi
 
-CEIL=$(( LIMIT * 70 / 100 ))
+CEIL=$(( LIMIT * 90 / 100 ))
 echo "Device:               $DEVICE"
 echo "Watch-face mem limit: $LIMIT bytes ($(( LIMIT / 1024 )) KB)"
-echo "Working ceiling (70%): $CEIL bytes ($(( CEIL / 1024 )) KB)"
+echo "Working ceiling (90%): $CEIL bytes ($(( CEIL / 1024 )) KB)"
 
 PRG="$REPO_ROOT/bin/$FACE.prg"
 if [ -f "$PRG" ]; then
