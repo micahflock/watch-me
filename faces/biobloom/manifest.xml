@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+  biobloom manifest — the "living dish" generative biometric-art face.
+  Targets ONLY the Forerunner 735XT (SDK device id "fr735xt") at CIQ API 2.4.
+  Do not add other products unless they share the 2.4 constraint set documented
+  in docs/api-2.4-notes.md.
+-->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application
+        entry="BioBloomApp"
+        id="ada354216fe363f8410066dd3d5df0f8"
+        launcherIcon="@Drawables.LauncherIcon"
+        minSdkVersion="2.4.0"
+        name="@Strings.AppName"
+        type="watchface">
+        <iq:products>
+            <iq:product id="fr735xt"/>
+        </iq:products>
+        <iq:permissions/>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+    </iq:application>
+</iq:manifest>
