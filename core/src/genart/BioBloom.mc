@@ -430,4 +430,85 @@ class BioBloom {
             }
         }
     }
+
+    // ---- persistence ----------------------------------------------------------
+    //
+    // The dish is an accretive day-long simulation held only in RAM, so a watch-
+    // face reload (e.g. opening a menu on a memory-tight device) would lose it
+    // and it cannot replay the day. save()/load() serialise the LIVE portions of
+    // the packed state into one flat Number array small enough for the object
+    // store (only used filament vertices / bloom & colony bands, not the full
+    // capacity arrays). The view saves on onHide and restores in onLayout.
+
+    function save() {
+        // Exact size first, then fill a preallocated array by index -- no
+        // dynamic-array growth churn, so the onHide transient is minimal and
+        // predictable (~3 KB on a full day).
+        var n = 18 + 1 + 1 + 2;            // header + win + _nfil + _nbloom + 2
+        for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i]; }
+        for (var i = 0; i < _nbloom; i++) { n += 8 + _blnb[i]; }
+        n += _coln;
+        var a = new [n];
+        var p = 0;
+        a[p] = _lastDay; p++;
+        a[p] = _lastMin; p++;
+        a[p] = (_lastSteps == null) ? -1 : _lastSteps; p++;
+        a[p] = _bar; p++;
+        a[p] = _epiOn ? 1 : 0; p++;
+        a[p] = _epiIdx; p++;
+        a[p] = _winN; p++;
+        a[p] = _winHead; p++;
+        for (var i = 0; i < 10; i++) { a[p] = _win[i]; p++; }
+        a[p] = _nfil; p++;
+        for (var i = 0; i < _nfil; i++) {
+            a[p] = _tha[i]; p++; a[p] = _thL[i]; p++; a[p] = _thv[i]; p++;
+            a[p] = _thnext[i]; p++; a[p] = _thnp[i]; p++;
+            var base = i * PMAX;
+            for (var k = 0; k < _thnp[i]; k++) { a[p] = _pt[base + k]; p++; }
+        }
+        a[p] = _nbloom; p++;
+        for (var i = 0; i < _nbloom; i++) {
+            a[p] = _blbx[i]; p++; a[p] = _blby[i]; p++; a[p] = _blang[i]; p++;
+            a[p] = _blw[i]; p++; a[p] = _blsalt[i]; p++; a[p] = _blreach[i]; p++;
+            a[p] = _blmom[i]; p++; a[p] = _blnb[i]; p++;
+            var bb = i * BBANDS;
+            for (var k = 0; k < _blnb[i]; k++) { a[p] = _blband[bb + k]; p++; }
+        }
+        a[p] = _colreach; p++; a[p] = _coln; p++;
+        for (var i = 0; i < _coln; i++) { a[p] = _colband[i]; p++; }
+        return a;
+    }
+
+    // Restore state written by save(). Defensive: a malformed/short array leaves
+    // the freshly-reset dish untouched (caller wraps the read in try/catch).
+    function load(a) {
+        if (a == null || (a.size() < 19)) { return; }
+        var p = 0;
+        _lastDay = a[p]; p++;
+        _lastMin = a[p]; p++;
+        var ls = a[p]; p++; _lastSteps = (ls < 0) ? null : ls;
+        _bar = a[p]; p++;
+        _epiOn = (a[p] != 0); p++;
+        _epiIdx = a[p]; p++;
+        _winN = a[p]; p++;
+        _winHead = a[p]; p++;
+        for (var i = 0; i < 10; i++) { _win[i] = a[p]; p++; }
+        _nfil = a[p]; p++;
+        for (var i = 0; i < _nfil; i++) {
+            _tha[i] = a[p]; p++; _thL[i] = a[p]; p++; _thv[i] = a[p]; p++;
+            _thnext[i] = a[p]; p++; _thnp[i] = a[p]; p++;
+            var base = i * PMAX;
+            for (var k = 0; k < _thnp[i]; k++) { _pt[base + k] = a[p]; p++; }
+        }
+        _nbloom = a[p]; p++;
+        for (var i = 0; i < _nbloom; i++) {
+            _blbx[i] = a[p]; p++; _blby[i] = a[p]; p++; _blang[i] = a[p]; p++;
+            _blw[i] = a[p]; p++; _blsalt[i] = a[p]; p++; _blreach[i] = a[p]; p++;
+            _blmom[i] = a[p]; p++; _blnb[i] = a[p]; p++;
+            var bb = i * BBANDS;
+            for (var k = 0; k < _blnb[i]; k++) { _blband[bb + k] = a[p]; p++; }
+        }
+        _colreach = a[p]; p++; _coln = a[p]; p++;
+        for (var i = 0; i < _coln; i++) { _colband[i] = a[p]; p++; }
+    }
 }

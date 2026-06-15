@@ -39,6 +39,7 @@ class TwoWorldsView extends Ui.WatchFace {
         _dateStrip = new StripGlyphs(Rez.Drawables.FontDate, 6);
 
         _bloom = new BioBloom();
+        BioState.restore(_bloom);          // re-hydrate the dish after a reload
 
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
@@ -65,6 +66,10 @@ class TwoWorldsView extends Ui.WatchFace {
     function onEnterSleep() {}
     function onExitSleep() { Ui.requestUpdate(); }
     // onPartialUpdate intentionally omitted: fr735xt has no hardware support.
+
+    // The watch face can be torn down when a menu opens; persist the dish so it
+    // is restored (not reset to blank) on the next layout.
+    function onHide() { BioState.save(_bloom); }
 
     function onSettingsChanged() {}
 }

@@ -20,6 +20,7 @@ class BioBloomView extends Ui.WatchFace {
         GenArt.initSinTable();
         _state = new Snapshot();
         _bloom = new BioBloom();
+        BioState.restore(_bloom);          // re-hydrate the dish after a reload
 
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
@@ -37,6 +38,9 @@ class BioBloomView extends Ui.WatchFace {
 
     function onEnterSleep() {}
     function onExitSleep() { Ui.requestUpdate(); }
+
+    // Persist the dish when a menu hides the face so it survives a reload.
+    function onHide() { BioState.save(_bloom); }
 
     function onSettingsChanged() {}
 }
