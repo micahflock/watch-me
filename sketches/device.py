@@ -36,6 +36,29 @@ W, H = 215, 180
 CX, CY, R = 107.0, 90.0, 107.5     # bezel circle; top/bottom read as chords
 WATCHDOG = 25000                   # ~25-30k VM instr/onUpdate (docs/memory-budget)
 
+# Rough VM-instruction weights for the watchdog proxy. The real watchdog counts
+# VM INSTRUCTIONS, not Dc primitives -- and hash16/isin are ordinary Monkey C
+# function calls (call + body + return), so an RNG-heavy stipple render costs far
+# more than its primitive count implies. Counting only Dc.calls hid a real
+# watchdog trip (BioBloom's stipple grows ~3x over an active day and crosses the
+# budget mid-afternoon) behind a reassuring ~1300 "prim" reading. These weights
+# make the proxy track CPU. Order-of-magnitude, not exact.
+VM_HASH16 = 12     # FNV-ish: ~6 mul/xor/shift ops + call/return overhead
+VM_ISIN   = 6      # LUT lookup + call/return overhead
+VM_PRIM   = 4      # a Dc primitive's VM-side dispatch (native raster not counted)
+
+# hash16/isin call tally for the current frame (perf_reset before each render).
+_perf = {"hash16": 0, "isin": 0}
+
+
+def perf_reset():
+    _perf["hash16"] = 0
+    _perf["isin"] = 0
+
+
+def perf_read():
+    return _perf["hash16"], _perf["isin"]
+
 # The only 14 colors that exist on this device, by their Gfx.COLOR_* names.
 # COLOR_YELLOW is amber (0xFFAA00) on the 735XT, per CLAUDE.md.
 COLOR_WHITE    = 0xFFFFFF
@@ -104,6 +127,7 @@ def imod(a, b):
 
 def hash16(a, b, c):
     """Bit-identical to GenArt.hash16 (FNV-flavored 16-bit). Returns 0..0x7FFF."""
+    _perf["hash16"] += 1
     h = 0x5BD1
     h = ((h ^ (a & 0xFFFF)) * 0x6CD) & 0xFFFF
     h = h ^ (h >> 7)
@@ -122,6 +146,7 @@ _SIN = [int(math.sin(i * 0.02454369) * 127.0) for i in range(256)]
 
 def isin(p):
     """GenArt.isin: phase p in 1/256ths of a turn, returns -127..127."""
+    _perf["isin"] += 1
     return _SIN[p & 255]
 
 
@@ -192,6 +217,13 @@ class Dc:
             self._d.point((x, y), fill=_rgb(self._fg))
         else:
             self._d.ellipse((x - r, y - r, x + r, y + r), fill=_rgb(self._fg))
+
+    def fillPolygon(self, pts):
+        # Real Dc primitive (Toybox.Graphics 1.0). The device fills CONVEX
+        # polygons reliably; render lumpy/star shapes as a fan of triangles (each
+        # convex) so the sandbox stays faithful to what the watch will draw.
+        self.calls += 1
+        self._d.polygon([(int(x), int(y)) for x, y in pts], fill=_rgb(self._fg))
 
     def drawArc(self, x, y, r, direction, deg_start, deg_end):
         # Garmin: degrees CCW from 3 o'clock. PIL: degrees CW from 3 o'clock.
