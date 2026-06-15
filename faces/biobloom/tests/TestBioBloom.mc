@@ -100,3 +100,73 @@ function testBioBloomDailyReset(logger) {
     Test.assert(b._nfil == 9);       // re-seeded SEEDS filaments
     return true;
 }
+
+(:test)
+function testBioBloomClockResync(logger) {
+    // A backward clock step WITHIN the same calendar day (sync correction /
+    // manual set) must NOT wipe the dish -- only a real day change does.
+    GenArt.initSinTable();
+    var b = new BioBloom();
+    bioFeedActiveDay(b);             // ends at 23:59 on day 14
+    Test.assert(b._nbloom == 4);
+    Test.assert(b._coln == 52);
+    Test.assert(b._nfil == 22);
+
+    var snap = new Snapshot();
+    snap.year = 2026; snap.month = 6; snap.day = 14;  // same day
+    snap.hour = 8; snap.minute = 0; snap.second = 0;  // clock jumped back to 08:00
+    snap.steps = 5000; snap.heartRate = 60;
+    b.advance(snap);
+
+    // Dish preserved, not reset back to the 9-filament skeleton.
+    logger.debug("after resync: nbloom=" + b._nbloom + " coln=" + b._coln
+        + " nfil=" + b._nfil);
+    Test.assert(b._nbloom == 4);
+    Test.assert(b._coln == 52);
+    Test.assert(b._nfil == 22);
+    return true;
+}
+
+(:test)
+function testBioBloomSaveRestore(logger) {
+    // A reload (menu opened on a memory-tight device) discards the in-RAM dish.
+    // save()/load() through the object store must bring it back bit-identically.
+    GenArt.initSinTable();
+    var b = new BioBloom();
+    bioFeedActiveDay(b);
+
+    var before = new CountDc();
+    b.render(before, null);
+
+    var blob = b.save();
+    // Object-store budget is "KB-scale"; report the serialized element count so
+    // a regression that bloats the payload is visible.
+    logger.debug("save size=" + blob.size() + " elements (~" + (blob.size() * 4)
+        + " bytes)");
+    Test.assert(blob.size() < 1500);     // comfortably KB-scale for the store
+
+    // Fresh instance == a reload; restore and confirm an identical render.
+    var r = new BioBloom();
+    r.load(blob);
+    var after = new CountDc();
+    r.render(after, null);
+
+    logger.debug("before=" + before.n + " after=" + after.n);
+    Test.assert(after.n == before.n);
+    Test.assert(r._nbloom == b._nbloom);
+    Test.assert(r._nfil == b._nfil);
+    Test.assert(r._coln == b._coln);
+    Test.assert(r._colreach == b._colreach);
+    Test.assert(r._lastDay == b._lastDay);
+    Test.assert(r._lastMin == b._lastMin);
+    Test.assert(r._lastSteps == b._lastSteps);
+
+    // And it keeps growing correctly from the restored state (no reset).
+    var snap = new Snapshot();
+    snap.year = 2026; snap.month = 6; snap.day = 14;
+    snap.hour = 23; snap.minute = 59; snap.second = 0;
+    snap.steps = 25000; snap.heartRate = 60;
+    r.advance(snap);
+    Test.assert(r._nfil == 22);          // still the grown dish, not re-seeded
+    return true;
+}
