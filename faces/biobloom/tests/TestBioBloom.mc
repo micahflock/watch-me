@@ -126,3 +126,47 @@ function testBioBloomClockResync(logger) {
     Test.assert(b._nfil == 22);
     return true;
 }
+
+(:test)
+function testBioBloomSaveRestore(logger) {
+    // A reload (menu opened on a memory-tight device) discards the in-RAM dish.
+    // save()/load() through the object store must bring it back bit-identically.
+    GenArt.initSinTable();
+    var b = new BioBloom();
+    bioFeedActiveDay(b);
+
+    var before = new CountDc();
+    b.render(before, null);
+
+    var blob = b.save();
+    // Object-store budget is "KB-scale"; report the serialized element count so
+    // a regression that bloats the payload is visible.
+    logger.debug("save size=" + blob.size() + " elements (~" + (blob.size() * 4)
+        + " bytes)");
+    Test.assert(blob.size() < 1500);     // comfortably KB-scale for the store
+
+    // Fresh instance == a reload; restore and confirm an identical render.
+    var r = new BioBloom();
+    r.load(blob);
+    var after = new CountDc();
+    r.render(after, null);
+
+    logger.debug("before=" + before.n + " after=" + after.n);
+    Test.assert(after.n == before.n);
+    Test.assert(r._nbloom == b._nbloom);
+    Test.assert(r._nfil == b._nfil);
+    Test.assert(r._coln == b._coln);
+    Test.assert(r._colreach == b._colreach);
+    Test.assert(r._lastDay == b._lastDay);
+    Test.assert(r._lastMin == b._lastMin);
+    Test.assert(r._lastSteps == b._lastSteps);
+
+    // And it keeps growing correctly from the restored state (no reset).
+    var snap = new Snapshot();
+    snap.year = 2026; snap.month = 6; snap.day = 14;
+    snap.hour = 23; snap.minute = 59; snap.second = 0;
+    snap.steps = 25000; snap.heartRate = 60;
+    r.advance(snap);
+    Test.assert(r._nfil == 22);          // still the grown dish, not re-seeded
+    return true;
+}
