@@ -62,7 +62,8 @@ class BioBloom {
     const CBANDS = 96;         // cap on colony bands
     const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
-    const INK_MAX = 700;       // per-frame draw budget (watchdog backstop)
+    const INK_MAX = 700;       // total primitives per onUpdate (watchdog backstop)
+    const SK_CAP = 520;        // decimate the skeleton above this many segments
 
     // Biobloom-local 9-step HR ramp (finer than GenArt's shared 7-step ramp, so
     // strata/flock keep theirs). Cool -> hot: blue family at rest, green for
@@ -396,23 +397,56 @@ class BioBloom {
 
     // ---- render ---------------------------------------------------------------
 
+    // Priority order under one shared budget: structure (skeleton) first, then
+    // the HR-zone blooms, then the decorative fur (shed first under load). Every
+    // pass decrements _ink so a single onUpdate stays bounded no matter how big
+    // the dish has grown -- the watchdog is the binding constraint.
     function render(dc, state) {
         _ink = INK_MAX;
         drawColonyCore(dc);                  // central filled core (under)
-        for (var i = 0; i < _nfil; i++) {    // skeleton arms (structural)
-            var np = _thnp[i];
-            var base = i * PMAX;
-            for (var k = 1; k < np; k++) {
-                var a = _pt[base + k - 1]; var b = _pt[base + k];
-                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
-                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
-            }
-        }
+        drawSkeleton(dc);                    // skeleton arms (structural)
         for (var bi = 0; bi < _nbloom; bi++) {   // HR-zone blooms (priority)
             if (_ink <= 0) { break; }
             drawBloom(dc, bi);
         }
         drawFur(dc);                         // colony fur (detail; shed first)
+    }
+
+    // Draw every arm, but DECIMATE (draw every `stride`-th vertex) once the
+    // skeleton is abnormally large, so a 22-arm dish on a very active day can't
+    // outrun the budget drawing one line per vertex. The arm tip is always drawn
+    // so each arm still reaches its true length; only the wiggle gets coarser.
+    function drawSkeleton(dc) {
+        var tot = 0;
+        for (var i = 0; i < _nfil; i++) {
+            var np = _thnp[i];
+            if (np > 1) { tot += np - 1; }
+        }
+        var stride = 1;
+        if (tot > SK_CAP) { stride = tot / SK_CAP + 1; }
+        for (var i = 0; i < _nfil; i++) {
+            var np = _thnp[i];
+            if (np < 2) { continue; }
+            var base = i * PMAX;
+            var prev = 0;
+            var k = stride;
+            while (k < np) {
+                if (_ink <= 0) { return; }
+                var a = _pt[base + prev]; var b = _pt[base + k];
+                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
+                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
+                _ink -= 1;
+                prev = k;
+                k += stride;
+            }
+            if (prev != np - 1) {            // always close to the arm tip
+                if (_ink <= 0) { return; }
+                var a = _pt[base + prev]; var b = _pt[base + np - 1];
+                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
+                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
+                _ink -= 1;
+            }
+        }
     }
 
     function drawColonyCore(dc) {
