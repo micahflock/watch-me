@@ -67,6 +67,8 @@ BAR_CLEAR = 4       # solid movement works the meter back down per minute
                     # (slow, so the onset of activity after a long idle -- e.g.
                     # the first run minutes out of sleep -- grows grey first)
 
+INK_MAX = 1500      # per-frame draw-budget guard (watchdog backstop, see .mc)
+
 
 class BioBloom:
     def __init__(self):
@@ -222,11 +224,25 @@ class BioBloom:
                       + imod(hash16(zi, len(self.blooms), 7), 22), 256)
         f = self._nearest(target)
         bx, by, _ = f["pts"][-1]
+        salt = imod(hash16(bx, by, zi), 4096)
         self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
-                            "w": 3, "bands": [],
-                            "salt": imod(hash16(bx, by, zi), 4096),
-                            "mom": 0})
+                            "w": 3, "bands": [], "salt": salt, "mom": 0,
+                            "spikes": self._fan(salt)})   # precompute fan once
         return len(self.blooms) - 1
+
+    def _fan(self, salt):
+        # the bloom's spine fan: angle offset, length fraction, sideways bow and
+        # a fork flag per spine -- a deterministic function of salt, built once
+        # (mirrors BioBloom.mc buildFan, which packs each spine into one Number)
+        nsp = 6 + imod(hash16(salt, 1, 1), 6)         # 6..11 spines
+        sp = []
+        for k in range(nsp):
+            off = imod(hash16(salt, k, 4), 121) - 60  # +-60/256 ~ +-84 deg
+            lf = 90 + imod(hash16(salt, k, 5), 166)   # 90..255 of reach
+            bow = imod(hash16(salt, k, 7), 13) - 6    # -6..6 px sideways
+            fork = imod(hash16(salt, k, 6), 2) == 0   # ~half branch
+            sp.append((off, lf, bow, fork))
+        return sp
 
     def _band(self, b, color, grow):
         # append one outward band, capped at the reach ceiling
@@ -254,8 +270,9 @@ class BioBloom:
             i += 1
 
     def render(self, dc, snap):
-        self._draw_colony(dc)                     # central colony, under the arms
-        for f in self.fil:
+        self._ink = INK_MAX
+        self._draw_colony_core(dc)                # central filled core, under
+        for f in self.fil:                        # skeleton arms (structural)
             pts = f["pts"]
             k = 1
             while k < len(pts):
@@ -264,18 +281,26 @@ class BioBloom:
                 dc.setColor(c, COLOR_BLACK)
                 dc.drawLine(x0, y0, x1, y1)
                 k += 1
-        for b in self.blooms:
+        for b in self.blooms:                     # HR-zone blooms (priority)
+            if self._ink <= 0:
+                break
             self._draw_bloom(dc, b)
+        self._draw_fur(dc)                        # colony fur (detail; shed first)
 
-    def _draw_colony(self, dc):
-        # an amorphous mass that clings to the skeleton: stipple scattered along
-        # every arm out to where the colony has filled (trailing the tips), each
-        # dot coloured by the band covering its radius -- not concentric rings
+    def _draw_colony_core(self, dc):
         col = self.colony
         if not col["bands"]:
             return
         dc.setColor(col["bands"][0][2], COLOR_BLACK)
-        dc.fillCircle(CX, CY, R0)                  # filled core (was the grey dot)
+        dc.fillCircle(CX, CY, R0 + 1)             # filled core
+
+    def _draw_fur(self, dc):
+        # a short outward "fur" of zone-coloured spines stippled along the arms
+        # out to where the colony has filled -- drawn last so the ink budget
+        # sheds fur, not blooms, under extreme load
+        col = self.colony
+        if not col["bands"]:
+            return
         reach = col["reach"]
         for f in self.fil:
             lim = idiv(f["L"], UNIT) - TRAIL
@@ -283,21 +308,22 @@ class BioBloom:
                 lim = reach
             if lim <= R0:
                 continue
-            pts = f["pts"]
-            k = 1
+            pts, a = f["pts"], f["a"]
+            k = 2
             while k < len(pts):
+                if self._ink <= 0:
+                    return
                 rr = R0 + k * STEP
                 if rr > lim:
                     break
-                if (k & 1) == 0:                   # sample every other vertex
+                if imod(k, 3) == 0:
                     x, y, _ = pts[k]
                     dc.setColor(self._band_color(col, rr), COLOR_BLACK)
-                    j = 0
-                    while j < 2:
-                        ox = imod(hash16(f["a"], k, j + 3), 2 * CW + 1) - CW
-                        oy = imod(hash16(f["a"], k, j + 5), 2 * CW + 1) - CW
-                        dc.fillCircle(x + ox, y + oy, 1)
-                        j += 1
+                    a2 = imod(a + k * 13, 256)
+                    le = 3 + imod(k, 4)            # 3..6 px
+                    dc.drawLine(x, y, x + idiv(le * isin(a2 + 64), 127),
+                                y + idiv(le * isin(a2), 127))
+                    self._ink -= 1
                 k += 1
 
     def _band_color(self, b, r):
@@ -309,42 +335,37 @@ class BioBloom:
         return b["bands"][-1][2]
 
     def _draw_bloom(self, dc, b):
+        # a burst of bowed, sometimes-forking spines fired outward along the arm,
+        # each coloured by the HR-zone band at its tip; the fan is precomputed
+        # (b["spikes"]) and just scaled by reach as the bloom grows
         if not b["bands"]:
             return
-        ang = b["ang"]
-        fx, fy = isin(ang + 64), isin(ang)        # outward unit (cos, sin)*127
-        px, py = isin(ang + 128), isin(ang + 64)  # perpendicular unit
-        reach, w, salt = b["reach"], b["w"], b["salt"]
-
-        # a chain of sub-lobes marching outward and shrinking -> rough, lumpy
-        # frontier; each lobe is coloured by the zone band at its radius, so the
-        # colony reads banded from base to rim
-        nlob = 2 + imod(hash16(salt, 0, 5), 3)    # 2..4 lobes
-        n = reach * 2 + w * 5
-        if n > 150:
-            n = 150
-        per = idiv(n, nlob)
-        if per < 4:
-            per = 4
-        j = 0
-        while j < nlob:
-            lf = idiv((j + 1) * 230, nlob + 1) + imod(hash16(salt, j, 6), 26)
-            along = idiv(reach * lf, 256)
-            po = imod(hash16(salt, j, 7), 2 * w + 1) - w     # perp wobble
-            lx = b["bx"] + idiv(along * fx, 127) + idiv(po * px, 127)
-            ly = b["by"] + idiv(along * fy, 127) + idiv(po * py, 127)
-            lr = 2 + idiv(w * (nlob - j), nlob)              # outer lobes smaller
-            dc.setColor(self._band_color(b, along), COLOR_BLACK)
-            k = 0
-            while k < per:
-                s = j * 97 + k
-                rr = imod(hash16(salt, s, 1), lr + 1)
-                a2 = imod(hash16(salt, s, 2), 256)
-                x = lx + idiv(rr * isin(a2 + 64), 127)
-                y = ly + idiv(rr * isin(a2), 127)
-                dc.fillCircle(x, y, 1)
-                k += 1
-            j += 1
+        ang, reach, w = b["ang"], b["reach"], b["w"]
+        bx, by = b["bx"], b["by"]
+        dc.setColor(self._band_color(b, BASE), COLOR_BLACK)
+        dc.fillCircle(bx, by, 1 + idiv(w, 8))     # tiny anchor node (1..3px)
+        for (off, lf, bow, fork) in b["spikes"]:
+            if self._ink <= 0:
+                return
+            a2 = imod(ang + off, 256)
+            dx, dy = isin(a2 + 64), isin(a2)
+            px, py = isin(a2 + 128), isin(a2 + 64)         # perpendicular (bow)
+            tip = BASE + idiv((reach - BASE) * lf, 256)
+            mr = idiv(tip, 2)
+            mx = bx + idiv(mr * dx, 127) + idiv(bow * px, 127)
+            my = by + idiv(mr * dy, 127) + idiv(bow * py, 127)
+            ex = bx + idiv(tip * dx, 127)
+            ey = by + idiv(tip * dy, 127)
+            dc.setColor(self._band_color(b, tip), COLOR_BLACK)
+            dc.drawLine(bx, by, mx, my)                    # bowed spine, 2 segs
+            dc.drawLine(mx, my, ex, ey)
+            self._ink -= 2
+            if fork:                                       # branch at the elbow
+                a3 = imod(a2 + (24 if (off & 1) == 0 else -24), 256)
+                fr = idiv(tip, 3)
+                dc.drawLine(mx, my, mx + idiv(fr * isin(a3 + 64), 127),
+                            my + idiv(fr * isin(a3), 127))
+                self._ink -= 1
 
     def state_bytes(self):
         return (sum(len(f["pts"]) for f in self.fil) * 3
