@@ -51,13 +51,19 @@ def parse_at(s):
 
 def render_frame(spec, snap, scale):
     dc = device.Dc(spec.get("background", device.COLOR_BLACK))
+    device.perf_reset()
     for c in spec["components"]:
         if hasattr(c, "render"):
             c.render(dc, snap)
+    nh, ns = device.perf_read()
+    # Watchdog proxy = estimated VM INSTRUCTIONS, not raw primitive count
+    # (hash16/isin are real function calls and usually dominate the frame).
+    work = (dc.calls * device.VM_PRIM + nh * device.VM_HASH16
+            + ns * device.VM_ISIN)
     state_bytes = sum(c.state_bytes() for c in spec["components"]
                       if hasattr(c, "state_bytes"))
     img = dc.masked().resize((device.W * scale, device.H * scale), Image.NEAREST)
-    return img, dc.calls, dc.offpalette, state_bytes
+    return img, dc.calls, work, dc.offpalette, state_bytes
 
 
 def main():
@@ -83,9 +89,9 @@ def main():
         for c in advancers:
             c.advance(snap)
         if t in sample_set:
-            img, calls, off, sb = render_frame(spec, snap, args.scale)
+            img, calls, work, off, sb = render_frame(spec, snap, args.scale)
             frames.append(("{:02d}:{:02d}".format(t // 60, t % 60),
-                           img, calls, off, sb))
+                           img, calls, work, off, sb))
 
     # Compose the strip: frames in a row, a caption bar beneath each.
     fw, fh = frames[0][1].size
@@ -94,12 +100,12 @@ def main():
     strip_h = fh + caph + 2 * pad
     strip = Image.new("RGB", (strip_w, strip_h), (24, 24, 24))
     draw = ImageDraw.Draw(strip)
-    for i, (label, img, calls, off, sb) in enumerate(frames):
+    for i, (label, img, calls, work, off, sb) in enumerate(frames):
         x = pad + i * (fw + pad)
         strip.paste(img, (x, pad))
-        wd = "OK" if calls <= device.WATCHDOG else "OVER"
-        l1 = "{}   {} prim [{}]".format(label, calls, wd)
-        l2 = "{} B state".format(sb) + ("   {} off-palette".format(off) if off else "")
+        wd = "OK" if work <= device.WATCHDOG else "OVER"
+        l1 = "{}  ~{} VMi [{}]".format(label, work, wd)
+        l2 = "{}p {}B".format(calls, sb) + ("  {} off-pal".format(off) if off else "")
         draw.text((x, pad + fh + 4), l1, fill=(230, 230, 230))
         draw.text((x, pad + fh + 18), l2, fill=(150, 150, 150))
 
@@ -107,10 +113,10 @@ def main():
                                    args.algo + "-scrub.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     strip.save(out)
-    peak = max(f[2] for f in frames)
+    peak = max(f[3] for f in frames)
     print("{} frames -> {}".format(len(frames), out))
-    print("peak {} primitives/frame (budget ~{}), state {} B".format(
-        peak, device.WATCHDOG, frames[-1][4]))
+    print("peak ~{} VM-instr/frame (watchdog ~{}), state {} B".format(
+        peak, device.WATCHDOG, frames[-1][5]))
 
 
 if __name__ == "__main__":
