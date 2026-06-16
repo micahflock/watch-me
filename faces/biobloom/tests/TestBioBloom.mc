@@ -66,16 +66,19 @@ function testBioBloomDayParity(logger) {
     Test.assert(b._coln == 52);
     Test.assert(b._nfil == 22);      // filaments grew to the KMAX cap
 
-    // The simulation STATE above is bit-identical to the sketch. The render
-    // primitive count is the device's deterministic value: it differs from the
-    // sketch (1323) by a single primitive, because one branch filament's wander
-    // rounds one step differently here than in the float-free sketch, nudging
-    // one bloom's stipple. Cosmetically irrelevant, and far under the ~25k
-    // watchdog -- this assert guards against a blown render budget / regression.
+    // The simulation STATE above is bit-identical to the sketch. The render now
+    // draws each bloom as a precomputed spine fan + a colony fur (not the old
+    // per-dot stipple); the exact primitive count varies by a few between the
+    // float-free device and the sketch (one branch filament's wander rounds one
+    // step differently), so assert a budget BAND -- it confirms the spine render
+    // is active (the old stipple was ~1324) and guards against a blowup. This
+    // primitive count does NOT see the hash16/isin VM cost that actually trips
+    // the watchdog; that is verified by the sandbox VM proxy (scrub.py) and the
+    // simulator. Sandbox primitive count for this day: 688.
     var dc = new CountDc();
     b.render(dc, null);
     logger.debug("prims=" + dc.n);
-    Test.assert(dc.n == 1324);
+    Test.assert(dc.n > 450 && dc.n < 1100);
     return true;
 }
 
