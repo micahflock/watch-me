@@ -70,6 +70,7 @@ KACT = 6            # movement -> growth (smaller => threads grow faster)
 STEP = 2            # px of radius per appended vertex
 KMAX = 22           # cap on live filaments
 SEEDS = 9           # initial threads, spread evenly around the centre
+BMAX = 16           # cap on live blooms (parity with BioBloom.mc)
 
 ACTIVE = 4          # zone idx >= ACTIVE is an elevated-HR minute (HR >= 105)
 
@@ -106,7 +107,15 @@ BAR_CLEAR = 4       # solid movement works the meter back down per minute
                     # (slow, so the onset of activity after a long idle -- e.g.
                     # the first run minutes out of sleep -- grows grey first)
 
-INK_MAX = 700       # per-frame draw-budget guard (watchdog backstop, see .mc)
+# Per-frame draw budget shared across ALL passes (skeleton, blooms, fur) so the
+# whole onUpdate is bounded regardless of how big the dish grows -- the watchdog
+# (~25-30k VM instr) is the binding constraint and a very active day can grow
+# 22 long arms. INK_MAX caps the total; SK_CAP additionally DECIMATES the
+# skeleton (draw every Nth vertex) once it exceeds that many segments, so all
+# arms still appear (just slightly coarser) instead of the skeleton eating the
+# whole budget. A typical day stays under both, so it renders identically.
+INK_MAX = 700       # total primitives per onUpdate (watchdog backstop, see .mc)
+SK_CAP = 520        # decimate the skeleton above this many segments
 
 
 class BioBloom:
@@ -204,22 +213,23 @@ class BioBloom:
             if not self.epi_on:
                 self.epi_on = True
                 self.epi_idx = self._seed(zi)        # erupt on the first minute
-            b = self.blooms[self.epi_idx]
-            w = 3 + idiv(vrange, 8)                   # variability => wider bloom
-            if w > 16:
-                w = 16
-            if w > b["w"]:
-                b["w"] = w
-            self._band(b, hr_color(zi), GROW)         # initial growth, zone colour
-            if zi > b["hot"]:
-                b["hot"] = zi                         # peak zone, for ember tail
-            b["mc"] = 0                               # reset ember tail on re-feed
-            b["lastzi"] = zi                          # tail starts from this zone
-            b["mom"] += idiv(spm, MOM_DIV)            # bank movement effort
-            if b["mom"] > REACH_CAP:
-                b["mom"] = REACH_CAP
-            b["mom0"] = b["mom"]                      # reservoir at HR-drop, for cooldown
-            fed = self.epi_idx
+            if self.epi_idx >= 0:                    # -1 once BMAX blooms exist
+                b = self.blooms[self.epi_idx]
+                w = 3 + idiv(vrange, 8)               # variability => wider bloom
+                if w > 16:
+                    w = 16
+                if w > b["w"]:
+                    b["w"] = w
+                self._band(b, hr_color(zi), GROW)     # initial growth, zone colour
+                if zi > b["hot"]:
+                    b["hot"] = zi                     # peak zone, for ember tail
+                b["mc"] = 0                           # reset ember tail on re-feed
+                b["lastzi"] = zi                      # tail starts from this zone
+                b["mom"] += idiv(spm, MOM_DIV)        # bank movement effort
+                if b["mom"] > REACH_CAP:
+                    b["mom"] = REACH_CAP
+                b["mom0"] = b["mom"]                  # reservoir at HR-drop, cooldown
+                fed = self.epi_idx
         else:
             self.epi_on = False
             self.epi_idx = -1
@@ -265,6 +275,8 @@ class BioBloom:
     def _seed(self, zi):
         # spread headings by ~137.5 deg (golden angle = 98/256) per bloom, plus
         # jitter, so successive eruptions fan out around the dish
+        if len(self.blooms) >= BMAX:
+            return -1                                # at cap: episode grows nothing
         target = imod(self.bloom_base + len(self.blooms) * 98
                       + imod(hash16(zi, len(self.blooms), 7), 22), 256)
         f = self._nearest(target)
@@ -332,22 +344,54 @@ class BioBloom:
             i += 1
 
     def render(self, dc, snap):
+        # Priority order under one shared budget: structure (skeleton) first, then
+        # the HR-zone blooms, then the decorative fur (shed first under load).
         self._ink = INK_MAX
         self._draw_colony_core(dc)                # central filled core, under
-        for f in self.fil:                        # skeleton arms (structural)
-            pts = f["pts"]
-            k = 1
-            while k < len(pts):
-                x0, y0, _ = pts[k - 1]
-                x1, y1, c = pts[k]
-                dc.setColor(c, COLOR_BLACK)
-                dc.drawLine(x0, y0, x1, y1)
-                k += 1
+        self._draw_skeleton(dc)                   # skeleton arms (structural)
         for b in self.blooms:                     # HR-zone blooms (priority)
             if self._ink <= 0:
                 break
             self._draw_bloom(dc, b)
         self._draw_fur(dc)                        # colony fur (detail; shed first)
+
+    def _draw_skeleton(self, dc):
+        # Draw every arm, but DECIMATE (draw every `stride`-th vertex) once the
+        # skeleton is abnormally large, so a 22-arm dish can't outrun the budget.
+        # The tip of each arm is always drawn so it reaches its true length.
+        tot = 0
+        for f in self.fil:
+            n = len(f["pts"])
+            if n > 1:
+                tot += n - 1
+        stride = 1
+        if tot > SK_CAP:
+            stride = idiv(tot, SK_CAP) + 1
+        for f in self.fil:
+            pts = f["pts"]
+            n = len(pts)
+            if n < 2:
+                continue
+            prev = 0
+            k = stride
+            while k < n:
+                if self._ink <= 0:
+                    return
+                x0, y0, _ = pts[prev]
+                x1, y1, c = pts[k]
+                dc.setColor(c, COLOR_BLACK)
+                dc.drawLine(x0, y0, x1, y1)
+                self._ink -= 1
+                prev = k
+                k += stride
+            if prev != n - 1:                     # always close to the arm tip
+                if self._ink <= 0:
+                    return
+                x0, y0, _ = pts[prev]
+                x1, y1, c = pts[n - 1]
+                dc.setColor(c, COLOR_BLACK)
+                dc.drawLine(x0, y0, x1, y1)
+                self._ink -= 1
 
     def _draw_colony_core(self, dc):
         col = self.colony
