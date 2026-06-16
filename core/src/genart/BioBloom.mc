@@ -19,6 +19,12 @@ using Toybox.Graphics as Gfx;
 // 8 == LT_GRAY (colony idle bands only). Evolution is incremental — advance()
 // simulates only the minutes since the last tick (capped) — and resets the dish
 // at midnight. All integer math (the watchdog is the binding constraint).
+//
+// Render: the skeleton draws as lines, each bloom as a small fan of bowed spines
+// (recomputed each frame from the bloom's salt — cheap, no per-spine state)
+// fired outward and coloured by the HR zone at the tip, the colony as a filled
+// core plus a short spine "fur". A per-frame ink budget (INK_MAX) caps the spine
+// work so a large dish can never outrun the watchdog — the per-dot stipple did.
 class BioBloom {
 
     const CX = 107;
@@ -53,6 +59,7 @@ class BioBloom {
     const BAR_CLEAR = 4;       // solid movement works the meter down per minute
     const CBANDS = 96;         // cap on colony bands
     const LTGREY = 8;          // colour index for COLOR_LT_GRAY (colony idle)
+    const INK_MAX = 700;       // per-frame draw budget (watchdog backstop)
 
     // threads
     var _tha; var _thL; var _thv; var _thnext; var _thnp; var _nfil;
@@ -70,6 +77,7 @@ class BioBloom {
     var _lastMin; var _lastSteps; var _lastDay;
     var _bloomBase;
     var _ord;                  // scratch index array for _longish
+    var _ink;                  // per-frame draw budget (counts down in render)
 
     function initialize() {
         _tha = new [KMAX]; _thL = new [KMAX]; _thv = new [KMAX];
@@ -347,8 +355,9 @@ class BioBloom {
     // ---- render ---------------------------------------------------------------
 
     function render(dc, state) {
-        drawColony(dc);
-        for (var i = 0; i < _nfil; i++) {
+        _ink = INK_MAX;
+        drawColonyCore(dc);                  // central filled core (under)
+        for (var i = 0; i < _nfil; i++) {    // skeleton arms (structural)
             var np = _thnp[i];
             var base = i * PMAX;
             for (var k = 1; k < np; k++) {
@@ -357,13 +366,23 @@ class BioBloom {
                 dc.drawLine(upx(a), upy(a), upx(b), upy(b));
             }
         }
-        for (var bi = 0; bi < _nbloom; bi++) { drawBloom(dc, bi); }
+        for (var bi = 0; bi < _nbloom; bi++) {   // HR-zone blooms (priority)
+            if (_ink <= 0) { break; }
+            drawBloom(dc, bi);
+        }
+        drawFur(dc);                         // colony fur (detail; shed first)
     }
 
-    function drawColony(dc) {
+    function drawColonyCore(dc) {
         if (_coln == 0) { return; }
         dc.setColor(colorOf((_colband[0] >> 8) & 0xFF), Gfx.COLOR_TRANSPARENT);
-        dc.fillCircle(CX, CY, R0);
+        dc.fillCircle(CX, CY, R0 + 1);
+    }
+
+    // A short outward "fur" of zone-coloured spines along the arms, out to where
+    // the colony has filled. Drawn last so the ink budget sheds fur before blooms.
+    function drawFur(dc) {
+        if (_coln == 0) { return; }
         var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
             var lim = _thL[i] / UNIT - TRAIL;
@@ -371,24 +390,33 @@ class BioBloom {
             if (lim <= R0) { continue; }
             var np = _thnp[i];
             var base = i * PMAX;
-            var bn = 0;                       // colony band pointer (tandem)
-            for (var k = 1; k < np; k++) {
+            var a = _tha[i];
+            for (var k = 2; k < np; k++) {
+                if (_ink <= 0) { return; }
                 var rr = R0 + k * STEP;
                 if (rr > lim) { break; }
-                if ((k & 1) == 0) {
-                    while (bn < _coln - 1 && rr > (_colband[bn] & 0xFF)) { bn += 1; }
-                    dc.setColor(colorOf((_colband[bn] >> 8) & 0xFF),
-                        Gfx.COLOR_TRANSPARENT);
+                if ((k % 3) == 0) {
                     var v = _pt[base + k];
                     var x = upx(v); var y = upy(v);
-                    for (var jj = 0; jj < 2; jj++) {
-                        var ox = (GenArt.hash16(_tha[i], k, jj + 3) % (2 * CW + 1)) - CW;
-                        var oy = (GenArt.hash16(_tha[i], k, jj + 5) % (2 * CW + 1)) - CW;
-                        dc.fillCircle(x + ox, y + oy, 1);
-                    }
+                    dc.setColor(colColor(rr), Gfx.COLOR_TRANSPARENT);
+                    var a2 = (a + k * 13) % 256;
+                    var le = 3 + (k % 4);
+                    dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
+                        y + (le * GenArt.isin(a2)) / 127);
+                    _ink -= 1;
                 }
             }
         }
+    }
+
+    // Colour of the colony band covering radius r (mirrors blColor for _colband).
+    function colColor(r) {
+        for (var i = 0; i < _coln; i++) {
+            if (r <= (_colband[i] & 0xFF)) {
+                return colorOf((_colband[i] >> 8) & 0xFF);
+            }
+        }
+        return colorOf((_colband[_coln - 1] >> 8) & 0xFF);
     }
 
     function blColor(bi, r) {
@@ -401,32 +429,43 @@ class BioBloom {
         return colorOf((_blband[base + n - 1] >> 8) & 0xFF);
     }
 
+    // A bloom = a burst of bowed, sometimes-forking spines fired outward along
+    // its arm, each coloured by the HR-zone band at its tip. The fan (angles,
+    // lengths, bow, forks) is a cheap deterministic function of the bloom salt,
+    // recomputed each frame and just scaled by reach as the bloom grows.
     function drawBloom(dc, bi) {
         if (_blnb[bi] == 0) { return; }
         var ang = _blang[bi];
-        var fx = GenArt.isin(ang + 64); var fy = GenArt.isin(ang);
-        var px = GenArt.isin(ang + 128); var py = GenArt.isin(ang + 64);
         var reach = _blreach[bi]; var w = _blw[bi]; var salt = _blsalt[bi];
-        var nlob = 2 + (GenArt.hash16(salt, 0, 5) % 3);
-        var n = reach * 2 + w * 5;
-        if (n > 150) { n = 150; }
-        var per = n / nlob;
-        if (per < 4) { per = 4; }
-        for (var j = 0; j < nlob; j++) {
-            var lf = ((j + 1) * 230) / (nlob + 1) + (GenArt.hash16(salt, j, 6) % 26);
-            var along = (reach * lf) / 256;
-            var po = (GenArt.hash16(salt, j, 7) % (2 * w + 1)) - w;
-            var lx = _blbx[bi] + (along * fx) / 127 + (po * px) / 127;
-            var ly = _blby[bi] + (along * fy) / 127 + (po * py) / 127;
-            var lr = 2 + (w * (nlob - j)) / nlob;
-            dc.setColor(blColor(bi, along), Gfx.COLOR_TRANSPARENT);
-            for (var k = 0; k < per; k++) {
-                var s = j * 97 + k;
-                var rr = GenArt.hash16(salt, s, 1) % (lr + 1);
-                var a2 = GenArt.hash16(salt, s, 2) % 256;
-                var x = lx + (rr * GenArt.isin(a2 + 64)) / 127;
-                var y = ly + (rr * GenArt.isin(a2)) / 127;
-                dc.fillCircle(x, y, 1);
+        var bx = _blbx[bi]; var by = _blby[bi];
+        var nsp = 6 + (GenArt.hash16(salt, 1, 1) % 6);
+        dc.setColor(blColor(bi, BASE), Gfx.COLOR_TRANSPARENT);
+        dc.fillCircle(bx, by, 1 + w / 8);            // tiny anchor node (1..3px)
+        for (var k = 0; k < nsp; k++) {
+            if (_ink <= 0) { return; }
+            var off = (GenArt.hash16(salt, k, 4) % 121) - 60;
+            var lf = 90 + (GenArt.hash16(salt, k, 5) % 166);
+            var bow = (GenArt.hash16(salt, k, 7) % 13) - 6;
+            var fork = (GenArt.hash16(salt, k, 6) % 2) == 0;
+            var a2 = (ang + off) % 256;
+            var dx = GenArt.isin(a2 + 64); var dy = GenArt.isin(a2);
+            var px = GenArt.isin(a2 + 128); var py = GenArt.isin(a2 + 64);
+            var tip = BASE + ((reach - BASE) * lf) / 256;
+            var mr = tip / 2;
+            var mx = bx + (mr * dx) / 127 + (bow * px) / 127;
+            var my = by + (mr * dy) / 127 + (bow * py) / 127;
+            var ex = bx + (tip * dx) / 127;
+            var ey = by + (tip * dy) / 127;
+            dc.setColor(blColor(bi, tip), Gfx.COLOR_TRANSPARENT);
+            dc.drawLine(bx, by, mx, my);             // bowed spine, 2 segments
+            dc.drawLine(mx, my, ex, ey);
+            _ink -= 2;
+            if (fork) {                              // branch at the elbow
+                var a3 = (a2 + (((off & 1) == 0) ? 24 : -24)) % 256;
+                var fr = tip / 3;
+                dc.drawLine(mx, my, mx + (fr * GenArt.isin(a3 + 64)) / 127,
+                    my + (fr * GenArt.isin(a3)) / 127);
+                _ink -= 1;
             }
         }
     }
