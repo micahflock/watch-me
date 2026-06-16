@@ -20,11 +20,11 @@ using Toybox.Graphics as Gfx;
 // simulates only the minutes since the last tick (capped) — and resets the dish
 // at midnight. All integer math (the watchdog is the binding constraint).
 //
-// Render: the skeleton draws as lines, each bloom as a precomputed fan of bowed
-// spines (one packed Number each in _blfan) fired outward and coloured by the
-// HR zone at the tip, the colony as a filled core plus a short spine "fur". A
-// per-frame ink budget (INK_MAX) caps the spine work so a large dish can never
-// outrun the watchdog — the original per-dot stipple did, late on active days.
+// Render: the skeleton draws as lines, each bloom as a small fan of bowed spines
+// (recomputed each frame from the bloom's salt — cheap, no per-spine state)
+// fired outward and coloured by the HR zone at the tip, the colony as a filled
+// core plus a short spine "fur". A per-frame ink budget (INK_MAX) caps the spine
+// work so a large dish can never outrun the watchdog — the per-dot stipple did.
 class BioBloom {
 
     const CX = 107;
@@ -59,8 +59,7 @@ class BioBloom {
     const BAR_CLEAR = 4;       // solid movement works the meter down per minute
     const CBANDS = 96;         // cap on colony bands
     const LTGREY = 8;          // colour index for COLOR_LT_GRAY (colony idle)
-    const SMAX = 11;           // max spines cached per bloom (the fan)
-    const INK_MAX = 1500;      // per-frame draw budget (watchdog backstop)
+    const INK_MAX = 700;       // per-frame draw budget (watchdog backstop)
 
     // threads
     var _tha; var _thL; var _thv; var _thnext; var _thnp; var _nfil;
@@ -68,7 +67,6 @@ class BioBloom {
     // blooms
     var _blbx; var _blby; var _blang; var _blw; var _blsalt; var _blreach;
     var _blmom; var _blnb; var _blband; var _nbloom;   // _blband: ci<<8 | rEnd
-    var _blfan;                // packed spine fan: (off+60)<<13|lf<<5|(bow+6)<<1|fork
     // colony
     var _colreach; var _coln; var _colband;            // _colband: ci<<8 | rEnd
     // episode / inactivity
@@ -89,7 +87,6 @@ class BioBloom {
         _blw = new [BMAX]; _blsalt = new [BMAX]; _blreach = new [BMAX];
         _blmom = new [BMAX]; _blnb = new [BMAX];
         _blband = new [BMAX * BBANDS];
-        _blfan = new [BMAX * SMAX];
         _colband = new [CBANDS];
         _win = new [10];
         _ord = new [KMAX];
@@ -238,26 +235,8 @@ class BioBloom {
         _blbx[j] = bx; _blby[j] = by; _blang[j] = _tha[src];
         _blreach[j] = BASE; _blw[j] = 3; _blnb[j] = 0; _blmom[j] = 0;
         _blsalt[j] = GenArt.hash16(bx, by, zi) % 4096;
-        buildFan(j);
         _nbloom++;
         return j;
-    }
-
-    // Precompute a bloom's spine fan once (deterministic from its salt): per
-    // spine, pack angle offset, length fraction, sideways bow and a fork flag
-    // into one Number. Not persisted — load() recomputes it from the salt.
-    function buildFan(bi) {
-        var salt = _blsalt[bi];
-        var nsp = 6 + (GenArt.hash16(salt, 1, 1) % 6);     // 6..11
-        var basef = bi * SMAX;
-        for (var k = 0; k < nsp; k++) {
-            var off = (GenArt.hash16(salt, k, 4) % 121) - 60;
-            var lf = 90 + (GenArt.hash16(salt, k, 5) % 166);
-            var bow = (GenArt.hash16(salt, k, 7) % 13) - 6;
-            var fork = ((GenArt.hash16(salt, k, 6) % 2) == 0) ? 1 : 0;
-            _blfan[basef + k] =
-                ((off + 60) << 13) | (lf << 5) | ((bow + 6) << 1) | fork;
-        }
     }
 
     function bandBloom(bi, cidx, grow) {
@@ -451,24 +430,23 @@ class BioBloom {
     }
 
     // A bloom = a burst of bowed, sometimes-forking spines fired outward along
-    // its arm, each coloured by the HR-zone band at its tip. The fan is read
-    // from _blfan (precomputed in buildFan) and just scaled by reach as it grows.
+    // its arm, each coloured by the HR-zone band at its tip. The fan (angles,
+    // lengths, bow, forks) is a cheap deterministic function of the bloom salt,
+    // recomputed each frame and just scaled by reach as the bloom grows.
     function drawBloom(dc, bi) {
         if (_blnb[bi] == 0) { return; }
         var ang = _blang[bi];
         var reach = _blreach[bi]; var w = _blw[bi]; var salt = _blsalt[bi];
         var bx = _blbx[bi]; var by = _blby[bi];
         var nsp = 6 + (GenArt.hash16(salt, 1, 1) % 6);
-        var basef = bi * SMAX;
         dc.setColor(blColor(bi, BASE), Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(bx, by, 1 + w / 8);            // tiny anchor node (1..3px)
         for (var k = 0; k < nsp; k++) {
             if (_ink <= 0) { return; }
-            var pk = _blfan[basef + k];
-            var off = ((pk >> 13) & 0x7F) - 60;
-            var lf = (pk >> 5) & 0xFF;
-            var bow = ((pk >> 1) & 0xF) - 6;
-            var fork = (pk & 1) == 1;
+            var off = (GenArt.hash16(salt, k, 4) % 121) - 60;
+            var lf = 90 + (GenArt.hash16(salt, k, 5) % 166);
+            var bow = (GenArt.hash16(salt, k, 7) % 13) - 6;
+            var fork = (GenArt.hash16(salt, k, 6) % 2) == 0;
             var a2 = (ang + off) % 256;
             var dx = GenArt.isin(a2 + 64); var dy = GenArt.isin(a2);
             var px = GenArt.isin(a2 + 128); var py = GenArt.isin(a2 + 64);
@@ -569,7 +547,6 @@ class BioBloom {
             var bb = i * BBANDS;
             for (var k = 0; k < _blnb[i]; k++) { _blband[bb + k] = a[p]; p++; }
         }
-        for (var i = 0; i < _nbloom; i++) { buildFan(i); }   // fans not persisted
         _colreach = a[p]; p++; _coln = a[p]; p++;
         for (var i = 0; i < _coln; i++) { _colband[i] = a[p]; p++; }
     }
