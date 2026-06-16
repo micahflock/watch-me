@@ -33,8 +33,35 @@ record the effort as zone-coloured bands as they grow outward.
 Activity-driven: the day's shape is the day's exertion. 14-colour palette, one
 repaint per minute, no within-minute animation. Daily reset (fresh dish).
 """
-from device import (idiv, imod, isin, hash16, zoneIndex, ZONE_COLORS,
-                    COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY)
+from device import (idiv, imod, isin, hash16,
+                    COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY,
+                    COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
+                    COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK,
+                    COLOR_PURPLE, COLOR_DK_RED)
+
+# ---- finer HR ramp (biobloom-local) ----------------------------------------
+# The shared GenArt.ZONE_COLORS is a 7-step ramp used by strata/flock; biobloom
+# carries its own 9-step ramp so elevated HR reads with more granularity without
+# touching the other faces. Cool -> hot: blue family for rest, green for easy,
+# then a warm run yellow -> orange -> red -> pink -> purple for the hard end, so
+# the 105-135 band (which used to all be one green) now spreads across several
+# colours. hr_zi(None) == -1 (never elevated; drawn dark grey).
+HR_BOUNDS = [60, 80, 95, 105, 120, 138, 152, 165]
+HR_RAMP = [COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
+           COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK, COLOR_PURPLE]
+
+
+def hr_zi(hr):
+    if hr is None:
+        return -1
+    for i in range(len(HR_BOUNDS)):
+        if hr < HR_BOUNDS[i]:
+            return i
+    return len(HR_BOUNDS)            # 8 == PURPLE (HR >= 165)
+
+
+def hr_color(zi):
+    return COLOR_DK_GRAY if zi < 0 else HR_RAMP[zi]
 
 CX, CY = 107, 108     # centre at 2/5 of the screen height up from the bottom
 R0, RMAX = 7, 86
@@ -44,7 +71,19 @@ STEP = 2            # px of radius per appended vertex
 KMAX = 22           # cap on live filaments
 SEEDS = 9           # initial threads, spread evenly around the centre
 
-ACTIVE = 3          # zone idx >= ACTIVE is an elevated-HR minute (HR >= 105)
+ACTIVE = 4          # zone idx >= ACTIVE is an elevated-HR minute (HR >= 105)
+
+# How banked-movement "momentum" creep (the growth that continues after HR has
+# dropped) is coloured. The HR-driven bands are always the zone ramp; this only
+# governs the after-glow tail. Options compared in the sandbox:
+#   "inherit"  -- reuse the last HR-zone colour (original behaviour)
+#   "ember"    -- cool the tail hot -> dark-red -> dark-grey (spent fuel / ash)
+#   "violet"   -- a single dedicated PURPLE, a bold banked-effort halo
+#   "neutral"  -- a quiet light-grey, so the bright HR bands pop
+#   "cooldown" -- start at the last HR colour, then cool back DOWN the HR ramp
+#                 (orange -> yellow -> green -> blue) to resting as the banked
+#                 reservoir is spent: the recovery told as a colour gradient
+MOM_MODE = "cooldown"
 BASE = 2            # px a bloom starts out from its anchor
 GROW = 2            # px the frontier advances per elevated minute (one band)
 REACH_CAP = 46      # px a bloom can reach outward along its arm
@@ -71,7 +110,8 @@ INK_MAX = 700       # per-frame draw-budget guard (watchdog backstop, see .mc)
 
 
 class BioBloom:
-    def __init__(self):
+    def __init__(self, mom_mode=MOM_MODE):
+        self.mom_mode = mom_mode
         self.prev = None
         self.win = []
         self.fil = []
@@ -133,7 +173,7 @@ class BioBloom:
         self.prev = steps
 
         hr = snap.heartRate
-        zi = zoneIndex(hr)
+        zi = hr_zi(hr)
         cur = hr if hr is not None else 0
         self.win.append(cur)
         if len(self.win) > 10:
@@ -142,7 +182,7 @@ class BioBloom:
         rising = len(self.win) >= 6 and cur - self.win[0] >= 8
 
         move = idiv(spm, KACT)
-        color = COLOR_DK_GRAY if spm <= 1 else ZONE_COLORS[zi]
+        color = COLOR_DK_GRAY if spm <= 1 else hr_color(zi)
 
         if move > 0:
             nf = len(self.fil)
@@ -170,10 +210,15 @@ class BioBloom:
                 w = 16
             if w > b["w"]:
                 b["w"] = w
-            self._band(b, ZONE_COLORS[zi], GROW)      # initial growth, zone colour
+            self._band(b, hr_color(zi), GROW)         # initial growth, zone colour
+            if zi > b["hot"]:
+                b["hot"] = zi                         # peak zone, for ember tail
+            b["mc"] = 0                               # reset ember tail on re-feed
+            b["lastzi"] = zi                          # tail starts from this zone
             b["mom"] += idiv(spm, MOM_DIV)            # bank movement effort
             if b["mom"] > REACH_CAP:
                 b["mom"] = REACH_CAP
+            b["mom0"] = b["mom"]                      # reservoir at HR-drop, for cooldown
             fed = self.epi_idx
         else:
             self.epi_on = False
@@ -213,7 +258,7 @@ class BioBloom:
         if self.bar >= BAR_ON:
             c = COLOR_DK_GRAY if self.bar >= BAR_HI else COLOR_LT_GRAY
         else:
-            c = ZONE_COLORS[zi]
+            c = hr_color(zi)
         col["bands"].append((col["reach"], target, c))
         col["reach"] = target
 
@@ -226,7 +271,8 @@ class BioBloom:
         bx, by, _ = f["pts"][-1]
         salt = imod(hash16(bx, by, zi), 4096)
         self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
-                            "w": 3, "bands": [], "salt": salt, "mom": 0})
+                            "w": 3, "bands": [], "salt": salt, "mom": 0,
+                            "hot": zi, "mc": 0, "lastzi": zi, "mom0": 0})
         return len(self.blooms) - 1
 
     def _band(self, b, color, grow):
@@ -239,10 +285,40 @@ class BioBloom:
             b["bands"].append((r0, r1, color))
             b["reach"] = r1
 
+    def _mom_color(self, b):
+        # colour of a momentum (post-HR) creep band, per self.mom_mode
+        if self.mom_mode == "violet":
+            return COLOR_PURPLE
+        if self.mom_mode == "neutral":
+            return COLOR_LT_GRAY
+        if self.mom_mode == "ember":
+            # cool the tail as the reservoir is spent: a couple of bands in the
+            # peak HR colour, then dark red, then dark grey ash
+            if b["mc"] < 2:
+                return hr_color(b["hot"])
+            if b["mc"] < 4:
+                return COLOR_DK_RED
+            return COLOR_DK_GRAY
+        if self.mom_mode == "cooldown":
+            # start at the last HR colour and cool back DOWN the ramp toward
+            # resting (idx 0) in proportion to how much reservoir is left, so
+            # the recovery reads as a colour gradient regardless of tail length
+            m0 = b["mom0"]
+            if m0 <= 0:
+                return hr_color(b["lastzi"])
+            ci = idiv(b["lastzi"] * b["mom"], m0)
+            if ci < 0:
+                ci = 0
+            if ci > b["lastzi"]:
+                ci = b["lastzi"]
+            return hr_color(ci)
+        return b["bands"][-1][2]                       # "inherit"
+
     def _momentum(self, fed):
         # blooms not growing from HR this minute spend their banked movement
-        # effort to creep on in the last zone's colour, until the reservoir runs
-        # out -- exercise (lots of movement) keeps growing, anxiety does not
+        # effort to creep on, until the reservoir runs out -- exercise (lots of
+        # movement) keeps growing, anxiety does not. The creep colour is the
+        # after-glow tail governed by self.mom_mode.
         i = 0
         while i < len(self.blooms):
             b = self.blooms[i]
@@ -250,8 +326,9 @@ class BioBloom:
                 g = MOM_STEP
                 if g > b["mom"]:
                     g = b["mom"]
-                self._band(b, b["bands"][-1][2], g)
+                self._band(b, self._mom_color(b), g)
                 b["mom"] -= g
+                b["mc"] += 1
             i += 1
 
     def render(self, dc, snap):
@@ -365,4 +442,4 @@ class BioBloom:
 
 
 def build():
-    return {"background": COLOR_BLACK, "components": [BioBloom()]}
+    return {"background": COLOR_BLACK, "components": [BioBloom(MOM_MODE)]}

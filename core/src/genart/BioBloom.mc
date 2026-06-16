@@ -15,8 +15,10 @@ using Toybox.Graphics as Gfx;
 //
 // State is flat Number arrays, PACKED to fit the memory budget: each thread
 // vertex is one Number (colorIdx<<16 | x<<8 | y), each band one Number
-// (colorIdx<<8 | rEnd). Colour index 0..7 maps to ZONE_COLORS (7 == DK_GRAY);
-// 8 == LT_GRAY (colony idle bands only). Evolution is incremental — advance()
+// (colorIdx<<8 | rEnd). Colour index 0..8 maps to HR_RAMP (a biobloom-local
+// 9-step HR ramp, finer than the shared GenArt.ZONE_COLORS, so the other faces
+// are untouched); 9 == DK_GRAY (idle / unknown HR), 10 == LT_GRAY (colony idle
+// bands only). Evolution is incremental — advance()
 // simulates only the minutes since the last tick (capped) — and resets the dish
 // at midnight. All integer math (the watchdog is the binding constraint).
 //
@@ -38,7 +40,7 @@ class BioBloom {
     const SEEDS = 9;           // initial threads, spread around the centre
     const PMAX = 44;           // vertices per thread (R0..RMAX by STEP + slack)
 
-    const ACTIVE = 3;          // zone idx >= this is an elevated-HR minute
+    const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute (HR>=105)
     const BASE = 2;            // px a bloom starts out from its anchor
     const GROW = 2;            // px the bloom frontier advances per minute
     const REACH_CAP = 46;      // px a bloom can reach along its arm
@@ -58,8 +60,20 @@ class BioBloom {
     const BAR_HI = 50;         // deeper inactivity -> dark grey vs light grey
     const BAR_CLEAR = 4;       // solid movement works the meter down per minute
     const CBANDS = 96;         // cap on colony bands
-    const LTGREY = 8;          // colour index for COLOR_LT_GRAY (colony idle)
+    const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
+    const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
     const INK_MAX = 700;       // per-frame draw budget (watchdog backstop)
+
+    // Biobloom-local 9-step HR ramp (finer than GenArt's shared 7-step ramp, so
+    // strata/flock keep theirs). Cool -> hot: blue family at rest, green for
+    // easy, a warm yellow->orange->red run, pink/purple reserved for genuine max
+    // efforts (HR >= 152 / 165). hrZone(null) == -1 (never elevated; drawn grey).
+    const HR_BOUNDS = [60, 80, 95, 105, 120, 138, 152, 165];
+    const HR_RAMP = [
+        Gfx.COLOR_DK_BLUE, Gfx.COLOR_BLUE, Gfx.COLOR_DK_GREEN, Gfx.COLOR_GREEN,
+        Gfx.COLOR_YELLOW, Gfx.COLOR_ORANGE, Gfx.COLOR_RED, Gfx.COLOR_PINK,
+        Gfx.COLOR_PURPLE
+    ];
 
     // threads
     var _tha; var _thL; var _thv; var _thnext; var _thnp; var _nfil;
@@ -67,6 +81,7 @@ class BioBloom {
     // blooms
     var _blbx; var _blby; var _blang; var _blw; var _blsalt; var _blreach;
     var _blmom; var _blnb; var _blband; var _nbloom;   // _blband: ci<<8 | rEnd
+    var _blmom0; var _bllastzi;        // cooldown tail: reservoir & zone at HR-drop
     // colony
     var _colreach; var _coln; var _colband;            // _colband: ci<<8 | rEnd
     // episode / inactivity
@@ -86,6 +101,7 @@ class BioBloom {
         _blbx = new [BMAX]; _blby = new [BMAX]; _blang = new [BMAX];
         _blw = new [BMAX]; _blsalt = new [BMAX]; _blreach = new [BMAX];
         _blmom = new [BMAX]; _blnb = new [BMAX];
+        _blmom0 = new [BMAX]; _bllastzi = new [BMAX];
         _blband = new [BMAX * BBANDS];
         _colband = new [CBANDS];
         _win = new [10];
@@ -120,7 +136,18 @@ class BioBloom {
     function upy(v) { return v & 0xFF; }
     function upci(v) { return (v >> 16) & 0xFF; }
     function colorOf(ci) {
-        return (ci == LTGREY) ? Gfx.COLOR_LT_GRAY : GenArt.ZONE_COLORS[ci];
+        if (ci == DKGREY) { return Gfx.COLOR_DK_GRAY; }
+        if (ci == LTGREY) { return Gfx.COLOR_LT_GRAY; }
+        return HR_RAMP[ci];
+    }
+
+    // HR bpm -> biobloom zone index 0..8, or -1 if HR is unknown.
+    function hrZone(hr) {
+        if (hr == null) { return -1; }
+        for (var i = 0; i < 8; i++) {
+            if (hr < HR_BOUNDS[i]) { return i; }
+        }
+        return 8;
     }
 
     // ---- per-minute simulation ------------------------------------------------
@@ -153,7 +180,7 @@ class BioBloom {
         var nowSteps = (steps != null) ? steps : 0;
 
         var hr = state.heartRate;
-        var zi = GenArt.zoneIndex(hr);
+        var zi = hrZone(hr);
         pushWin((hr != null) ? hr : 0);
         var vrange = winRange();
         var rising = winRising();
@@ -168,7 +195,7 @@ class BioBloom {
 
     function stepMinute(spm, zi, vrange, rising, salt) {
         var move = spm / KACT;
-        var cidx = (spm <= 1) ? 7 : zi;          // 7 == DK_GRAY == ZONE_COLORS[7]
+        var cidx = (spm <= 1 || zi < 0) ? DKGREY : zi;   // grey when idle / HR unknown
 
         if (move > 0) {
             var nf = _nfil;
@@ -195,8 +222,10 @@ class BioBloom {
                 if (w > 16) { w = 16; }
                 if (w > _blw[_epiIdx]) { _blw[_epiIdx] = w; }
                 bandBloom(_epiIdx, zi, GROW);    // bloom colour = HR zone index
+                _bllastzi[_epiIdx] = zi;         // cooldown tail starts from here
                 _blmom[_epiIdx] += spm / MOM_DIV;
                 if (_blmom[_epiIdx] > REACH_CAP) { _blmom[_epiIdx] = REACH_CAP; }
+                _blmom0[_epiIdx] = _blmom[_epiIdx];   // reservoir at HR-drop
                 fed = _epiIdx;
             }
         } else {
@@ -234,6 +263,7 @@ class BioBloom {
         var j = _nbloom;
         _blbx[j] = bx; _blby[j] = by; _blang[j] = _tha[src];
         _blreach[j] = BASE; _blw[j] = 3; _blnb[j] = 0; _blmom[j] = 0;
+        _blmom0[j] = 0; _bllastzi[j] = zi;
         _blsalt[j] = GenArt.hash16(bx, by, zi) % 4096;
         _nbloom++;
         return j;
@@ -260,11 +290,23 @@ class BioBloom {
                 && _blnb[i] > 0) {
                 var g = MOM_STEP;
                 if (g > _blmom[i]) { g = _blmom[i]; }
-                var last = (_blband[i * BBANDS + _blnb[i] - 1] >> 8) & 0xFF;
-                bandBloom(i, last, g);
+                bandBloom(i, momColor(i), g);
                 _blmom[i] -= g;
             }
         }
+    }
+
+    // Cooldown tail: start at the last HR zone and cool back DOWN the ramp
+    // toward resting (idx 0) in proportion to how much reservoir is left, so the
+    // recovery reads as a colour gradient regardless of the tail's length.
+    function momColor(i) {
+        var m0 = _blmom0[i];
+        var lz = _bllastzi[i];
+        if (m0 <= 0) { return lz; }
+        var ci = (lz * _blmom[i]) / m0;
+        if (ci < 0) { ci = 0; }
+        if (ci > lz) { ci = lz; }
+        return ci;
     }
 
     function growColony(spm, zi) {
@@ -288,9 +330,9 @@ class BioBloom {
         if (target <= _colreach) { return; }
         var cidx;
         if (_bar >= BAR_ON) {
-            cidx = (_bar >= BAR_HI) ? 7 : LTGREY;   // 7 == DK_GRAY
+            cidx = (_bar >= BAR_HI) ? DKGREY : LTGREY;
         } else {
-            cidx = zi;
+            cidx = (zi < 0) ? DKGREY : zi;          // grey when HR unknown
         }
         if (_coln < CBANDS) {
             _colband[_coln] = (cidx << 8) | target; _coln += 1;
@@ -485,7 +527,7 @@ class BioBloom {
         // predictable (~3 KB on a full day).
         var n = 18 + 1 + 1 + 2;            // header + win + _nfil + _nbloom + 2
         for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i]; }
-        for (var i = 0; i < _nbloom; i++) { n += 8 + _blnb[i]; }
+        for (var i = 0; i < _nbloom; i++) { n += 10 + _blnb[i]; }
         n += _coln;
         var a = new [n];
         var p = 0;
@@ -510,6 +552,7 @@ class BioBloom {
             a[p] = _blbx[i]; p++; a[p] = _blby[i]; p++; a[p] = _blang[i]; p++;
             a[p] = _blw[i]; p++; a[p] = _blsalt[i]; p++; a[p] = _blreach[i]; p++;
             a[p] = _blmom[i]; p++; a[p] = _blnb[i]; p++;
+            a[p] = _blmom0[i]; p++; a[p] = _bllastzi[i]; p++;
             var bb = i * BBANDS;
             for (var k = 0; k < _blnb[i]; k++) { a[p] = _blband[bb + k]; p++; }
         }
@@ -544,6 +587,7 @@ class BioBloom {
             _blbx[i] = a[p]; p++; _blby[i] = a[p]; p++; _blang[i] = a[p]; p++;
             _blw[i] = a[p]; p++; _blsalt[i] = a[p]; p++; _blreach[i] = a[p]; p++;
             _blmom[i] = a[p]; p++; _blnb[i] = a[p]; p++;
+            _blmom0[i] = a[p]; p++; _bllastzi[i] = a[p]; p++;
             var bb = i * BBANDS;
             for (var k = 0; k < _blnb[i]; k++) { _blband[bb + k] = a[p]; p++; }
         }
