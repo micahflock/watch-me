@@ -67,7 +67,7 @@ BAR_CLEAR = 4       # solid movement works the meter back down per minute
                     # (slow, so the onset of activity after a long idle -- e.g.
                     # the first run minutes out of sleep -- grows grey first)
 
-INK_MAX = 1500      # per-frame draw-budget guard (watchdog backstop, see .mc)
+INK_MAX = 700       # per-frame draw-budget guard (watchdog backstop, see .mc)
 
 
 class BioBloom:
@@ -226,23 +226,8 @@ class BioBloom:
         bx, by, _ = f["pts"][-1]
         salt = imod(hash16(bx, by, zi), 4096)
         self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
-                            "w": 3, "bands": [], "salt": salt, "mom": 0,
-                            "spikes": self._fan(salt)})   # precompute fan once
+                            "w": 3, "bands": [], "salt": salt, "mom": 0})
         return len(self.blooms) - 1
-
-    def _fan(self, salt):
-        # the bloom's spine fan: angle offset, length fraction, sideways bow and
-        # a fork flag per spine -- a deterministic function of salt, built once
-        # (mirrors BioBloom.mc buildFan, which packs each spine into one Number)
-        nsp = 6 + imod(hash16(salt, 1, 1), 6)         # 6..11 spines
-        sp = []
-        for k in range(nsp):
-            off = imod(hash16(salt, k, 4), 121) - 60  # +-60/256 ~ +-84 deg
-            lf = 90 + imod(hash16(salt, k, 5), 166)   # 90..255 of reach
-            bow = imod(hash16(salt, k, 7), 13) - 6    # -6..6 px sideways
-            fork = imod(hash16(salt, k, 6), 2) == 0   # ~half branch
-            sp.append((off, lf, bow, fork))
-        return sp
 
     def _band(self, b, color, grow):
         # append one outward band, capped at the reach ceiling
@@ -340,13 +325,18 @@ class BioBloom:
         # (b["spikes"]) and just scaled by reach as the bloom grows
         if not b["bands"]:
             return
-        ang, reach, w = b["ang"], b["reach"], b["w"]
+        ang, reach, w, salt = b["ang"], b["reach"], b["w"], b["salt"]
         bx, by = b["bx"], b["by"]
+        nsp = 6 + imod(hash16(salt, 1, 1), 6)     # 6..11 spines
         dc.setColor(self._band_color(b, BASE), COLOR_BLACK)
         dc.fillCircle(bx, by, 1 + idiv(w, 8))     # tiny anchor node (1..3px)
-        for (off, lf, bow, fork) in b["spikes"]:
+        for k in range(nsp):
             if self._ink <= 0:
                 return
+            off = imod(hash16(salt, k, 4), 121) - 60   # +-60/256 ~ +-84 deg
+            lf = 90 + imod(hash16(salt, k, 5), 166)    # 90..255 of reach
+            bow = imod(hash16(salt, k, 7), 13) - 6     # -6..6 px sideways
+            fork = imod(hash16(salt, k, 6), 2) == 0    # ~half branch
             a2 = imod(ang + off, 256)
             dx, dy = isin(a2 + 64), isin(a2)
             px, py = isin(a2 + 128), isin(a2 + 64)         # perpendicular (bow)
