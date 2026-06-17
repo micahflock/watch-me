@@ -54,6 +54,72 @@ function bioFeedActiveDay(bloom) {
     }
 }
 
+// A deliberately punishing day: ~15 h of hard-effort / active-recovery intervals
+// that saturate the dish (22 filament arms, 16 blooms, a deep colony) -- the
+// worst case for any render cost that scales with accreted state. Recovery HR
+// drops below the elevated threshold so each cycle is a distinct episode (a new
+// bloom), capping at BMAX; the movement keeps the colony and filaments growing.
+function bioFeedHeavyDay(bloom) {
+    var snap = new Snapshot();
+    snap.year = 2026; snap.month = 6; snap.day = 14;
+    var cum = 0;
+    for (var t = 0; t < 1440; t++) {
+        var spm = 0; var hr = 54;
+        if (t >= 420 && t < 1320) {                 // 07:00..22:00 intervals
+            if ((t % 40) < 20) { spm = 155; hr = 150; }   // hard effort -> bloom
+            else { spm = 70; hr = 92; }                   // recovery (ends episode)
+        } else if (t >= 390 && t < 420) {
+            spm = 20; hr = 70;                      // waking
+        }
+        var j = GenArt.hash16(1, t, 7);
+        var step;
+        if (spm != 0) {
+            step = spm + (j % 21) - 10;
+            if (step < 0) { step = 0; }
+        } else {
+            step = ((j % 1000) < 30) ? 1 : 0;
+        }
+        cum += step;
+        snap.hour = t / 60;
+        snap.minute = t % 60;
+        snap.steps = cum;
+        snap.heartRate = hr + (GenArt.hash16(1, t, 11) % 13) - 6;
+        bloom.advance(snap);
+    }
+}
+
+// Regression guard for the watchdog crashes: on a saturated dish the render must
+// stay BOUNDED. Two earlier bugs slipped past because nothing asserted this --
+// (1) the skeleton drew one line per vertex with no budget (~1383 primitives),
+// and (2) colColor/blColor scanned the band arrays once per spine (cost grew all
+// day toward the 96-band cap). Decimation + one shared ink budget cap the
+// primitive count; the per-frame radius->colour LUTs make lookups O(1). This
+// test pins the primitive ceiling; the band-scan cost is guarded in the sandbox
+// (scrub.py --day heavy, via device.account()).
+(:test)
+function testBioBloomRenderBudget(logger) {
+    GenArt.initSinTable();
+    var b = new BioBloom();
+    bioFeedHeavyDay(b);
+    logger.debug("heavy dish: nbloom=" + b._nbloom + " coln=" + b._coln
+        + " nfil=" + b._nfil);
+
+    // The dish must actually be saturated, or the test isn't exercising the
+    // worst case it claims to guard.
+    Test.assert(b._nbloom == 16);        // BMAX -- bloom cap reached
+    Test.assert(b._nfil == 22);          // KMAX -- filament cap reached
+    Test.assert(b._coln >= 40);          // colony well into its band budget
+
+    // Render work bounded regardless of dish size: one shared ink budget
+    // (INK_MAX = 700) caps skeleton + blooms + fur, plus the colony core and a
+    // little spine overshoot. A blown budget (e.g. the old ~1383) fails here.
+    var dc = new CountDc();
+    b.render(dc, null);
+    logger.debug("heavy render prims=" + dc.n);
+    Test.assert(dc.n <= 760);
+    return true;
+}
+
 (:test)
 function testBioBloomDayParity(logger) {
     GenArt.initSinTable();

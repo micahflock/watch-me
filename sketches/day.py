@@ -67,7 +67,34 @@ _SEG_REST = [
     (22.0, 1,   56),   # wind-down
 ]
 
-_PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST}
+# "heavy" — a deliberately punishing day used to STRESS the render budget: many
+# hours of intervals (run/recover sawtooth) so the dish saturates its caps (22
+# filament arms, 16 blooms, the colony toward its 96-band ceiling). This is the
+# worst case for any per-band render cost; `scrub.py biobloom --day heavy` is the
+# scrub that would have flagged the band-scan watchdog trip before the wrist did.
+_SEG_HEAVY = [
+    (0.0,  0,   50),   # sleep
+    (6.5,  20,  70),   # waking
+    # ~13 h of alternating hard efforts and active recoveries (each ~20 min):
+    (7.0,  150, 150),  (7.33, 60,  110),
+    (8.0,  160, 158),  (8.33, 45,  120),
+    (9.0,  150, 145),  (9.33, 70,  108),
+    (10.0, 165, 160),  (10.33, 50, 118),
+    (11.0, 140, 138),  (11.33, 80, 100),
+    (12.0, 120, 130),  (12.5,  90, 112),
+    (13.0, 160, 152),  (13.33, 40, 122),
+    (14.0, 150, 148),  (14.33, 65, 106),
+    (15.0, 158, 156),  (15.33, 55, 116),
+    (16.0, 145, 140),  (16.33, 75, 104),
+    (17.0, 162, 158),  (17.33, 50, 120),
+    (18.0, 150, 146),  (18.33, 70, 108),
+    (19.0, 140, 136),  (19.33, 60, 100),
+    (20.0, 130, 128),  (20.33, 45, 110),
+    (21.0, 120, 124),  (21.5,  30, 96),
+    (22.0, 5,   72),   # wind-down
+]
+
+_PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST, "heavy": _SEG_HEAVY}
 
 
 def _segment(h, segs):

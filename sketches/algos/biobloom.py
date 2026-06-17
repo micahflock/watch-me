@@ -33,7 +33,7 @@ record the effort as zone-coloured bands as they grow outward.
 Activity-driven: the day's shape is the day's exertion. 14-colour palette, one
 repaint per minute, no within-minute animation. Daily reset (fresh dish).
 """
-from device import (idiv, imod, isin, hash16,
+from device import (idiv, imod, isin, hash16, account,
                     COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY,
                     COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
                     COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK,
@@ -445,6 +445,7 @@ class BioBloom:
         # are sorted ascending by their outer radius (appended as the frontier
         # advances), so one monotonic sweep fills the whole table. O(bands+rmax).
         n = len(bands)
+        account(rmax + 1 + n)        # charge the sweep (sandbox proxy; no .mc line)
         bi = 0
         r = 0
         while r <= rmax:

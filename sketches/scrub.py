@@ -55,11 +55,13 @@ def render_frame(spec, snap, scale):
     for c in spec["components"]:
         if hasattr(c, "render"):
             c.render(dc, snap)
-    nh, ns = device.perf_read()
+    nh, ns, nops = device.perf_read()
     # Watchdog proxy = estimated VM INSTRUCTIONS, not raw primitive count
-    # (hash16/isin are real function calls and usually dominate the frame).
+    # (hash16/isin are real function calls and usually dominate the frame; nops
+    # is inner-loop/band-scan work, which dominates instead once a dish accretes
+    # many bands -- see device.account()).
     work = (dc.calls * device.VM_PRIM + nh * device.VM_HASH16
-            + ns * device.VM_ISIN)
+            + ns * device.VM_ISIN + nops * device.VM_OP)
     state_bytes = sum(c.state_bytes() for c in spec["components"]
                       if hasattr(c, "state_bytes"))
     img = dc.masked().resize((device.W * scale, device.H * scale), Image.NEAREST)
