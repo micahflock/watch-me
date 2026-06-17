@@ -94,6 +94,13 @@ class BioBloom {
     var _bloomBase;
     var _ord;                  // scratch index array for _longish
     var _ink;                  // per-frame draw budget (counts down in render)
+    // Per-frame radius->colour lookup tables (allocated ONCE in initialize,
+    // refilled each render). They turn the band-colour query from an O(bands)
+    // scan -- which grew all day toward the band caps and tripped the watchdog
+    // late in a long day -- into an O(1) array read, so render cost no longer
+    // grows with how many bands the dish has accreted.
+    var _colLut;               // radius 0..CR_MAX     -> colony colour
+    var _blLut;                // radius 0..REACH_CAP   -> current bloom colour
 
     function initialize() {
         _tha = new [KMAX]; _thL = new [KMAX]; _thv = new [KMAX];
@@ -107,6 +114,8 @@ class BioBloom {
         _colband = new [CBANDS];
         _win = new [10];
         _ord = new [KMAX];
+        _colLut = new [CR_MAX + 1];
+        _blLut = new [REACH_CAP + 1];
         _bloomBase = GenArt.hash16(SEEDS, 17, 3) % 256;
         reset();
     }
@@ -459,6 +468,7 @@ class BioBloom {
     // the colony has filled. Drawn last so the ink budget sheds fur before blooms.
     function drawFur(dc) {
         if (_coln == 0) { return; }
+        fillColLut();                        // O(1) colour lookups in the loop
         var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
             var lim = _thL[i] / UNIT - TRAIL;
@@ -474,7 +484,8 @@ class BioBloom {
                 if ((k % 3) == 0) {
                     var v = _pt[base + k];
                     var x = upx(v); var y = upy(v);
-                    dc.setColor(colColor(rr), Gfx.COLOR_TRANSPARENT);
+                    dc.setColor(_colLut[(rr <= CR_MAX) ? rr : CR_MAX],
+                        Gfx.COLOR_TRANSPARENT);
                     var a2 = (a + k * 13) % 256;
                     var le = 3 + (k % 4);
                     dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
@@ -485,24 +496,31 @@ class BioBloom {
         }
     }
 
-    // Colour of the colony band covering radius r (mirrors blColor for _colband).
-    function colColor(r) {
-        for (var i = 0; i < _coln; i++) {
-            if (r <= (_colband[i] & 0xFF)) {
-                return colorOf((_colband[i] >> 8) & 0xFF);
-            }
+    // Fill _colLut[0..CR_MAX] with the colony colour at each radius. Bands are
+    // sorted ascending by outer radius (appended as the frontier advances), so a
+    // single monotonic sweep fills the whole table -- O(coln + CR_MAX), built
+    // once per frame instead of an O(coln) scan per fur spine.
+    function fillColLut() {
+        var n = _coln;
+        var bi = 0;
+        for (var r = 0; r <= CR_MAX; r++) {
+            while (bi < n && (_colband[bi] & 0xFF) < r) { bi++; }
+            var ci = (bi < n) ? ((_colband[bi] >> 8) & 0xFF)
+                              : ((_colband[n - 1] >> 8) & 0xFF);
+            _colLut[r] = colorOf(ci);
         }
-        return colorOf((_colband[_coln - 1] >> 8) & 0xFF);
     }
 
-    function blColor(bi, r) {
+    // Fill _blLut[0..REACH_CAP] with bloom bi's colour at each radius (same sweep).
+    function fillBloomLut(bi) {
         var base = bi * BBANDS; var n = _blnb[bi];
-        for (var i = 0; i < n; i++) {
-            if (r <= (_blband[base + i] & 0xFF)) {
-                return colorOf((_blband[base + i] >> 8) & 0xFF);
-            }
+        var j = 0;
+        for (var r = 0; r <= REACH_CAP; r++) {
+            while (j < n && (_blband[base + j] & 0xFF) < r) { j++; }
+            var ci = (j < n) ? ((_blband[base + j] >> 8) & 0xFF)
+                             : ((_blband[base + n - 1] >> 8) & 0xFF);
+            _blLut[r] = colorOf(ci);
         }
-        return colorOf((_blband[base + n - 1] >> 8) & 0xFF);
     }
 
     // A bloom = a burst of bowed, sometimes-forking spines fired outward along
@@ -511,11 +529,12 @@ class BioBloom {
     // recomputed each frame and just scaled by reach as the bloom grows.
     function drawBloom(dc, bi) {
         if (_blnb[bi] == 0) { return; }
+        fillBloomLut(bi);                            // O(1) colour lookups below
         var ang = _blang[bi];
         var reach = _blreach[bi]; var w = _blw[bi]; var salt = _blsalt[bi];
         var bx = _blbx[bi]; var by = _blby[bi];
         var nsp = 6 + (GenArt.hash16(salt, 1, 1) % 6);
-        dc.setColor(blColor(bi, BASE), Gfx.COLOR_TRANSPARENT);
+        dc.setColor(_blLut[BASE], Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(bx, by, 1 + w / 8);            // tiny anchor node (1..3px)
         for (var k = 0; k < nsp; k++) {
             if (_ink <= 0) { return; }
@@ -532,7 +551,8 @@ class BioBloom {
             var my = by + (mr * dy) / 127 + (bow * py) / 127;
             var ex = bx + (tip * dx) / 127;
             var ey = by + (tip * dy) / 127;
-            dc.setColor(blColor(bi, tip), Gfx.COLOR_TRANSPARENT);
+            dc.setColor(_blLut[(tip <= REACH_CAP) ? tip : REACH_CAP],
+                Gfx.COLOR_TRANSPARENT);
             dc.drawLine(bx, by, mx, my);             // bowed spine, 2 segments
             dc.drawLine(mx, my, ex, ey);
             _ink -= 2;

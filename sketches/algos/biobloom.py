@@ -130,6 +130,12 @@ class BioBloom:
         self.colony = {"reach": R0, "bands": []}   # central main colony
         self.bar = 0                 # inactivity meter (Garmin-style move bar)
         self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)   # per-day phase
+        # Per-frame radius->colour lookup tables (allocated ONCE; refilled each
+        # render). They turn the band-colour query from an O(bands) scan -- which
+        # grew all day toward the 96-band cap and tripped the watchdog -- into an
+        # O(1) array read, so render cost no longer grows with the day's length.
+        self._col_lut = [COLOR_BLACK] * (CR_MAX + 1)
+        self._bl_lut = [COLOR_BLACK] * (REACH_CAP + 1)
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
             v = 2 + imod(hash16(7, i, 1), 3)
@@ -407,6 +413,7 @@ class BioBloom:
         col = self.colony
         if not col["bands"]:
             return
+        self._fill_lut(col["bands"], CR_MAX, self._col_lut)   # O(1) lookups below
         reach = col["reach"]
         for f in self.fil:
             lim = idiv(f["L"], UNIT) - TRAIL
@@ -424,7 +431,8 @@ class BioBloom:
                     break
                 if imod(k, 3) == 0:
                     x, y, _ = pts[k]
-                    dc.setColor(self._band_color(col, rr), COLOR_BLACK)
+                    dc.setColor(self._col_lut[rr if rr <= CR_MAX else CR_MAX],
+                                COLOR_BLACK)
                     a2 = imod(a + k * 13, 256)
                     le = 3 + imod(k, 4)            # 3..6 px
                     dc.drawLine(x, y, x + idiv(le * isin(a2 + 64), 127),
@@ -432,13 +440,18 @@ class BioBloom:
                     self._ink -= 1
                 k += 1
 
-    def _band_color(self, b, r):
-        # colour of the band covering radius r (the zone active when the
-        # frontier reached there)
-        for band in b["bands"]:
-            if r <= band[1]:
-                return band[2]
-        return b["bands"][-1][2]
+    def _fill_lut(self, bands, rmax, lut):
+        # lut[r] = colour of the band covering radius r, for r in 0..rmax. Bands
+        # are sorted ascending by their outer radius (appended as the frontier
+        # advances), so one monotonic sweep fills the whole table. O(bands+rmax).
+        n = len(bands)
+        bi = 0
+        r = 0
+        while r <= rmax:
+            while bi < n and bands[bi][1] < r:
+                bi += 1
+            lut[r] = bands[bi][2] if bi < n else bands[n - 1][2]
+            r += 1
 
     def _draw_bloom(self, dc, b):
         # a burst of bowed, sometimes-forking spines fired outward along the arm,
@@ -446,10 +459,11 @@ class BioBloom:
         # (b["spikes"]) and just scaled by reach as the bloom grows
         if not b["bands"]:
             return
+        self._fill_lut(b["bands"], REACH_CAP, self._bl_lut)   # O(1) lookups below
         ang, reach, w, salt = b["ang"], b["reach"], b["w"], b["salt"]
         bx, by = b["bx"], b["by"]
         nsp = 6 + imod(hash16(salt, 1, 1), 6)     # 6..11 spines
-        dc.setColor(self._band_color(b, BASE), COLOR_BLACK)
+        dc.setColor(self._bl_lut[BASE], COLOR_BLACK)
         dc.fillCircle(bx, by, 1 + idiv(w, 8))     # tiny anchor node (1..3px)
         for k in range(nsp):
             if self._ink <= 0:
@@ -467,7 +481,8 @@ class BioBloom:
             my = by + idiv(mr * dy, 127) + idiv(bow * py, 127)
             ex = bx + idiv(tip * dx, 127)
             ey = by + idiv(tip * dy, 127)
-            dc.setColor(self._band_color(b, tip), COLOR_BLACK)
+            dc.setColor(self._bl_lut[tip if tip <= REACH_CAP else REACH_CAP],
+                        COLOR_BLACK)
             dc.drawLine(bx, by, mx, my)                    # bowed spine, 2 segs
             dc.drawLine(mx, my, ex, ey)
             self._ink -= 2
