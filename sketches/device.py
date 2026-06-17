@@ -46,18 +46,37 @@ WATCHDOG = 25000                   # ~25-30k VM instr/onUpdate (docs/memory-budg
 VM_HASH16 = 12     # FNV-ish: ~6 mul/xor/shift ops + call/return overhead
 VM_ISIN   = 6      # LUT lookup + call/return overhead
 VM_PRIM   = 4      # a Dc primitive's VM-side dispatch (native raster not counted)
+VM_OP     = 6      # one inner-loop / band-scan iteration: array index (with bit
+                   # unpack) + compare + branch + loop increment
 
-# hash16/isin call tally for the current frame (perf_reset before each render).
-_perf = {"hash16": 0, "isin": 0}
+# hash16/isin call tally + inner-loop "ops" for the current frame (perf_reset
+# before each render). `ops` exists because hash16/isin/primitive counts are NOT
+# the whole story: a per-element scan over a GROWING array -- e.g. a band-colour
+# lookup run once per spine -- is real VM work none of the other tallies see.
+# Counting only those once hid a real BioBloom watchdog trip (the band scans grew
+# all day toward the 96-band cap and crossed the budget late in a long day) behind
+# a reassuring ~700-prim / ~8k-"VM" reading. Algos doing band-scan-style loops
+# must charge them via account() (or go through the counted band_color() below)
+# so scrub.py's VM number stays honest.
+_perf = {"hash16": 0, "isin": 0, "ops": 0}
 
 
 def perf_reset():
     _perf["hash16"] = 0
     _perf["isin"] = 0
+    _perf["ops"] = 0
 
 
 def perf_read():
-    return _perf["hash16"], _perf["isin"]
+    return _perf["hash16"], _perf["isin"], _perf["ops"]
+
+
+def account(n):
+    """Charge `n` inner-loop iterations (band scans, LUT sweeps, ...) to the
+    watchdog proxy. See the _perf note above: this is the only way scan-style
+    cost -- the kind that grows with accreted state, not with primitive count --
+    shows up in scrub.py instead of on the wrist."""
+    _perf["ops"] += n
 
 # The only 14 colors that exist on this device, by their Gfx.COLOR_* names.
 # COLOR_YELLOW is amber (0xFFAA00) on the 735XT, per CLAUDE.md.
@@ -165,6 +184,25 @@ def zoneIndex(hr):
         if hr < ZONE_BOUNDS[i]:
             return i
     return 6
+
+
+def band_color(bands, r):
+    """Counted band-colour lookup: colour of the first band whose outer radius
+    covers r (else the last band's colour). Each band is (r0, r1, color).
+
+    This is the FAITHFUL, watchdog-counted band primitive -- it charges its scan
+    length via account(), so a render that calls it once per spine on a dish with
+    many bands shows its true cost in scrub.py. Prefer it (or a per-frame LUT, the
+    cheaper option once a dish has many bands) over a hand-rolled scan, so this
+    class of cost can never hide behind the primitive count again."""
+    n = len(bands)
+    i = 0
+    while i < n:
+        account(1)
+        if r <= bands[i][1]:
+            return bands[i][2]
+        i += 1
+    return bands[-1][2] if bands else COLOR_BLACK
 
 
 # ---------------------------------------------------------- drawing context --
