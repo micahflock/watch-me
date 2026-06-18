@@ -126,7 +126,7 @@ def sleep_dim(sleep_h):
 
 # Seed-colony geometry. Kept deliberately SMALL (the user wants a small colony,
 # not a full dish) -- the day's activity still grows the real colony out past it.
-SEED_STYLE = "rings"   # rings | rosette | spores | bud
+SEED_STYLE = "spores"  # rings | rosette | spores | bud
 SEED_R0 = 6            # core radius at the shortest night
 SEED_PER_H = 2         # +px of seed reach per hour slept
 SEED_RMAX = 30         # the morning bud never exceeds this (stays "small")
@@ -522,19 +522,25 @@ class BioBloom:
                             CY + idiv(rout * isin(a), 127))
                 k += 1
         elif style == "spores":
-            # a little scatter colony: nodes packed near the centre, more of them
-            # the longer the night; deeper-rest colour near the middle.
-            nodes = 4 + self.sleep_h * 2
+            # a little scatter colony -- a dense clump of cells packed around the
+            # centre, more of them the longer the night, deepest-rest colour in
+            # the middle and cooling out one ramp step toward the rim. Radius is
+            # weighted INWARD (two hashes, min) so it reads as a colony blob, not
+            # a sparse sprinkle, and a filled core anchors the middle.
+            dc.setColor(SLEEP_RAMP[si], COLOR_BLACK)
+            dc.fillCircle(CX, CY, 3)                   # anchor core
+            nodes = 7 + self.sleep_h * 3
             k = 0
             while k < nodes:
-                # even angular spread + hashed radius -> a round, centred cluster
-                a = imod(idiv(k * 256, nodes) + imod(hash16(91, k, 6), 40), 256)
-                rr = 2 + imod(hash16(73, k, 2), reach - 1)
+                a = imod(idiv(k * 256, nodes) + imod(hash16(91, k, 6), 36), 256)
+                r1 = imod(hash16(73, k, 2), reach)
+                r2 = imod(hash16(29, k, 4), reach)
+                rr = 2 + (r1 if r1 < r2 else r2)       # bias toward the centre
                 x = CX + idiv(rr * isin(a + 64), 127)
                 y = CY + idiv(rr * isin(a), 127)
-                ci = si if rr < idiv(reach, 2) else (si - 2 if si >= 2 else 0)
+                ci = si if rr < idiv(reach * 2, 3) else (si - 1 if si >= 1 else 0)
                 dc.setColor(SLEEP_RAMP[ci], COLOR_BLACK)
-                dc.fillCircle(x, y, 1 + imod(hash16(7, k, 3), 2))
+                dc.fillCircle(x, y, 1 + imod(hash16(7, k, 3), 3))
                 k += 1
         else:  # "bud" -- understated: halo + node
             dc.setColor(sleep_dim(self.sleep_h), COLOR_BLACK)
