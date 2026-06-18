@@ -1,7 +1,9 @@
 using Toybox.Graphics as Gfx;
 
 // BioBloom — the day as a living dish (ported from sketches/algos/biobloom.py,
-// the approved sandbox keeper; that file is the parity reference).
+// the approved sandbox keeper; that file is the parity reference). The morning
+// sleep-seed colony + skeleton tint are ported from sketches/algos/
+// biobloom_morning.py (the parity reference for that feature).
 //
 // A filament skeleton grows from the centre, extending ONLY when you move, so a
 // lazy day stays small and an active day reaches outward. A central MAIN COLONY
@@ -62,8 +64,44 @@ class BioBloom {
     const CBANDS = 96;         // cap on colony bands
     const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
+    const SLPRED = 11;         // colour index for COLOR_DK_RED (warm sleep tint)
     const INK_MAX = 700;       // total primitives per onUpdate (watchdog backstop)
     const SK_CAP = 520;        // decimate the skeleton above this many segments
+
+    // ---- last night's sleep -> a morning seed colony --------------------------
+    // The dish resets at midnight and used to wake up EMPTY (blank centre + flat-
+    // grey twigs). Instead it now wakes seeded by last night's sleep: a small
+    // "spore" colony at the centre whose size + colour encode hours slept, and a
+    // morning skeleton tinted by the same reading instead of grey.
+    //
+    // There is NO sleep API at CIQ 2.4, so sleep is INFERRED as overnight
+    // quiescence: a rest meter (_nightAcc) ticks up each night-hour minute with
+    // no step advance and a resting HR. It is NOT cleared by the midnight reset --
+    // at the day rollover its running total is handed to _sleepSeed (the value the
+    // morning colony is drawn from) and it keeps accruing through the early-morning
+    // sleep, so by the time you glance at the watch the seed is the whole night.
+    // The first solid movement of the morning freezes the seed and clears the
+    // meter for the next night. Both survive a watch-face reload via BioState.
+    const REST_HR = 72;        // HR at/below this counts as resting (sleep proxy)
+    const NIGHT_START = 20;    // hour >= this OR <= NIGHT_END is "night" for resting
+    const NIGHT_END = 10;
+    const MORNING_END = 11;    // up to this hour the seed still tracks the night
+    const WAKE_START = 5;      // earliest hour a "got up" movement clears the meter
+    const SLEEP_CAP = 600;     // cap the rest meter (~10 h)
+    const SEED_R0 = 6;         // seed-colony core radius at the shortest night
+    const SEED_PER_H = 2;      // +px of seed reach per hour slept
+    const SEED_RMAX = 30;      // the morning bud stays "small" -- never exceeds this
+
+    // Sleep ramp: cool = well rested, warm = short night. Indexed by (hours - 3),
+    // clamped 0..7 (i.e. <=3 h .. >=10 h). The spore clump reads deepest-rest at
+    // its centre and cools one step toward the rim. _SDIM is the dim, "still
+    // asleep" colour INDEX (into the colorOf scheme) used to tint the morning
+    // skeleton instead of grey -- a dark member of the same warm/cool family.
+    const SLEEP_RAMP = [
+        Gfx.COLOR_DK_RED, Gfx.COLOR_RED, Gfx.COLOR_ORANGE, Gfx.COLOR_YELLOW,
+        Gfx.COLOR_DK_GREEN, Gfx.COLOR_GREEN, Gfx.COLOR_BLUE, Gfx.COLOR_DK_BLUE
+    ];
+    const SLEEP_DIM = [SLPRED, SLPRED, SLPRED, SLPRED, 2, 2, 0, 0]; // ci per slot
 
     // Biobloom-local 9-step HR ramp (finer than GenArt's shared 7-step ramp, so
     // strata/flock keep theirs). Cool -> hot: blue family at rest, green for
@@ -91,6 +129,9 @@ class BioBloom {
     var _win; var _winN; var _winHead;
     // lifecycle
     var _lastMin; var _lastSteps; var _lastDay;
+    // sleep inference (persist across the midnight reset and across reloads)
+    var _nightAcc;             // live overnight rest meter (minutes)
+    var _sleepSeed;            // frozen "last night's sleep" the morning seed reads
     var _bloomBase;
     var _ord;                  // scratch index array for _longish
     var _ink;                  // per-frame draw budget (counts down in render)
@@ -117,6 +158,9 @@ class BioBloom {
         _colLut = new [CR_MAX + 1];
         _blLut = new [REACH_CAP + 1];
         _bloomBase = GenArt.hash16(SEEDS, 17, 3) % 256;
+        // Sleep meters live ACROSS the midnight reset, so they are initialised
+        // here (once) and deliberately left untouched by reset().
+        _nightAcc = 0; _sleepSeed = 0;
         reset();
     }
 
@@ -148,7 +192,16 @@ class BioBloom {
     function colorOf(ci) {
         if (ci == DKGREY) { return Gfx.COLOR_DK_GRAY; }
         if (ci == LTGREY) { return Gfx.COLOR_LT_GRAY; }
+        if (ci == SLPRED) { return Gfx.COLOR_DK_RED; }
         return HR_RAMP[ci];
+    }
+
+    // hours-slept ramp slot (0..7) for a rest-meter value in minutes.
+    function sleepSlot(mins) {
+        var si = mins / 60 - 3;
+        if (si < 0) { si = 0; }
+        if (si > 7) { si = 7; }
+        return si;
     }
 
     // HR bpm -> biobloom zone index 0..8, or -1 if HR is unknown.
@@ -167,6 +220,10 @@ class BioBloom {
         var now = state.hour * 60 + state.minute;
         var day = (state.day != null) ? state.day : 0;
         if (day != _lastDay) {
+            // Hand the overnight rest meter to the new day's morning seed BEFORE
+            // wiping the dish (reset() leaves the sleep meters alone), so last
+            // night carries across midnight and keeps accruing till you wake.
+            _sleepSeed = _nightAcc;
             reset();                 // genuine new calendar day -> fresh dish
             _lastDay = day;
             _lastMin = now - 1;
@@ -195,17 +252,38 @@ class BioBloom {
         var vrange = winRange();
         var rising = winRising();
 
+        // ---- last night's sleep (overnight quiescence) ----
+        var hh = state.hour;
+        var quiescent = (spm <= IDLE_STEPS) && (hr == null || hr <= REST_HR);
+        var isNight = (hh >= NIGHT_START || hh <= NIGHT_END);
+        if (isNight && quiescent && _nightAcc < SLEEP_CAP) {
+            _nightAcc += d;
+            if (_nightAcc > SLEEP_CAP) { _nightAcc = SLEEP_CAP; }
+        }
+        // In the morning the seed tracks the night so far (monotonic up, so a
+        // brief stir doesn't shrink it); the first solid movement freezes it and
+        // clears the meter for the coming night.
+        if (hh <= MORNING_END && _nightAcc > _sleepSeed) { _sleepSeed = _nightAcc; }
+        if (spm >= KACT && hh >= WAKE_START && hh <= MORNING_END && _nightAcc > 0) {
+            _nightAcc = 0;
+        }
+        // Morning skeleton: a dim sleep tint instead of flat grey while idle.
+        var tintIdx = DKGREY;
+        if (_sleepSeed > 0 && hh <= MORNING_END) {
+            tintIdx = SLEEP_DIM[sleepSlot(_sleepSeed)];
+        }
+
         var iters = (d > 12) ? 12 : d;
         for (var k = 0; k < iters; k++) {
-            stepMinute(spm, zi, vrange, rising, nowSteps);
+            stepMinute(spm, zi, vrange, rising, nowSteps, tintIdx);
         }
         _lastMin = now;
         if (steps != null) { _lastSteps = steps; }
     }
 
-    function stepMinute(spm, zi, vrange, rising, salt) {
+    function stepMinute(spm, zi, vrange, rising, salt, tintIdx) {
         var move = spm / KACT;
-        var cidx = (spm <= 1 || zi < 0) ? DKGREY : zi;   // grey when idle / HR unknown
+        var cidx = (spm <= 1 || zi < 0) ? tintIdx : zi;  // sleep-tint/grey when idle
 
         if (move > 0) {
             var nf = _nfil;
@@ -412,6 +490,7 @@ class BioBloom {
     // the dish has grown -- the watchdog is the binding constraint.
     function render(dc, state) {
         _ink = INK_MAX;
+        drawSeed(dc);                        // last night's sleep colony (under)
         drawColonyCore(dc);                  // central filled core (under)
         drawSkeleton(dc);                    // skeleton arms (structural)
         for (var bi = 0; bi < _nbloom; bi++) {   // HR-zone blooms (priority)
@@ -455,6 +534,38 @@ class BioBloom {
                 dc.drawLine(upx(a), upy(a), upx(b), upy(b));
                 _ink -= 1;
             }
+        }
+    }
+
+    // Last night's sleep, drawn UNDER the live dish so the day's growth overgrows
+    // it. A small "spore" colony: a dense clump of cells packed around the centre,
+    // more of them the longer the night, deepest-rest colour in the middle and
+    // cooling one ramp step toward the rim. Radius is weighted INWARD (min of two
+    // hashes) so it reads as a colony blob, not a sparse sprinkle. Fixed, cheap
+    // cost -- no per-day accretion -- and skipped entirely with no sleep data.
+    function drawSeed(dc) {
+        if (_sleepSeed <= 0) { return; }
+        var sh = _sleepSeed / 60;
+        var si = sleepSlot(_sleepSeed);
+        var reach = SEED_R0 + SEED_PER_H * sh;
+        if (reach > SEED_RMAX) { reach = SEED_RMAX; }
+        var rim = (reach * 2) / 3;
+        dc.setColor(SLEEP_RAMP[si], Gfx.COLOR_TRANSPARENT);
+        dc.fillCircle(CX, CY, 3);                    // anchor core
+        var nodes = 7 + sh * 3;
+        for (var k = 0; k < nodes; k++) {
+            if (_ink <= 0) { return; }
+            var a = ((k * 256) / nodes + (GenArt.hash16(91, k, 6) % 36)) % 256;
+            var r1 = GenArt.hash16(73, k, 2) % reach;
+            var r2 = GenArt.hash16(29, k, 4) % reach;
+            var rr = 2 + ((r1 < r2) ? r1 : r2);      // bias toward the centre
+            var x = CX + (rr * GenArt.isin(a + 64)) / 127;
+            var y = CY + (rr * GenArt.isin(a)) / 127;
+            var ci = si;
+            if (rr >= rim && si >= 1) { ci = si - 1; }
+            dc.setColor(SLEEP_RAMP[ci], Gfx.COLOR_TRANSPARENT);
+            dc.fillCircle(x, y, 1 + (GenArt.hash16(7, k, 3) % 3));
+            _ink -= 1;
         }
     }
 
@@ -579,7 +690,7 @@ class BioBloom {
         // Exact size first, then fill a preallocated array by index -- no
         // dynamic-array growth churn, so the onHide transient is minimal and
         // predictable (~3 KB on a full day).
-        var n = 18 + 1 + 1 + 2;            // header + win + _nfil + _nbloom + 2
+        var n = 20 + 1 + 1 + 2;            // header(+2 sleep) + win + nfil + nbloom + 2
         for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i]; }
         for (var i = 0; i < _nbloom; i++) { n += 10 + _blnb[i]; }
         n += _coln;
@@ -591,6 +702,8 @@ class BioBloom {
         a[p] = _bar; p++;
         a[p] = _epiOn ? 1 : 0; p++;
         a[p] = _epiIdx; p++;
+        a[p] = _nightAcc; p++;
+        a[p] = _sleepSeed; p++;
         a[p] = _winN; p++;
         a[p] = _winHead; p++;
         for (var i = 0; i < 10; i++) { a[p] = _win[i]; p++; }
@@ -618,7 +731,7 @@ class BioBloom {
     // Restore state written by save(). Defensive: a malformed/short array leaves
     // the freshly-reset dish untouched (caller wraps the read in try/catch).
     function load(a) {
-        if (a == null || (a.size() < 19)) { return; }
+        if (a == null || (a.size() < 21)) { return; }
         var p = 0;
         _lastDay = a[p]; p++;
         _lastMin = a[p]; p++;
@@ -626,6 +739,8 @@ class BioBloom {
         _bar = a[p]; p++;
         _epiOn = (a[p] != 0); p++;
         _epiIdx = a[p]; p++;
+        _nightAcc = a[p]; p++;
+        _sleepSeed = a[p]; p++;
         _winN = a[p]; p++;
         _winHead = a[p]; p++;
         for (var i = 0; i < 10; i++) { _win[i] = a[p]; p++; }
