@@ -4,9 +4,12 @@
 Same dish as biobloom.py, but it does NOT wake up empty. The watch face resets
 the dish at midnight; by the time you actually look at it in the morning (few
 steps yet), the centre is filled by a small starting colony whose SIZE and
-COLOUR encode last night's sleep. The arms seeded at the centre are tinted by
-that same sleep reading instead of the old flat grey, so a quiet morning reads
-as a small, calm, coloured bud rather than empty space + grey twigs.
+COLOUR encode last night's sleep, so a quiet morning reads as a small, calm,
+coloured bud in the centre rather than empty space.
+
+(A morning skeleton "tint" was prototyped here too but dropped from the shipped
+face to claw back device RAM; the spore seed alone fills the centre. The dim
+sleep tints below still serve the rosette/bud reference styles.)
 
 Data note (fr735xt / CIQ 2.4): there is NO sleep API at this level. "Last
 night's sleep" is INFERRED on-device as overnight quiescence -- a rest meter
@@ -24,7 +27,7 @@ SEED_STYLE picks the morning treatment (all sleep-coloured):
                petal count and radius growing with sleep
   "spores"  -- a little scatter colony of seed nodes, count growing with sleep,
                deeper near the centre (reads as "a small colony")
-  "bud"     -- understated: one soft sleep-coloured node + halo, arms tinted
+  "bud"     -- understated: one soft sleep-coloured node + halo
 
 Hybrid B+C -- "biobloom": a filament skeleton (B) that only extends when you
 move, with LIVING blooms (C) that erupt on it during elevated-HR episodes and
@@ -136,7 +139,7 @@ R0, RMAX = 7, 86
 UNIT = 64
 KACT = 6            # movement -> growth (smaller => threads grow faster)
 STEP = 2            # px of radius per appended vertex
-KMAX = 22           # cap on live filaments
+KMAX = 20           # cap on live filaments
 SEEDS = 9           # initial threads, spread evenly around the centre
 BMAX = 16           # cap on live blooms (parity with BioBloom.mc)
 
@@ -206,15 +209,13 @@ class BioBloom:
         # O(1) array read, so render cost no longer grows with the day's length.
         self._col_lut = [COLOR_BLACK] * (CR_MAX + 1)
         self._bl_lut = [COLOR_BLACK] * (REACH_CAP + 1)
-        # Seed the skeleton's first vertex with a DIM sleep tint instead of the
-        # flat grey -- so a barely-grown morning arm reads as a calm coloured
-        # twig, not a dead grey one.
-        seed_tint = sleep_dim(self.sleep_h)
+        # Skeleton seed vertices start flat grey (the morning-tint experiment was
+        # dropped to claw back device RAM; the spore seed already fills the centre).
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
             v = 2 + imod(hash16(7, i, 1), 3)
             self.fil.append({"a": a, "L": R0 * UNIT, "next": R0 + STEP, "v": v,
-                             "pts": [self._pt(a, R0, seed_tint)]})
+                             "pts": [self._pt(a, R0, COLOR_DK_GRAY)]})
         # The starting colony from last night's sleep (size + colour). reach is
         # how far the bud fills from centre; rings remembers the per-hour ramp
         # slices so "rings"/"rosette" can draw a cool->warm gradient outward.
