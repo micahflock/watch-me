@@ -26,9 +26,10 @@ using Toybox.Graphics as Gfx;
 //
 // Render: the skeleton draws as lines, each bloom as a small fan of bowed spines
 // (recomputed each frame from the bloom's salt — cheap, no per-spine state)
-// fired outward and coloured by the HR zone at the tip, the colony as a filled
-// core plus a short spine "fur". A per-frame ink budget (INK_MAX) caps the spine
-// work so a large dish can never outrun the watchdog — the per-dot stipple did.
+// fired outward and coloured by the HR zone at the tip, the colony as a short
+// spine "fur" stippled along the arms. A per-frame ink budget (INK_MAX) caps the
+// spine work so a large dish can never outrun the watchdog — the per-dot stipple
+// did.
 class BioBloom {
 
     const CX = 107;
@@ -491,7 +492,6 @@ class BioBloom {
     function render(dc, state) {
         _ink = INK_MAX;
         drawSeed(dc);                        // last night's sleep colony (under)
-        drawColonyCore(dc);                  // central filled core (under)
         drawSkeleton(dc);                    // skeleton arms (structural)
         for (var bi = 0; bi < _nbloom; bi++) {   // HR-zone blooms (priority)
             if (_ink <= 0) { break; }
@@ -567,12 +567,6 @@ class BioBloom {
             dc.fillCircle(x, y, 1 + (GenArt.hash16(7, k, 3) % 3));
             _ink -= 1;
         }
-    }
-
-    function drawColonyCore(dc) {
-        if (_coln == 0) { return; }
-        dc.setColor(colorOf((_colband[0] >> 8) & 0xFF), Gfx.COLOR_TRANSPARENT);
-        dc.fillCircle(CX, CY, R0 + 1);
     }
 
     // A short outward "fur" of zone-coloured spines along the arms, out to where

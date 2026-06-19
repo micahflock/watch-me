@@ -353,7 +353,6 @@ class BioBloom:
         # Priority order under one shared budget: structure (skeleton) first, then
         # the HR-zone blooms, then the decorative fur (shed first under load).
         self._ink = INK_MAX
-        self._draw_colony_core(dc)                # central filled core, under
         self._draw_skeleton(dc)                   # skeleton arms (structural)
         for b in self.blooms:                     # HR-zone blooms (priority)
             if self._ink <= 0:
@@ -398,13 +397,6 @@ class BioBloom:
                 dc.setColor(c, COLOR_BLACK)
                 dc.drawLine(x0, y0, x1, y1)
                 self._ink -= 1
-
-    def _draw_colony_core(self, dc):
-        col = self.colony
-        if not col["bands"]:
-            return
-        dc.setColor(col["bands"][0][2], COLOR_BLACK)
-        dc.fillCircle(CX, CY, R0 + 1)             # filled core
 
     def _draw_fur(self, dc):
         # a short outward "fur" of zone-coloured spines stippled along the arms
