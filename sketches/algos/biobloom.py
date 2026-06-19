@@ -68,7 +68,7 @@ R0, RMAX = 7, 86
 UNIT = 64
 KACT = 6            # movement -> growth (smaller => threads grow faster)
 STEP = 2            # px of radius per appended vertex
-KMAX = 22           # cap on live filaments
+KMAX = 20           # cap on live filaments
 SEEDS = 9           # initial threads, spread evenly around the centre
 BMAX = 16           # cap on live blooms (parity with BioBloom.mc)
 

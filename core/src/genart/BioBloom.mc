@@ -39,9 +39,10 @@ class BioBloom {
     const UNIT = 64;
     const KACT = 6;            // movement -> growth (smaller => faster threads)
     const STEP = 2;            // px of radius per appended vertex
-    const KMAX = 22;           // cap on live filaments
+    const KMAX = 20;           // cap on live filaments (trimmed 22->20 for RAM:
+                               // shrinks the dish AND the save() transient peak)
     const SEEDS = 9;           // initial threads, spread around the centre
-    const PMAX = 44;           // vertices per thread (R0..RMAX by STEP + slack)
+    const PMAX = 41;           // vertices per thread (R0..RMAX by STEP; max ~40)
 
     const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute (HR>=105)
     const BASE = 2;            // px a bloom starts out from its anchor
@@ -50,7 +51,7 @@ class BioBloom {
     const MOM_DIV = 16;        // steps/min -> momentum reservoir units
     const MOM_STEP = 2;        // px of momentum growth per minute after HR drops
     const BMAX = 16;           // cap on blooms
-    const BBANDS = 28;         // cap on bands per bloom
+    const BBANDS = 24;         // cap on bands per bloom (reach 2..46 by 2 => ~22)
 
     const CR_MAX = 78;         // main-colony reach ceiling (px from centre)
     const TRAIL = 10;          // px the colony trails behind the longest arm
@@ -62,18 +63,16 @@ class BioBloom {
     const BAR_ON = 40;         // meter >= this is "on" -> growth bands go grey
     const BAR_HI = 50;         // deeper inactivity -> dark grey vs light grey
     const BAR_CLEAR = 4;       // solid movement works the meter down per minute
-    const CBANDS = 96;         // cap on colony bands
+    const CBANDS = 80;         // cap on colony bands (reach R0..78 => ~71)
     const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
-    const SLPRED = 11;         // colour index for COLOR_DK_RED (warm sleep tint)
     const INK_MAX = 700;       // total primitives per onUpdate (watchdog backstop)
     const SK_CAP = 520;        // decimate the skeleton above this many segments
 
     // ---- last night's sleep -> a morning seed colony --------------------------
-    // The dish resets at midnight and used to wake up EMPTY (blank centre + flat-
-    // grey twigs). Instead it now wakes seeded by last night's sleep: a small
-    // "spore" colony at the centre whose size + colour encode hours slept, and a
-    // morning skeleton tinted by the same reading instead of grey.
+    // The dish resets at midnight and used to wake up EMPTY (blank centre). It
+    // now wakes seeded by last night's sleep: a small "spore" colony at the
+    // centre whose size + colour encode hours slept.
     //
     // There is NO sleep API at CIQ 2.4, so sleep is INFERRED as overnight
     // quiescence: a rest meter (_nightAcc) ticks up each night-hour minute with
@@ -95,14 +94,11 @@ class BioBloom {
 
     // Sleep ramp: cool = well rested, warm = short night. Indexed by (hours - 3),
     // clamped 0..7 (i.e. <=3 h .. >=10 h). The spore clump reads deepest-rest at
-    // its centre and cools one step toward the rim. _SDIM is the dim, "still
-    // asleep" colour INDEX (into the colorOf scheme) used to tint the morning
-    // skeleton instead of grey -- a dark member of the same warm/cool family.
+    // its centre and cools one step toward the rim.
     const SLEEP_RAMP = [
         Gfx.COLOR_DK_RED, Gfx.COLOR_RED, Gfx.COLOR_ORANGE, Gfx.COLOR_YELLOW,
         Gfx.COLOR_DK_GREEN, Gfx.COLOR_GREEN, Gfx.COLOR_BLUE, Gfx.COLOR_DK_BLUE
     ];
-    const SLEEP_DIM = [SLPRED, SLPRED, SLPRED, SLPRED, 2, 2, 0, 0]; // ci per slot
 
     // Biobloom-local 9-step HR ramp (finer than GenArt's shared 7-step ramp, so
     // strata/flock keep theirs). Cool -> hot: blue family at rest, green for
@@ -193,7 +189,6 @@ class BioBloom {
     function colorOf(ci) {
         if (ci == DKGREY) { return Gfx.COLOR_DK_GRAY; }
         if (ci == LTGREY) { return Gfx.COLOR_LT_GRAY; }
-        if (ci == SLPRED) { return Gfx.COLOR_DK_RED; }
         return HR_RAMP[ci];
     }
 
@@ -268,23 +263,18 @@ class BioBloom {
         if (spm >= KACT && hh >= WAKE_START && hh <= MORNING_END && _nightAcc > 0) {
             _nightAcc = 0;
         }
-        // Morning skeleton: a dim sleep tint instead of flat grey while idle.
-        var tintIdx = DKGREY;
-        if (_sleepSeed > 0 && hh <= MORNING_END) {
-            tintIdx = SLEEP_DIM[sleepSlot(_sleepSeed)];
-        }
 
         var iters = (d > 12) ? 12 : d;
         for (var k = 0; k < iters; k++) {
-            stepMinute(spm, zi, vrange, rising, nowSteps, tintIdx);
+            stepMinute(spm, zi, vrange, rising, nowSteps);
         }
         _lastMin = now;
         if (steps != null) { _lastSteps = steps; }
     }
 
-    function stepMinute(spm, zi, vrange, rising, salt, tintIdx) {
+    function stepMinute(spm, zi, vrange, rising, salt) {
         var move = spm / KACT;
-        var cidx = (spm <= 1 || zi < 0) ? tintIdx : zi;  // sleep-tint/grey when idle
+        var cidx = (spm <= 1 || zi < 0) ? DKGREY : zi;   // grey when idle / HR unknown
 
         if (move > 0) {
             var nf = _nfil;
