@@ -51,6 +51,7 @@ class TwoWorldsView extends Ui.WatchFace {
         _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
         _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
         _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
+        _compositor.add(new BreachComponent(), null);    // 9 over-budget warning
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
 
@@ -358,6 +359,28 @@ class ClockComponent {
             _digits.draw(dc, (state.minute / 10) % 10, 75, y);
             _digits.draw(dc, state.minute % 10, 98, y);
         }
+    }
+}
+
+// BreachComponent — when the dish outgrows what the persistence layer can store
+// (save() OOM'd / the object store rejected it on the last onHide), it can no
+// longer survive a reload. Stamp "CONTAINMENT BREACH" across the middle in red.
+// Cost is ~nil in the normal case: the flag is read ONCE at layout (object-store
+// reads are slow, never per tick) and the draw calls fire only when breached.
+class BreachComponent {
+    var _breached;
+
+    function initialize() {
+        _breached = BioState.breached();
+    }
+
+    function render(dc, state) {
+        if (!_breached) { return; }
+        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
+        dc.fillRectangle(16, 68, 183, 48);          // backing band, for legibility
+        dc.setColor(Gfx.COLOR_RED, Gfx.COLOR_TRANSPARENT);
+        dc.drawText(107, 70, Gfx.FONT_SMALL, "CONTAINMENT", Gfx.TEXT_JUSTIFY_CENTER);
+        dc.drawText(107, 91, Gfx.FONT_SMALL, "BREACH", Gfx.TEXT_JUSTIFY_CENTER);
     }
 }
 
