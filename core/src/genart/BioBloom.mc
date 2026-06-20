@@ -661,25 +661,37 @@ class BioBloom {
         }
     }
 
-    // ---- persistence ----------------------------------------------------------
+    // ---- persistence (compact) -------------------------------------------------
     //
     // The dish is an accretive day-long simulation held only in RAM, so a watch-
-    // face reload (e.g. opening a menu on a memory-tight device) would lose it
-    // and it cannot replay the day. save()/load() serialise the LIVE portions of
-    // the packed state into one flat Number array small enough for the object
-    // store (only used filament vertices / bloom & colony bands, not the full
-    // capacity arrays). The view saves on onHide and restores in onLayout.
+    // face reload (e.g. opening a menu) would lose it and it cannot replay the day.
+    // Stored as one flat Array of Numbers (the only compact type the 2.4 object
+    // store takes -- no ByteArray), each slot costs ~5 bytes, so the naive full
+    // dump (~1550 slots, ~7 KB transient) could not coexist with the ~56.5 KB dish
+    // inside the watch-face budget: save() silently OOM'd (caught) and the dish
+    // came back blank after a reload. This compact form ~halves the payload (and
+    // the onHide transient) two ways, with no change to the live dish:
+    //   1. store only every OTHER skeleton vertex; rebuild the in-between ones by
+    //      midpoint on load (the arm keeps its full vertex count + radius
+    //      bookkeeping, just slightly straighter between samples until it grows on)
+    //   2. pack the 16-bit bloom/colony bands two to a Number
+    // A maxed evening dish may still be too big and fall back to a blank restore
+    // (caught) -- acceptable, and no worse than before. load() begins with a
+    // version magic and validates every count against its cap, resetting to a
+    // blank dish on any mismatch, so an old/corrupt/short payload can never
+    // half-load or crash.
+    const SAVE_MAGIC = 0x5B102;   // format tag (bumped when the layout changes)
 
     function save() {
-        // Exact size first, then fill a preallocated array by index -- no
-        // dynamic-array growth churn, so the onHide transient is minimal and
-        // predictable (~3 KB on a full day).
-        var n = 20 + 1 + 1 + 2;            // header(+2 sleep) + win + nfil + nbloom + 2
-        for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i]; }
-        for (var i = 0; i < _nbloom; i++) { n += 10 + _blnb[i]; }
-        n += _coln;
+        var n = 1 + 20 + 1;                  // magic + header/win + nfil
+        for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i] / 2 + 1; }
+        n += 1;                              // nbloom
+        for (var i = 0; i < _nbloom; i++) { n += 10 + (_blnb[i] + 1) / 2; }
+        n += 2;                              // colreach, coln
+        n += (_coln + 1) / 2;
         var a = new [n];
         var p = 0;
+        a[p] = SAVE_MAGIC; p++;
         a[p] = _lastDay; p++;
         a[p] = _lastMin; p++;
         a[p] = (_lastSteps == null) ? -1 : _lastSteps; p++;
@@ -694,9 +706,14 @@ class BioBloom {
         a[p] = _nfil; p++;
         for (var i = 0; i < _nfil; i++) {
             a[p] = _tha[i]; p++; a[p] = _thL[i]; p++; a[p] = _thv[i]; p++;
-            a[p] = _thnext[i]; p++; a[p] = _thnp[i]; p++;
+            a[p] = _thnext[i]; p++;
+            var np = _thnp[i];
+            a[p] = np; p++;
             var base = i * PMAX;
-            for (var k = 0; k < _thnp[i]; k++) { a[p] = _pt[base + k]; p++; }
+            for (var k = 0; k < np; k += 2) { a[p] = _pt[base + k]; p++; } // evens
+            if ((np & 1) == 0 && np > 0) {                 // tip, when count even
+                a[p] = _pt[base + np - 1]; p++;
+            }
         }
         a[p] = _nbloom; p++;
         for (var i = 0; i < _nbloom; i++) {
@@ -704,19 +721,29 @@ class BioBloom {
             a[p] = _blw[i]; p++; a[p] = _blsalt[i]; p++; a[p] = _blreach[i]; p++;
             a[p] = _blmom[i]; p++; a[p] = _blnb[i]; p++;
             a[p] = _blmom0[i]; p++; a[p] = _bllastzi[i]; p++;
-            var bb = i * BBANDS;
-            for (var k = 0; k < _blnb[i]; k++) { a[p] = _blband[bb + k]; p++; }
+            var bb = i * BBANDS; var nb = _blnb[i];
+            for (var k = 0; k < nb; k += 2) {
+                var w = _blband[bb + k] & 0xFFFF;
+                if (k + 1 < nb) { w = w | ((_blband[bb + k + 1] & 0xFFFF) << 16); }
+                a[p] = w; p++;
+            }
         }
         a[p] = _colreach; p++; a[p] = _coln; p++;
-        for (var i = 0; i < _coln; i++) { a[p] = _colband[i]; p++; }
+        for (var k = 0; k < _coln; k += 2) {
+            var w = _colband[k] & 0xFFFF;
+            if (k + 1 < _coln) { w = w | ((_colband[k + 1] & 0xFFFF) << 16); }
+            a[p] = w; p++;
+        }
         return a;
     }
 
-    // Restore state written by save(). Defensive: a malformed/short array leaves
-    // the freshly-reset dish untouched (caller wraps the read in try/catch).
+    // Restore state written by save(). Defensive throughout: a wrong magic, any
+    // out-of-range count, or a short array drops back to a freshly reset (blank)
+    // dish rather than half-loading. Caller wraps the read in try/catch too.
     function load(a) {
-        if (a == null || (a.size() < 21)) { return; }
-        var p = 0;
+        if (a == null || a.size() < 22 || a[0] != SAVE_MAGIC) { return; }
+        var sz = a.size();
+        var p = 1;                           // a[0] is the magic
         _lastDay = a[p]; p++;
         _lastMin = a[p]; p++;
         var ls = a[p]; p++; _lastSteps = (ls < 0) ? null : ls;
@@ -728,23 +755,55 @@ class BioBloom {
         _winN = a[p]; p++;
         _winHead = a[p]; p++;
         for (var i = 0; i < 10; i++) { _win[i] = a[p]; p++; }
-        _nfil = a[p]; p++;
+        var nfil = a[p]; p++;
+        if (nfil < 0 || nfil > KMAX) { reset(); return; }
+        _nfil = nfil;
         for (var i = 0; i < _nfil; i++) {
+            if (p + 5 > sz) { reset(); return; }
             _tha[i] = a[p]; p++; _thL[i] = a[p]; p++; _thv[i] = a[p]; p++;
-            _thnext[i] = a[p]; p++; _thnp[i] = a[p]; p++;
+            _thnext[i] = a[p]; p++;
+            var np = a[p]; p++;
+            if (np < 1 || np > PMAX || p + np / 2 + 1 > sz) { reset(); return; }
+            _thnp[i] = np;
             var base = i * PMAX;
-            for (var k = 0; k < _thnp[i]; k++) { _pt[base + k] = a[p]; p++; }
+            for (var k = 0; k < np; k += 2) { _pt[base + k] = a[p]; p++; }
+            if ((np & 1) == 0) { _pt[base + np - 1] = a[p]; p++; }    // tip
+            for (var k = 1; k < np; k += 2) {                        // rebuild odds
+                if (k == np - 1) { continue; }       // tip already placed (np even)
+                var v0 = _pt[base + k - 1]; var v1 = _pt[base + k + 1];
+                _pt[base + k] = packPt((upx(v0) + upx(v1)) / 2,
+                                       (upy(v0) + upy(v1)) / 2, upci(v1));
+            }
         }
-        _nbloom = a[p]; p++;
+        if (p >= sz) { reset(); return; }
+        var nbloom = a[p]; p++;
+        if (nbloom < 0 || nbloom > BMAX) { reset(); return; }
+        _nbloom = nbloom;
         for (var i = 0; i < _nbloom; i++) {
+            if (p + 10 > sz) { reset(); return; }
             _blbx[i] = a[p]; p++; _blby[i] = a[p]; p++; _blang[i] = a[p]; p++;
             _blw[i] = a[p]; p++; _blsalt[i] = a[p]; p++; _blreach[i] = a[p]; p++;
-            _blmom[i] = a[p]; p++; _blnb[i] = a[p]; p++;
+            _blmom[i] = a[p]; p++;
+            var nb = a[p]; p++;
             _blmom0[i] = a[p]; p++; _bllastzi[i] = a[p]; p++;
+            if (nb < 0 || nb > BBANDS || p + (nb + 1) / 2 > sz) { reset(); return; }
+            _blnb[i] = nb;
             var bb = i * BBANDS;
-            for (var k = 0; k < _blnb[i]; k++) { _blband[bb + k] = a[p]; p++; }
+            for (var k = 0; k < nb; k += 2) {
+                var w = a[p]; p++;
+                _blband[bb + k] = w & 0xFFFF;
+                if (k + 1 < nb) { _blband[bb + k + 1] = (w >> 16) & 0xFFFF; }
+            }
         }
-        _colreach = a[p]; p++; _coln = a[p]; p++;
-        for (var i = 0; i < _coln; i++) { _colband[i] = a[p]; p++; }
+        if (p + 2 > sz) { reset(); return; }
+        _colreach = a[p]; p++;
+        var coln = a[p]; p++;
+        if (coln < 0 || coln > CBANDS || p + (coln + 1) / 2 > sz) { reset(); return; }
+        _coln = coln;
+        for (var k = 0; k < _coln; k += 2) {
+            var w = a[p]; p++;
+            _colband[k] = w & 0xFFFF;
+            if (k + 1 < _coln) { _colband[k + 1] = (w >> 16) & 0xFFFF; }
+        }
     }
 }
