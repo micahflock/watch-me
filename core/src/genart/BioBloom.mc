@@ -1,9 +1,12 @@
 using Toybox.Graphics as Gfx;
 
-// BioBloom — the day as a living dish (ported from sketches/algos/biobloom.py,
-// the approved sandbox keeper; that file is the parity reference). The morning
-// sleep-seed colony + skeleton tint are ported from sketches/algos/
-// biobloom_morning.py (the parity reference for that feature).
+// BioBloom — the day as a living dish. The simulation (threads, blooms, colony,
+// momentum) is ported from sketches/algos/biobloom.py, the parity reference for
+// dish STATE (the unit tests pin nbloom/coln/nfil to it). The PARAMETRIC
+// skeleton — arms stored as scalars and regenerated at render with a coarse
+// fixed-amp walk, coloured by the colony LUT — mirrors sketches/algos/
+// biobloom_parametric_coarse.py (the reference for the render + save/load). The
+// morning sleep-seed colony is ported from sketches/algos/biobloom_morning.py.
 //
 // A filament skeleton grows from the centre, extending ONLY when you move, so a
 // lazy day stays small and an active day reaches outward. A central MAIN COLONY
@@ -15,9 +18,12 @@ using Toybox.Graphics as Gfx;
 // reservoir that keeps it creeping after HR drops — so an exercise event grows
 // large while an anxiety spike (HR up, no movement) stays a small node.
 //
-// State is flat Number arrays, PACKED to fit the memory budget: each thread
-// vertex is one Number (colorIdx<<16 | x<<8 | y), each band one Number
-// (colorIdx<<8 | rEnd). Colour index 0..8 maps to HR_RAMP (a biobloom-local
+// State is flat Number arrays. Arms are PARAMETRIC: each is a handful of scalars
+// (seed angle a0, head angle, length, next, vigor, vertex count np, base radius
+// rb) and its vertices are REGENERATED at render time by replaying a fixed-amp
+// wiggle walk from a0 -- so the big per-vertex array is gone and a reload is
+// lossless (an arm is a pure function of its scalars). Blooms/colony bands are
+// one Number each (colorIdx<<8 | rEnd). Colour index 0..8 maps to HR_RAMP (a biobloom-local
 // 9-step HR ramp, finer than the shared GenArt.ZONE_COLORS, so the other faces
 // are untouched); 9 == DK_GRAY (idle / unknown HR), 10 == LT_GRAY (colony idle
 // bands only). Evolution is incremental — advance()
@@ -39,6 +45,9 @@ class BioBloom {
     const UNIT = 64;
     const KACT = 6;            // movement -> growth (smaller => faster threads)
     const STEP = 2;            // px of radius per appended vertex
+    const AMP = 3;             // fixed wander amplitude (was 1 + vrange/10). A
+                               // constant makes an arm regenerable from its seed
+                               // angle; tuned to keep the organic tangle.
     const KMAX = 20;           // cap on live filaments (trimmed 22->20 for RAM:
                                // shrinks the dish AND the save() transient peak)
     const SEEDS = 9;           // initial threads, spread around the centre
@@ -111,9 +120,11 @@ class BioBloom {
         Gfx.COLOR_PURPLE
     ];
 
-    // threads
+    // threads (parametric: arms are scalars; vertices regenerated at render)
+    var _tha0;                 // seed angle (the regeneration root)
     var _tha; var _thL; var _thv; var _thnext; var _thnp; var _nfil;
-    var _pt;                   // packed vertices: colorIdx<<16 | x<<8 | y
+    var _thrb;                 // base radius (R0 for seeds, fork radius for branches)
+    var _scr;                  // per-arm regen scratch: packPt(x, y, rr), reused
     // blooms
     var _blbx; var _blby; var _blang; var _blw; var _blsalt; var _blreach;
     var _blmom; var _blnb; var _blband; var _nbloom;   // _blband: ci<<8 | rEnd
@@ -141,9 +152,9 @@ class BioBloom {
     var _blLut;                // radius 0..REACH_CAP   -> current bloom colour
 
     function initialize() {
-        _tha = new [KMAX]; _thL = new [KMAX]; _thv = new [KMAX];
-        _thnext = new [KMAX]; _thnp = new [KMAX];
-        _pt = new [KMAX * PMAX];
+        _tha0 = new [KMAX]; _tha = new [KMAX]; _thL = new [KMAX];
+        _thnext = new [KMAX]; _thv = new [KMAX]; _thnp = new [KMAX];
+        _thrb = new [KMAX];
         _blbx = new [BMAX]; _blby = new [BMAX]; _blang = new [BMAX];
         _blw = new [BMAX]; _blsalt = new [BMAX]; _blreach = new [BMAX];
         _blmom = new [BMAX]; _blnb = new [BMAX];
@@ -152,6 +163,7 @@ class BioBloom {
         _colband = new [CBANDS];
         _win = new [10];
         _ord = new [KMAX];
+        _scr = new [PMAX];
         _colLut = new [CR_MAX + 1];
         _blLut = new [REACH_CAP + 1];
         _bloomBase = GenArt.hash16(SEEDS, 17, 3) % 256;
@@ -166,9 +178,8 @@ class BioBloom {
         for (var i = 0; i < SEEDS; i++) {
             var a = ((i * 256) / SEEDS + (GenArt.hash16(91, i, 5) % 16)) % 256;
             var v = 2 + (GenArt.hash16(7, i, 1) % 3);
-            _tha[i] = a; _thL[i] = R0 * UNIT; _thnext[i] = R0 + STEP;
-            _thv[i] = v; _thnp[i] = 1;
-            _pt[i * PMAX] = packPt(coordX(a, R0), coordY(a, R0), 7); // DK_GRAY
+            _tha0[i] = a; _tha[i] = a; _thL[i] = R0 * UNIT; _thnext[i] = R0 + STEP;
+            _thv[i] = v; _thnp[i] = 1; _thrb[i] = R0;
             _nfil++;
         }
         _nbloom = 0;
@@ -274,11 +285,10 @@ class BioBloom {
 
     function stepMinute(spm, zi, vrange, rising, salt) {
         var move = spm / KACT;
-        var cidx = (spm <= 1 || zi < 0) ? DKGREY : zi;   // grey when idle / HR unknown
 
         if (move > 0) {
             var nf = _nfil;
-            for (var i = 0; i < nf; i++) { growFil(i, move, vrange, cidx); }
+            for (var i = 0; i < nf; i++) { growFil(i, move); }
             if (rising && _nfil < KMAX) {
                 var src = longish(salt);
                 var na = (_tha[src] + 10
@@ -286,9 +296,8 @@ class BioBloom {
                 var rr = _thL[src] / UNIT;
                 var v = 2 + (GenArt.hash16(salt, nf, 4) % 3);
                 var j = _nfil;
-                _tha[j] = na; _thL[j] = rr * UNIT; _thnext[j] = rr + STEP;
-                _thv[j] = v; _thnp[j] = 1;
-                _pt[j * PMAX] = packPt(coordX(na, rr), coordY(na, rr), cidx);
+                _tha0[j] = na; _tha[j] = na; _thL[j] = rr * UNIT;
+                _thnext[j] = rr + STEP; _thv[j] = v; _thnp[j] = 1; _thrb[j] = rr;
                 _nfil++;
             }
         }
@@ -315,19 +324,14 @@ class BioBloom {
         growColony(spm, zi);
     }
 
-    function growFil(i, move, vrange, cidx) {
+    function growFil(i, move) {
         _thL[i] += (move * _thv[i]) / 3;
         if (_thL[i] > RMAX * UNIT) { _thL[i] = RMAX * UNIT; }
-        var amp = 1 + vrange / 10;
         while (_thL[i] / UNIT >= _thnext[i] && _thnext[i] <= RMAX) {
             var rr = _thnext[i];
-            var da = (GenArt.isin(GenArt.hash16(_tha[i], rr, 1) & 255) * amp) / 127;
+            var da = (GenArt.isin(GenArt.hash16(_tha[i], rr, 1) & 255) * AMP) / 127;
             _tha[i] = (_tha[i] + da) % 256;
-            if (_thnp[i] < PMAX) {
-                _pt[i * PMAX + _thnp[i]] =
-                    packPt(coordX(_tha[i], rr), coordY(_tha[i], rr), cidx);
-                _thnp[i] += 1;
-            }
+            if (_thnp[i] < PMAX) { _thnp[i] += 1; }   // cap np to the regen scratch
             _thnext[i] += STEP;
         }
     }
@@ -337,8 +341,8 @@ class BioBloom {
         var target = (_bloomBase + _nbloom * 98
                      + (GenArt.hash16(zi, _nbloom, 7) % 22)) % 256;
         var src = nearest(target);
-        var v = _pt[src * PMAX + (_thnp[src] - 1)];
-        var bx = upx(v); var by = upy(v);
+        var rTip = _thrb[src] + (_thnp[src] - 1) * STEP;   // arm tip radius
+        var bx = coordX(_tha[src], rTip); var by = coordY(_tha[src], rTip);
         var j = _nbloom;
         _blbx[j] = bx; _blby[j] = by; _blang[j] = _tha[src];
         _blreach[j] = BASE; _blw[j] = 3; _blnb[j] = 0; _blmom[j] = 0;
@@ -482,47 +486,106 @@ class BioBloom {
     function render(dc, state) {
         _ink = INK_MAX;
         drawSeed(dc);                        // last night's sleep colony (under)
-        drawSkeleton(dc);                    // skeleton arms (structural)
+        if (_coln > 0) { fillColLut(); }     // arms + fur share the colony LUT
+        drawArms(dc);                        // skeleton + fur, coloured by the LUT
         for (var bi = 0; bi < _nbloom; bi++) {   // HR-zone blooms (priority)
             if (_ink <= 0) { break; }
             drawBloom(dc, bi);
         }
-        drawFur(dc);                         // colony fur (detail; shed first)
     }
 
-    // Draw every arm, but DECIMATE (draw every `stride`-th vertex) once the
-    // skeleton is abnormally large, so a 22-arm dish on a very active day can't
-    // outrun the budget drawing one line per vertex. The arm tip is always drawn
-    // so each arm still reaches its true length; only the wiggle gets coarser.
-    function drawSkeleton(dc) {
+    // Regenerate arm i's vertices into the _scr scratch (packPt(x, y, rr)) by
+    // replaying the wiggle walk from the seed angle. COARSE: walk every 2*STEP
+    // with the amp doubled, then midpoint-fill the in-between radii -- half the
+    // hash16/isin work for a chunkier wiggle. _scr is reused across arms, so the
+    // per-vertex array the ship cached (KMAX*PMAX) never exists.
+    function regenArm(i) {
+        var a = _tha0[i];
+        var rb = _thrb[i];
+        var np = _thnp[i];
+        var k = 0;
+        while (k < np) {
+            var rr = rb + k * STEP;
+            if (k > 0) {
+                var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * 2)) / 127;
+                a = (a + da) % 256;
+            }
+            _scr[k] = packPt(coordX(a, rr), coordY(a, rr), rr);
+            k += 2;
+        }
+        for (k = 1; k < np; k += 2) {
+            var lo = _scr[k - 1];
+            var hi = (k + 1 < np) ? _scr[k + 1] : lo;
+            _scr[k] = packPt((upx(lo) + upx(hi)) / 2, (upy(lo) + upy(hi)) / 2,
+                             rb + k * STEP);
+        }
+    }
+
+    // Draw each arm's skeleton AND fur together, regenerating its vertices once.
+    // DECIMATE the skeleton (draw every `stride`-th vertex) once the dish is
+    // large so it can't outrun the budget; the arm tip is always drawn so each
+    // arm reaches its true length. Arms are coloured by the colony radius-LUT
+    // (the same HR-zone-vs-radius gradient the fur uses), so no per-vertex colour
+    // is stored. Merging skeleton+fur per arm keeps the regen walk to ONE pass.
+    function drawArms(dc) {
         var tot = 0;
         for (var i = 0; i < _nfil; i++) {
-            var np = _thnp[i];
-            if (np > 1) { tot += np - 1; }
+            if (_thnp[i] > 1) { tot += _thnp[i] - 1; }
         }
         var stride = 1;
         if (tot > SK_CAP) { stride = tot / SK_CAP + 1; }
+        var haveCol = (_coln > 0);
+        var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
             var np = _thnp[i];
-            if (np < 2) { continue; }
-            var base = i * PMAX;
-            var prev = 0;
-            var k = stride;
-            while (k < np) {
-                if (_ink <= 0) { return; }
-                var a = _pt[base + prev]; var b = _pt[base + k];
-                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
-                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
-                _ink -= 1;
-                prev = k;
-                k += stride;
+            if (np < 1) { continue; }
+            regenArm(i);
+            if (np >= 2) {                   // skeleton (structural)
+                var prev = 0;
+                var k = stride;
+                while (k < np) {
+                    if (_ink <= 0) { return; }
+                    var a = _scr[prev]; var b = _scr[k];
+                    var rr = upci(b);
+                    dc.setColor(haveCol ? _colLut[(rr <= CR_MAX) ? rr : CR_MAX]
+                                        : Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
+                    dc.drawLine(upx(a), upy(a), upx(b), upy(b));
+                    _ink -= 1;
+                    prev = k;
+                    k += stride;
+                }
+                if (prev != np - 1) {        // always close to the arm tip
+                    if (_ink <= 0) { return; }
+                    var a = _scr[prev]; var b = _scr[np - 1];
+                    var rr = upci(b);
+                    dc.setColor(haveCol ? _colLut[(rr <= CR_MAX) ? rr : CR_MAX]
+                                        : Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
+                    dc.drawLine(upx(a), upy(a), upx(b), upy(b));
+                    _ink -= 1;
+                }
             }
-            if (prev != np - 1) {            // always close to the arm tip
+            if (!haveCol) { continue; }      // fur needs the colony LUT
+            var lim = _thL[i] / UNIT - TRAIL;
+            if (lim > reach) { lim = reach; }
+            if (lim <= R0) { continue; }
+            var ang = _tha[i];
+            var kf = 2;
+            while (kf < np) {
                 if (_ink <= 0) { return; }
-                var a = _pt[base + prev]; var b = _pt[base + np - 1];
-                dc.setColor(colorOf(upci(b)), Gfx.COLOR_TRANSPARENT);
-                dc.drawLine(upx(a), upy(a), upx(b), upy(b));
-                _ink -= 1;
+                var rrf = R0 + kf * STEP;
+                if (rrf > lim) { break; }
+                if ((kf % 3) == 0) {
+                    var v = _scr[kf];
+                    var x = upx(v); var y = upy(v);
+                    dc.setColor(_colLut[(rrf <= CR_MAX) ? rrf : CR_MAX],
+                        Gfx.COLOR_TRANSPARENT);
+                    var a2 = (ang + kf * 13) % 256;
+                    var le = 3 + (kf % 4);
+                    dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
+                        y + (le * GenArt.isin(a2)) / 127);
+                    _ink -= 1;
+                }
+                kf += 1;
             }
         }
     }
@@ -556,38 +619,6 @@ class BioBloom {
             dc.setColor(SLEEP_RAMP[ci], Gfx.COLOR_TRANSPARENT);
             dc.fillCircle(x, y, 1 + (GenArt.hash16(7, k, 3) % 3));
             _ink -= 1;
-        }
-    }
-
-    // A short outward "fur" of zone-coloured spines along the arms, out to where
-    // the colony has filled. Drawn last so the ink budget sheds fur before blooms.
-    function drawFur(dc) {
-        if (_coln == 0) { return; }
-        fillColLut();                        // O(1) colour lookups in the loop
-        var reach = _colreach;
-        for (var i = 0; i < _nfil; i++) {
-            var lim = _thL[i] / UNIT - TRAIL;
-            if (lim > reach) { lim = reach; }
-            if (lim <= R0) { continue; }
-            var np = _thnp[i];
-            var base = i * PMAX;
-            var a = _tha[i];
-            for (var k = 2; k < np; k++) {
-                if (_ink <= 0) { return; }
-                var rr = R0 + k * STEP;
-                if (rr > lim) { break; }
-                if ((k % 3) == 0) {
-                    var v = _pt[base + k];
-                    var x = upx(v); var y = upy(v);
-                    dc.setColor(_colLut[(rr <= CR_MAX) ? rr : CR_MAX],
-                        Gfx.COLOR_TRANSPARENT);
-                    var a2 = (a + k * 13) % 256;
-                    var le = 3 + (k % 4);
-                    dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
-                        y + (le * GenArt.isin(a2)) / 127);
-                    _ink -= 1;
-                }
-            }
         }
     }
 
@@ -669,22 +700,19 @@ class BioBloom {
     // store takes -- no ByteArray), each slot costs ~5 bytes, so the naive full
     // dump (~1550 slots, ~7 KB transient) could not coexist with the ~56.5 KB dish
     // inside the watch-face budget: save() silently OOM'd (caught) and the dish
-    // came back blank after a reload. This compact form ~halves the payload (and
-    // the onHide transient) two ways, with no change to the live dish:
-    //   1. store only every OTHER skeleton vertex; rebuild the in-between ones by
-    //      midpoint on load (the arm keeps its full vertex count + radius
-    //      bookkeeping, just slightly straighter between samples until it grows on)
-    //   2. pack the 16-bit bloom/colony bands two to a Number
-    // A maxed evening dish may still be too big and fall back to a blank restore
-    // (caught) -- acceptable, and no worse than before. load() begins with a
-    // version magic and validates every count against its cap, resetting to a
-    // blank dish on any mismatch, so an old/corrupt/short payload can never
-    // half-load or crash.
-    const SAVE_MAGIC = 0x5B102;   // format tag (bumped when the layout changes)
+    // came back blank after a reload. The parametric arms make the payload tiny:
+    //   1. each arm is just 7 scalars (a0, head, L, next, v, np, rb) -- NO vertex
+    //      dump, since vertices are regenerated from a0 at render. The reload is
+    //      lossless because the regeneration is a pure function of those scalars.
+    //   2. bloom/colony bands are still packed two 16-bit values to a Number.
+    // load() begins with a version magic and validates every count against its
+    // cap, resetting to a blank dish on any mismatch, so an old/corrupt/short
+    // payload can never half-load or crash.
+    const SAVE_MAGIC = 0x5B103;   // format tag (bumped when the layout changes)
 
     function save() {
         var n = 1 + 20 + 1;                  // magic + header/win + nfil
-        for (var i = 0; i < _nfil; i++) { n += 5 + _thnp[i] / 2 + 1; }
+        n += _nfil * 7;                      // 7 scalars/arm, no vertex dump
         n += 1;                              // nbloom
         for (var i = 0; i < _nbloom; i++) { n += 10 + (_blnb[i] + 1) / 2; }
         n += 2;                              // colreach, coln
@@ -704,16 +732,10 @@ class BioBloom {
         a[p] = _winHead; p++;
         for (var i = 0; i < 10; i++) { a[p] = _win[i]; p++; }
         a[p] = _nfil; p++;
-        for (var i = 0; i < _nfil; i++) {
-            a[p] = _tha[i]; p++; a[p] = _thL[i]; p++; a[p] = _thv[i]; p++;
-            a[p] = _thnext[i]; p++;
-            var np = _thnp[i];
-            a[p] = np; p++;
-            var base = i * PMAX;
-            for (var k = 0; k < np; k += 2) { a[p] = _pt[base + k]; p++; } // evens
-            if ((np & 1) == 0 && np > 0) {                 // tip, when count even
-                a[p] = _pt[base + np - 1]; p++;
-            }
+        for (var i = 0; i < _nfil; i++) {    // 7 scalars per arm, no vertices
+            a[p] = _tha0[i]; p++; a[p] = _tha[i]; p++; a[p] = _thL[i]; p++;
+            a[p] = _thnext[i]; p++; a[p] = _thv[i]; p++; a[p] = _thnp[i]; p++;
+            a[p] = _thrb[i]; p++;
         }
         a[p] = _nbloom; p++;
         for (var i = 0; i < _nbloom; i++) {
@@ -758,22 +780,14 @@ class BioBloom {
         var nfil = a[p]; p++;
         if (nfil < 0 || nfil > KMAX) { reset(); return; }
         _nfil = nfil;
-        for (var i = 0; i < _nfil; i++) {
-            if (p + 5 > sz) { reset(); return; }
-            _tha[i] = a[p]; p++; _thL[i] = a[p]; p++; _thv[i] = a[p]; p++;
-            _thnext[i] = a[p]; p++;
+        for (var i = 0; i < _nfil; i++) {    // 7 scalars per arm; vertices regrow
+            if (p + 7 > sz) { reset(); return; }
+            _tha0[i] = a[p]; p++; _tha[i] = a[p]; p++; _thL[i] = a[p]; p++;
+            _thnext[i] = a[p]; p++; _thv[i] = a[p]; p++;
             var np = a[p]; p++;
-            if (np < 1 || np > PMAX || p + np / 2 + 1 > sz) { reset(); return; }
+            if (np < 1 || np > PMAX) { reset(); return; }
             _thnp[i] = np;
-            var base = i * PMAX;
-            for (var k = 0; k < np; k += 2) { _pt[base + k] = a[p]; p++; }
-            if ((np & 1) == 0) { _pt[base + np - 1] = a[p]; p++; }    // tip
-            for (var k = 1; k < np; k += 2) {                        // rebuild odds
-                if (k == np - 1) { continue; }       // tip already placed (np even)
-                var v0 = _pt[base + k - 1]; var v1 = _pt[base + k + 1];
-                _pt[base + k] = packPt((upx(v0) + upx(v1)) / 2,
-                                       (upy(v0) + upy(v1)) / 2, upci(v1));
-            }
+            _thrb[i] = a[p]; p++;
         }
         if (p >= sz) { reset(); return; }
         var nbloom = a[p]; p++;
