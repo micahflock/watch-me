@@ -51,6 +51,19 @@ ciq_sim_env() {
   fi
 }
 
+# True when the simulator's full shared-library closure resolves: the webkit
+# compat libs ($CIQ_SIM_LIBS on LD_LIBRARY_PATH) AND the apt-provided system
+# libs (libsecret/libsoup/libusb/gst/...). The $CIQ_SIM_LIBS directory existing
+# is NOT enough — on a warm container it can be cached while the apt deps never
+# landed, so the sim still dies with "error while loading shared libraries".
+# Usage: ciq_sim_libs_resolve [sim-binary]  (defaults to $CIQ_SDK_HOME's).
+ciq_sim_libs_resolve() {
+  local sim="${1:-$CIQ_SDK_HOME/bin/simulator}"
+  [ -x "$sim" ] || return 1
+  command -v ldd >/dev/null 2>&1 || return 0   # can't verify; don't block
+  ( ciq_sim_env; ! ldd "$sim" 2>/dev/null | grep -q "not found" )
+}
+
 # --- Convenience: report whether we can do a real build ----------------------
 # Sets CIQ_CAN_BUILD=1 when SDK + key + device files are all present.
 ciq_can_build() {
