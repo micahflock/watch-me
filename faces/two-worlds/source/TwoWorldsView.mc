@@ -104,75 +104,128 @@ module Face {
 
 // FieldMaskComponent — paints BLACK over everything OUTSIDE the field region,
 // confining the full-frame generative art (the BioBloom dish, drawn before this)
-// to the disc. The mask runs are precomputed once (the field shape is static):
-// zero per-tick allocation, just a fillRectangle per black run.
+// to the disc. The mask shape is static, so it is decomposed ONCE (in onLayout)
+// into a small set of rectangles which render() replays (one fillRectangle each,
+// zero per-tick allocation).
+//
+// Each scanline's black runs (the complement of the field interval(s) within
+// [0,215]) are coalesced VERTICALLY: a run with the same x/width as the run
+// directly above extends that rectangle's height instead of adding a new one.
+// Over the curved disc edge this nearly halves both the stored rect count
+// (~362 1px runs -> 188 rects) and the per-frame fillRectangle calls. Runs pack
+// as (x << 24) | (w << 16) | (y << 8) | h (each byte 0..215).
 //
 // Field region (same geometry as BorderComponent): offset disc r=95.8 @
-// (107.5,90.7), cut by the chord+slant on top and the battery notch at the
-// bottom. Each scanline's black runs are the complement of the field interval(s)
-// within [0,215].
+// (107.5,90.7), cut by the chord+slant on top and the battery notch at bottom.
 class FieldMaskComponent {
-    var _runs; // packed black runs: (x << 16) | (y << 8) | w (each fits a byte)
+    var _runs; // packed merged rects: (x << 24) | (w << 16) | (y << 8) | h
 
     function initialize() {
         _runs = [];
+        // Open rects still growing downward (ping-pong between two fixed scratch
+        // buffers so the build allocates nothing per scanline). A scanline has at
+        // most 3 black runs, so only a few rects are ever open at once.
+        var openA = new [8];
+        var openB = new [8];
+        var open = openA;
+        var nOpen = 0;
+        var cx = new [4];   // this scanline's run x's
+        var cw = new [4];   // ... and widths
+        var used = new [4];
         for (var y = 0; y < 180; y++) {
-            var dy = y - 90.7;
-            var disc = 9177.64 - dy * dy; // 95.8^2 - dy^2
-            if (disc <= 0.0) { black(0.0, 215.0, y); continue; }
-            var hw = Math.sqrt(disc);
-            var xl = 107.5 - hw;
-            var xr = 107.5 + hw;
-
-            // Top cut: chord at y=62 (x 16..134) + slant up to (166,15).
-            if (y < 62) {
-                var xcut;
-                if (y < 15) {
-                    xcut = 166.0;
-                } else {
-                    xcut = 134.0 + 32.0 * (62 - y) / 47.0;
-                    if (xcut > 166.0) { xcut = 166.0; }
+            var nCur = scanline(y, cx, cw);
+            for (var c = 0; c < nCur; c++) { used[c] = false; }
+            var nxt = (open == openA) ? openB : openA;
+            var nNext = 0;
+            for (var o = 0; o < nOpen; o++) {
+                var r = open[o];
+                var rx = (r >> 24) & 0xFF;
+                var rw = (r >> 16) & 0xFF;
+                var hit = -1;
+                for (var c = 0; c < nCur; c++) {
+                    if (!used[c] && cx[c] == rx && cw[c] == rw) { hit = c; break; }
                 }
-                if (xl < xcut) { xl = xcut; }
-                if (xl >= xr) { black(0.0, 215.0, y); continue; }
+                if (hit >= 0) {
+                    used[hit] = true;
+                    nxt[nNext] = r + 1;          // h is the low byte; +1 grows it
+                    nNext++;
+                } else {
+                    _runs.add(r);                // closed -> store
+                }
             }
-
-            // Bottom battery notch (y>=163): field is [xl,lw] and [rw,xr];
-            // black the three gaps around them.
-            if (y >= 163) {
-                var t = (y - 163.0) / 9.0;
-                var lw = 70.0 - 13.0 * t;
-                var rw = 145.0 + 13.0 * t;
-                var cur = 0.0;
-                black(cur, xl, y); cur = xl;
-                if (lw > cur) { cur = lw; }       // skip field run [xl,lw]
-                if (rw > cur) { black(cur, rw, y); cur = rw; }
-                if (xr > cur) { cur = xr; }        // skip field run [rw,xr]
-                if (cur < 215.0) { black(cur, 215.0, y); }
-                continue;
+            for (var c = 0; c < nCur; c++) {
+                if (!used[c]) {
+                    nxt[nNext] = (cx[c] << 24) | (cw[c] << 16) | (y << 8) | 1;
+                    nNext++;
+                }
             }
-
-            // Normal scanline: field [xl,xr]; black the two sides.
-            black(0.0, xl, y);
-            black(xr, 215.0, y);
+            open = nxt;
+            nOpen = nNext;
         }
+        for (var o = 0; o < nOpen; o++) { _runs.add(open[o]); }
     }
 
-    function black(x0, x1, y) {
+    // Fill this scanline's black runs into cx[]/cw[]; returns the run count (0..3).
+    function scanline(y, cx, cw) {
+        var dy = y - 90.7;
+        var disc = 9177.64 - dy * dy; // 95.8^2 - dy^2
+        if (disc <= 0.0) { cx[0] = 0; cw[0] = 215; return 1; }
+        var hw = Math.sqrt(disc);
+        var xl = 107.5 - hw;
+        var xr = 107.5 + hw;
+
+        // Top cut: chord at y=62 (x 16..134) + slant up to (166,15).
+        if (y < 62) {
+            var xcut;
+            if (y < 15) {
+                xcut = 166.0;
+            } else {
+                xcut = 134.0 + 32.0 * (62 - y) / 47.0;
+                if (xcut > 166.0) { xcut = 166.0; }
+            }
+            if (xl < xcut) { xl = xcut; }
+            if (xl >= xr) { cx[0] = 0; cw[0] = 215; return 1; }
+        }
+
+        // Bottom battery notch (y>=163): field is [xl,lw] and [rw,xr]; black the
+        // three gaps around them.
+        if (y >= 163) {
+            var t = (y - 163.0) / 9.0;
+            var lw = 70.0 - 13.0 * t;
+            var rw = 145.0 + 13.0 * t;
+            var n = 0;
+            var cur = 0.0;
+            n = run(cx, cw, n, cur, xl); cur = xl;
+            if (lw > cur) { cur = lw; }       // skip field run [xl,lw]
+            if (rw > cur) { n = run(cx, cw, n, cur, rw); cur = rw; }
+            if (xr > cur) { cur = xr; }        // skip field run [rw,xr]
+            if (cur < 215.0) { n = run(cx, cw, n, cur, 215.0); }
+            return n;
+        }
+
+        // Normal scanline: field [xl,xr]; black the two sides.
+        var n = 0;
+        n = run(cx, cw, n, 0.0, xl);
+        n = run(cx, cw, n, xr, 215.0);
+        return n;
+    }
+
+    // Append the rounded/clamped run [x0,x1) to cx[]/cw[] if non-empty.
+    function run(cx, cw, n, x0, x1) {
         var a = (x0 + 0.5).toNumber();
         var b = (x1 + 0.5).toNumber();
         if (a < 0) { a = 0; }
         if (b > 215) { b = 215; }
-        if (b > a) {
-            _runs.add((a << 16) | (y << 8) | (b - a));
-        }
+        if (b > a) { cx[n] = a; cw[n] = b - a; return n + 1; }
+        return n;
     }
 
     function render(dc, state) {
         dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
         for (var i = 0; i < _runs.size(); i++) {
             var v = _runs[i];
-            dc.fillRectangle((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, 1);
+            dc.fillRectangle((v >> 24) & 0xFF, (v >> 8) & 0xFF,
+                (v >> 16) & 0xFF, v & 0xFF);
         }
     }
 }
@@ -319,12 +372,15 @@ class ReadoutComponent {
             _dow.draw(dc, state.dayOfWeek - 1, leftX, y);
         }
         if (state.day != null) {
-            var s = state.day.toString();
+            // Direct digit math (day is 1..31) -- no toString()/substring(), which
+            // allocate Strings every tick.
+            var d = state.day;
             var x = leftX + 18 + 4; // after the day sprite + 4px space
-            for (var i = 0; i < s.length(); i++) {
-                _date.draw(dc, s.substring(i, i + 1).toNumber(), x, y);
-                x += 6 + 1; // digit width + 1px tracking
+            if (d >= 10) {
+                _date.draw(dc, (d / 10) % 10, x, y);
+                x += 6 + 1;          // digit width + 1px tracking
             }
+            _date.draw(dc, d % 10, x, y);
         }
     }
 }
