@@ -1,0 +1,452 @@
+#!/usr/bin/env python3
+"""biobloom_parametric -- biobloom with a PARAMETRIC skeleton.
+
+Same dish as algos/biobloom.py (same blooms, colony, momentum, HR ramp, daily
+growth), but each arm is stored as a handful of scalars instead of a cached
+vertex list:
+
+    {a0, a, L, next, v, np, rb}      (no per-vertex "pts")
+
+Vertices are regenerated at RENDER time by replaying the wiggle walk from the
+seed angle a0, and the arm is coloured from the colony radius-LUT (the same
+HR-zone-vs-radius gradient the fur already uses) instead of a per-vertex colour.
+
+Why this is the version that helps the 64 KB ceiling, not just the save blob:
+  * the live `_pt` array (KMAX*PMAX = 820 slots, ~4 KB -- the single biggest
+    live allocation) disappears. Regeneration streams one arm at a time into a
+    PMAX-slot scratch, so we do NOT just relocate _pt into a frame buffer.
+  * save()/load() shrink too: arms persist as scalars, no vertex dump.
+  * reload is LOSSLESS: the wander uses a FIXED amp (AMP), so an arm is a pure
+    function of (a0, rb, np) -- regenerating gives back exactly the live arm.
+    The cost is dropping flag D7 (HR-variability -> wander amplitude); AMP is
+    chosen so the dish keeps its organic tangle (see sketches/save_compare.py).
+
+Trade vs biobloom.py: skeleton and fur are drawn together per arm (one walk),
+so the global skeleton>blooms>fur ink priority becomes blooms>(skeleton+fur).
+On a typical day the ink budget is never exhausted, so it renders the same; the
+priority only diverges under extreme load, where it just changes what gets shed.
+"""
+from device import (idiv, imod, isin, hash16, account,
+                    COLOR_BLACK, COLOR_DK_GRAY, COLOR_LT_GRAY,
+                    COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
+                    COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK,
+                    COLOR_PURPLE, COLOR_DK_RED)
+
+HR_BOUNDS = [60, 80, 95, 105, 120, 138, 152, 165]
+HR_RAMP = [COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
+           COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK, COLOR_PURPLE]
+
+
+def hr_zi(hr):
+    if hr is None:
+        return -1
+    for i in range(len(HR_BOUNDS)):
+        if hr < HR_BOUNDS[i]:
+            return i
+    return len(HR_BOUNDS)
+
+
+def hr_color(zi):
+    return COLOR_DK_GRAY if zi < 0 else HR_RAMP[zi]
+
+
+CX, CY = 107, 108
+R0, RMAX = 7, 86
+UNIT = 64
+KACT = 6
+STEP = 2
+KMAX = 20
+SEEDS = 9
+BMAX = 16
+PMAX = 41                 # max vertices an arm regenerates to (R0..RMAX by STEP)
+AMP = 3                   # fixed wander amplitude (was 1 + vrange//10; see module
+                          # docstring -- a constant makes the arm regenerable and
+                          # was tuned to keep the organic look)
+
+ACTIVE = 4
+MOM_MODE = "cooldown"
+BASE = 2
+GROW = 2
+REACH_CAP = 46
+MOM_DIV = 16
+MOM_STEP = 2
+
+CR_MAX = 78
+TRAIL = 10
+CMOVE_DIV = 20
+MOVE_MIN = 2
+IDLE_STEPS = 1
+BAR_MAX = 60
+BAR_ON = 40
+BAR_HI = 50
+BAR_CLEAR = 4
+
+INK_MAX = 700
+SK_CAP = 520
+
+
+class BioBloomParam:
+    def __init__(self, mom_mode=MOM_MODE):
+        self.mom_mode = mom_mode
+        self.prev = None
+        self.win = []
+        self.fil = []
+        self.blooms = []
+        self.epi_on = False
+        self.epi_idx = -1
+        self.colony = {"reach": R0, "bands": []}
+        self.bar = 0
+        self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)
+        self._col_lut = [COLOR_BLACK] * (CR_MAX + 1)
+        self._bl_lut = [COLOR_BLACK] * (REACH_CAP + 1)
+        for i in range(SEEDS):
+            a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
+            v = 2 + imod(hash16(7, i, 1), 3)
+            self.fil.append({"a0": a, "a": a, "L": R0 * UNIT, "next": R0 + STEP,
+                             "v": v, "np": 1, "rb": R0})
+
+    # ---- arm geometry: regenerate vertices from (a0, rb, np) ------------------
+
+    def _arm_vertices(self, f):
+        """Replay the fixed-amp wiggle walk. Returns [(x, y, rr), ...]. This is
+        the one allocation per arm per frame -- a PMAX-slot scratch in the .mc,
+        reused across arms (NOT a persistent per-arm cache)."""
+        pts = []
+        a = f["a0"]
+        rb, np = f["rb"], f["np"]
+        for k in range(np):
+            rr = rb + k * STEP
+            if k > 0:
+                da = idiv(isin(hash16(a, rr, 1) & 255) * AMP, 127)
+                a = imod(a + da, 256)
+            x = CX + idiv(rr * isin(a + 64), 127)
+            y = CY + idiv(rr * isin(a), 127)
+            pts.append((x, y, rr))
+        return pts
+
+    def _tip(self, f):
+        """Arm tip (x, y) without building the whole arm -- walk the angle to the
+        last vertex. Used to anchor blooms (was f['pts'][-1])."""
+        a = f["a0"]
+        rb, np = f["rb"], f["np"]
+        rr = rb
+        for k in range(1, np):
+            rr = rb + k * STEP
+            da = idiv(isin(hash16(a, rr, 1) & 255) * AMP, 127)
+            a = imod(a + da, 256)
+        return CX + idiv(rr * isin(a + 64), 127), CY + idiv(rr * isin(a), 127)
+
+    def _longish(self, salt):
+        order = sorted(range(len(self.fil)),
+                       key=lambda j: self.fil[j]["L"], reverse=True)
+        k = imod(hash16(salt, len(self.blooms) + 1, 13), max(1, len(order) // 2))
+        return self.fil[order[k]]
+
+    def _nearest(self, target):
+        best, bd = self.fil[0], 999
+        for f in self.fil:
+            d = imod(f["a"] - target + 128, 256) - 128
+            if d < 0:
+                d = -d
+            if d < bd:
+                bd, best = d, f
+        return best
+
+    def _grow_fil(self, f, move):
+        f["L"] += idiv(move * f["v"], 3)
+        if f["L"] > RMAX * UNIT:
+            f["L"] = RMAX * UNIT
+        while idiv(f["L"], UNIT) >= f["next"] and f["next"] <= RMAX:
+            rr = f["next"]
+            da = idiv(isin(hash16(f["a"], rr, 1) & 255) * AMP, 127)
+            f["a"] = imod(f["a"] + da, 256)
+            f["np"] += 1
+            f["next"] += STEP
+
+    # ---- per-minute simulation (identical to biobloom.py except _grow_fil) -----
+
+    def advance(self, snap):
+        steps = snap.steps or 0
+        if self.prev is None:
+            self.prev = steps
+        spm = steps - self.prev
+        if spm < 0:
+            spm = 0
+        self.prev = steps
+
+        hr = snap.heartRate
+        zi = hr_zi(hr)
+        cur = hr if hr is not None else 0
+        self.win.append(cur)
+        if len(self.win) > 10:
+            self.win.pop(0)
+        vrange = max(self.win) - min(self.win)
+        rising = len(self.win) >= 6 and cur - self.win[0] >= 8
+
+        move = idiv(spm, KACT)
+
+        if move > 0:
+            nf = len(self.fil)
+            i = 0
+            while i < nf:
+                self._grow_fil(self.fil[i], move)
+                i += 1
+            if rising and len(self.fil) < KMAX:
+                src = self._longish(steps)
+                na = imod(src["a"] + 10 + imod(hash16(steps, nf, 9), 22), 256)
+                rr = idiv(src["L"], UNIT)
+                v = 2 + imod(hash16(steps, nf, 4), 3)
+                self.fil.append({"a0": na, "a": na, "L": rr * UNIT,
+                                 "next": rr + STEP, "v": v, "np": 1, "rb": rr})
+
+        fed = -1
+        if zi >= ACTIVE:
+            if not self.epi_on:
+                self.epi_on = True
+                self.epi_idx = self._seed(zi)
+            if self.epi_idx >= 0:
+                b = self.blooms[self.epi_idx]
+                w = 3 + idiv(vrange, 8)
+                if w > 16:
+                    w = 16
+                if w > b["w"]:
+                    b["w"] = w
+                self._band(b, hr_color(zi), GROW)
+                if zi > b["hot"]:
+                    b["hot"] = zi
+                b["mc"] = 0
+                b["lastzi"] = zi
+                b["mom"] += idiv(spm, MOM_DIV)
+                if b["mom"] > REACH_CAP:
+                    b["mom"] = REACH_CAP
+                b["mom0"] = b["mom"]
+                fed = self.epi_idx
+        else:
+            self.epi_on = False
+            self.epi_idx = -1
+
+        self._momentum(fed)
+        self._grow_colony(spm, zi)
+
+    def _grow_colony(self, spm, zi):
+        col = self.colony
+        if spm <= IDLE_STEPS:
+            self.bar += 1
+            if self.bar > BAR_MAX:
+                self.bar = BAR_MAX
+        elif spm >= KACT:
+            self.bar -= BAR_CLEAR
+            if self.bar < 0:
+                self.bar = 0
+        if spm < MOVE_MIN:
+            return
+        front = 0
+        for f in self.fil:
+            l = idiv(f["L"], UNIT)
+            if l > front:
+                front = l
+        front -= TRAIL
+        target = col["reach"] + idiv(spm, CMOVE_DIV)
+        if target > front:
+            target = front
+        if target > CR_MAX:
+            target = CR_MAX
+        if target <= col["reach"]:
+            return
+        if self.bar >= BAR_ON:
+            c = COLOR_DK_GRAY if self.bar >= BAR_HI else COLOR_LT_GRAY
+        else:
+            c = hr_color(zi)
+        col["bands"].append((col["reach"], target, c))
+        col["reach"] = target
+
+    def _seed(self, zi):
+        if len(self.blooms) >= BMAX:
+            return -1
+        target = imod(self.bloom_base + len(self.blooms) * 98
+                      + imod(hash16(zi, len(self.blooms), 7), 22), 256)
+        f = self._nearest(target)
+        bx, by = self._tip(f)
+        salt = imod(hash16(bx, by, zi), 4096)
+        self.blooms.append({"bx": bx, "by": by, "ang": f["a"], "reach": BASE,
+                            "w": 3, "bands": [], "salt": salt, "mom": 0,
+                            "hot": zi, "mc": 0, "lastzi": zi, "mom0": 0})
+        return len(self.blooms) - 1
+
+    def _band(self, b, color, grow):
+        r0 = b["reach"]
+        r1 = r0 + grow
+        if r1 > REACH_CAP:
+            r1 = REACH_CAP
+        if r1 > r0:
+            b["bands"].append((r0, r1, color))
+            b["reach"] = r1
+
+    def _mom_color(self, b):
+        if self.mom_mode == "cooldown":
+            m0 = b["mom0"]
+            if m0 <= 0:
+                return hr_color(b["lastzi"])
+            ci = idiv(b["lastzi"] * b["mom"], m0)
+            if ci < 0:
+                ci = 0
+            if ci > b["lastzi"]:
+                ci = b["lastzi"]
+            return hr_color(ci)
+        return b["bands"][-1][2]
+
+    def _momentum(self, fed):
+        i = 0
+        while i < len(self.blooms):
+            b = self.blooms[i]
+            if i != fed and b["mom"] > 0 and b["reach"] < REACH_CAP and b["bands"]:
+                g = MOM_STEP
+                if g > b["mom"]:
+                    g = b["mom"]
+                self._band(b, self._mom_color(b), g)
+                b["mom"] -= g
+                b["mc"] += 1
+            i += 1
+
+    # ---- render ---------------------------------------------------------------
+
+    def render(self, dc, snap):
+        self._ink = INK_MAX
+        if self.colony["bands"]:
+            self._fill_lut(self.colony["bands"], CR_MAX, self._col_lut)
+        self._draw_arms(dc)                       # skeleton + fur, per arm
+        for b in self.blooms:                     # HR-zone blooms (priority kept)
+            if self._ink <= 0:
+                break
+            self._draw_bloom(dc, b)
+
+    def _col_at(self, rr):
+        return self._col_lut[rr if rr <= CR_MAX else CR_MAX]
+
+    def _draw_arms(self, dc):
+        # One walk per arm: regenerate its vertices, draw its skeleton, then its
+        # fur. Decimate the skeleton when the whole dish is large (same as ship).
+        tot = 0
+        for f in self.fil:
+            if f["np"] > 1:
+                tot += f["np"] - 1
+        stride = 1
+        if tot > SK_CAP:
+            stride = idiv(tot, SK_CAP) + 1
+        have_col = bool(self.colony["bands"])
+        reach = self.colony["reach"]
+        for f in self.fil:
+            np = f["np"]
+            if np < 1:
+                continue
+            pts = self._arm_vertices(f)
+            # skeleton arms (structural), coloured by the colony radius-LUT
+            if np >= 2:
+                prev = 0
+                k = stride
+                while k < np:
+                    if self._ink <= 0:
+                        return
+                    x0, y0, _ = pts[prev]
+                    x1, y1, rr = pts[k]
+                    dc.setColor(self._col_at(rr) if have_col else COLOR_DK_GRAY,
+                                COLOR_BLACK)
+                    dc.drawLine(x0, y0, x1, y1)
+                    self._ink -= 1
+                    prev = k
+                    k += stride
+                if prev != np - 1:
+                    if self._ink <= 0:
+                        return
+                    x0, y0, _ = pts[prev]
+                    x1, y1, rr = pts[np - 1]
+                    dc.setColor(self._col_at(rr) if have_col else COLOR_DK_GRAY,
+                                COLOR_BLACK)
+                    dc.drawLine(x0, y0, x1, y1)
+                    self._ink -= 1
+            # fur along this arm (detail), out to where the colony has filled
+            if not have_col:
+                continue
+            lim = idiv(f["L"], UNIT) - TRAIL
+            if lim > reach:
+                lim = reach
+            if lim <= R0:
+                continue
+            a = f["a"]
+            k = 2
+            while k < np:
+                if self._ink <= 0:
+                    return
+                rr = R0 + k * STEP
+                if rr > lim:
+                    break
+                if imod(k, 3) == 0:
+                    x, y, _ = pts[k]
+                    dc.setColor(self._col_at(rr), COLOR_BLACK)
+                    a2 = imod(a + k * 13, 256)
+                    le = 3 + imod(k, 4)
+                    dc.drawLine(x, y, x + idiv(le * isin(a2 + 64), 127),
+                                y + idiv(le * isin(a2), 127))
+                    self._ink -= 1
+                k += 1
+
+    def _fill_lut(self, bands, rmax, lut):
+        n = len(bands)
+        account(rmax + 1 + n)
+        bi = 0
+        r = 0
+        while r <= rmax:
+            while bi < n and bands[bi][1] < r:
+                bi += 1
+            lut[r] = bands[bi][2] if bi < n else bands[n - 1][2]
+            r += 1
+
+    def _draw_bloom(self, dc, b):
+        if not b["bands"]:
+            return
+        self._fill_lut(b["bands"], REACH_CAP, self._bl_lut)
+        ang, reach, w, salt = b["ang"], b["reach"], b["w"], b["salt"]
+        bx, by = b["bx"], b["by"]
+        nsp = 6 + imod(hash16(salt, 1, 1), 6)
+        dc.setColor(self._bl_lut[BASE], COLOR_BLACK)
+        dc.fillCircle(bx, by, 1 + idiv(w, 8))
+        for k in range(nsp):
+            if self._ink <= 0:
+                return
+            off = imod(hash16(salt, k, 4), 121) - 60
+            lf = 90 + imod(hash16(salt, k, 5), 166)
+            bow = imod(hash16(salt, k, 7), 13) - 6
+            fork = imod(hash16(salt, k, 6), 2) == 0
+            a2 = imod(ang + off, 256)
+            dx, dy = isin(a2 + 64), isin(a2)
+            px, py = isin(a2 + 128), isin(a2 + 64)
+            tip = BASE + idiv((reach - BASE) * lf, 256)
+            mr = idiv(tip, 2)
+            mx = bx + idiv(mr * dx, 127) + idiv(bow * px, 127)
+            my = by + idiv(mr * dy, 127) + idiv(bow * py, 127)
+            ex = bx + idiv(tip * dx, 127)
+            ey = by + idiv(tip * dy, 127)
+            dc.setColor(self._bl_lut[tip if tip <= REACH_CAP else REACH_CAP],
+                        COLOR_BLACK)
+            dc.drawLine(bx, by, mx, my)
+            dc.drawLine(mx, my, ex, ey)
+            self._ink -= 2
+            if fork:
+                a3 = imod(a2 + (24 if (off & 1) == 0 else -24), 256)
+                fr = idiv(tip, 3)
+                dc.drawLine(mx, my, mx + idiv(fr * isin(a3 + 64), 127),
+                            my + idiv(fr * isin(a3), 127))
+                self._ink -= 1
+
+    def state_bytes(self):
+        # Live RAM proxy. The PARAMETRIC win: arms are 7 scalars each (no vertex
+        # list) + ONE PMAX-slot regen scratch, vs the ship's per-vertex _pt.
+        return (len(self.fil) * 7 * 5            # 7 Number scalars/arm (~5 B each)
+                + PMAX * 5                        # single reused regen scratch
+                + sum(len(b["bands"]) for b in self.blooms) * 6
+                + len(self.blooms) * 8
+                + len(self.colony["bands"]) * 6)
+
+
+def build():
+    return {"background": COLOR_BLACK, "components": [BioBloomParam(MOM_MODE)]}
