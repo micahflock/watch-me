@@ -86,8 +86,9 @@ SK_CAP = 520
 
 
 class BioBloomParam:
-    def __init__(self, mom_mode=MOM_MODE):
+    def __init__(self, mom_mode=MOM_MODE, coarse=False):
         self.mom_mode = mom_mode
+        self.coarse = coarse              # regenerate at 2*STEP + midpoint-fill
         self.prev = None
         self.win = []
         self.fil = []
@@ -111,9 +112,11 @@ class BioBloomParam:
         """Replay the fixed-amp wiggle walk. Returns [(x, y, rr), ...]. This is
         the one allocation per arm per frame -- a PMAX-slot scratch in the .mc,
         reused across arms (NOT a persistent per-arm cache)."""
-        pts = []
         a = f["a0"]
         rb, np = f["rb"], f["np"]
+        if self.coarse:
+            return self._arm_vertices_coarse(a, rb, np)
+        pts = []
         for k in range(np):
             rr = rb + k * STEP
             if k > 0:
@@ -122,6 +125,27 @@ class BioBloomParam:
             x = CX + idiv(rr * isin(a + 64), 127)
             y = CY + idiv(rr * isin(a), 127)
             pts.append((x, y, rr))
+        return pts
+
+    def _arm_vertices_coarse(self, a, rb, np):
+        """Walk the wiggle every 2*STEP (half the hash16/isin work) with the amp
+        doubled to keep the kink magnitude, then midpoint-fill the in-between
+        radii so the fur's radius grid is unchanged. Trades a chunkier wiggle for
+        ~half the regeneration cost."""
+        pts = [None] * np
+        k = 0
+        while k < np:
+            rr = rb + k * STEP
+            if k > 0:
+                da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * 2), 127)
+                a = imod(a + da, 256)
+            pts[k] = (CX + idiv(rr * isin(a + 64), 127),
+                      CY + idiv(rr * isin(a), 127), rr)
+            k += 2
+        for k in range(1, np, 2):
+            lo = pts[k - 1]
+            hi = pts[k + 1] if k + 1 < np else lo
+            pts[k] = ((lo[0] + hi[0]) // 2, (lo[1] + hi[1]) // 2, rb + k * STEP)
         return pts
 
     def _tip(self, f):
