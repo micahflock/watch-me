@@ -26,7 +26,8 @@ toolchain_ready() {
   SDK="$(sdk_home)"
   [ -x "$SDK/bin/monkeyc" ] && [ -f "$CIQ_KEY" ] && [ -d "$DEVICE_DIR" ] \
     && [ -x "$SDK/bin/simulator" ] \
-    && [ -f "$CIQ_SIM_LIBS/libwebkit2gtk-4.0.so.37" ]
+    && [ -f "$CIQ_SIM_LIBS/libwebkit2gtk-4.0.so.37" ] \
+    && ciq_sim_libs_resolve "$SDK/bin/simulator"
 }
 
 if toolchain_ready; then

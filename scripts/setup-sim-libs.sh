@@ -9,7 +9,11 @@
 # 22.04 (jammy) and expose them via LD_LIBRARY_PATH — no system changes needed.
 #
 # Also needed from the distro itself (apt): libsecret-1-0 libusb-1.0-0
-# libsoup2.4-1 (jammy-era webkit pulls them in at runtime).
+# libsoup2.4-1 (jammy-era webkit pulls them in at runtime), plus the
+# gst/enchant/manette/wayland/webp set webkit dlopens. x11-apps (xwd) and
+# imagemagick (convert) provide the status-bar screenshot path, which is the
+# only way to read RAM for a release build (it stubs out the Instrument
+# console line) on the headless sim.
 #
 # Output: $CIQ_SIM_LIBS (default ~/ciq-tools/webkit40-libs). sim.sh/test.sh add
 # it to LD_LIBRARY_PATH automatically when it exists.
@@ -24,9 +28,13 @@ DEST="${CIQ_SIM_LIBS:-$HOME/ciq-tools/webkit40-libs}"
 APT="apt-get"
 [ "$(id -u)" != "0" ] && APT="sudo apt-get"
 echo "Installing distro runtime deps (best effort)..."
+# Refresh the index first: a fresh container ships a stale package list, and
+# without this the install 404s on a moved point release (e.g. libegl-mesa0)
+# and the whole apt step fails silently, leaving the sim libs missing.
+$APT update -qq 2>/dev/null || echo "(apt update failed; continuing with the cached index)"
 $APT install -y -qq libsecret-1-0 libusb-1.0-0 libsoup2.4-1 xvfb \
   libwebpmux3 libwebpdemux2 libgstreamer-gl1.0-0 libenchant-2-2 \
-  libmanette-0.2-0 libwayland-server0 2>/dev/null \
+  libmanette-0.2-0 libwayland-server0 x11-apps imagemagick 2>/dev/null \
   || echo "(apt install failed or unavailable; continuing — packages may already exist)"
 
 if [ -f "$DEST/libwebkit2gtk-4.0.so.37" ]; then
