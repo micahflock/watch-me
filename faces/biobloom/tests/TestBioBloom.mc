@@ -55,7 +55,7 @@ function bioFeedActiveDay(bloom) {
 }
 
 // A deliberately punishing day: ~15 h of hard-effort / active-recovery intervals
-// that saturate the dish (22 filament arms, 16 blooms, a deep colony) -- the
+// that saturate the dish (20 filament arms, 16 blooms, a deep colony) -- the
 // worst case for any render cost that scales with accreted state. Recovery HR
 // drops below the elevated threshold so each cycle is a distinct episode (a new
 // bloom), capping at BMAX; the movement keeps the colony and filaments growing.
@@ -107,7 +107,7 @@ function testBioBloomRenderBudget(logger) {
     // The dish must actually be saturated, or the test isn't exercising the
     // worst case it claims to guard.
     Test.assert(b._nbloom == 16);        // BMAX -- bloom cap reached
-    Test.assert(b._nfil == 22);          // KMAX -- filament cap reached
+    Test.assert(b._nfil == 20);          // KMAX -- filament cap reached
     Test.assert(b._coln >= 40);          // colony well into its band budget
 
     // Render work bounded regardless of dish size: one shared ink budget
@@ -130,7 +130,7 @@ function testBioBloomDayParity(logger) {
     Test.assert(b._nbloom == 4);     // run, anxiety node, dash, gym
     Test.assert(b._colreach == 60);  // main colony reach tracks movement
     Test.assert(b._coln == 52);
-    Test.assert(b._nfil == 22);      // filaments grew to the KMAX cap
+    Test.assert(b._nfil == 20);      // filaments grew to the KMAX cap
 
     // The simulation STATE above is bit-identical to the sketch. The render now
     // draws each bloom as a precomputed spine fan + a colony fur (not the old
@@ -179,7 +179,7 @@ function testBioBloomClockResync(logger) {
     bioFeedActiveDay(b);             // ends at 23:59 on day 14
     Test.assert(b._nbloom == 4);
     Test.assert(b._coln == 52);
-    Test.assert(b._nfil == 22);
+    Test.assert(b._nfil == 20);
 
     var snap = new Snapshot();
     snap.year = 2026; snap.month = 6; snap.day = 14;  // same day
@@ -192,7 +192,7 @@ function testBioBloomClockResync(logger) {
         + " nfil=" + b._nfil);
     Test.assert(b._nbloom == 4);
     Test.assert(b._coln == 52);
-    Test.assert(b._nfil == 22);
+    Test.assert(b._nfil == 20);
     return true;
 }
 
@@ -236,6 +236,6 @@ function testBioBloomSaveRestore(logger) {
     snap.hour = 23; snap.minute = 59; snap.second = 0;
     snap.steps = 25000; snap.heartRate = 60;
     r.advance(snap);
-    Test.assert(r._nfil == 22);          // still the grown dish, not re-seeded
+    Test.assert(r._nfil == 20);          // still the grown dish, not re-seeded
     return true;
 }
