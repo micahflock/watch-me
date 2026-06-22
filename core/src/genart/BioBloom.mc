@@ -34,8 +34,10 @@ using Toybox.Graphics as Gfx;
 // (recomputed each frame from the bloom's salt — cheap, no per-spine state)
 // fired outward and coloured by the HR zone at the tip, the colony as a short
 // spine "fur" stippled along the arms. A per-frame ink budget (INK_MAX) caps the
-// spine work so a large dish can never outrun the watchdog — the per-dot stipple
-// did.
+// DRAW work so a large dish can never outrun the watchdog — the per-dot stipple
+// did. The arm regeneration (parametric vertices replayed each frame) is the
+// other unbounded cost: it is hash16/isin work the ink budget does not see, so it
+// is bounded separately by widening the regen stride past REGEN_CAP (regenArm).
 class BioBloom {
 
     const CX = 107;
@@ -77,6 +79,14 @@ class BioBloom {
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
     const INK_MAX = 700;       // total primitives per onUpdate (watchdog backstop)
     const SK_CAP = 520;        // decimate the skeleton above this many segments
+    const REGEN_CAP = 96;      // bound on total arm vertices WALKED per onUpdate.
+                               // The parametric skeleton regenerates vertices at
+                               // render (hash16/isin per vertex); that cost is NOT
+                               // metered by the draw budget (INK_MAX counts dc
+                               // calls only) and grew all day with the dish until
+                               // it tripped the watchdog. drawArms widens the regen
+                               // stride above this so the per-frame regen work is
+                               // bounded no matter how grown the dish is.
 
     // ---- last night's sleep -> a morning seed colony --------------------------
     // The dish resets at midnight and used to wake up EMPTY (blank centre). It
@@ -495,29 +505,50 @@ class BioBloom {
     }
 
     // Regenerate arm i's vertices into the _scr scratch (packPt(x, y, rr)) by
-    // replaying the wiggle walk from the seed angle. COARSE: walk every 2*STEP
-    // with the amp doubled, then midpoint-fill the in-between radii -- half the
-    // hash16/isin work for a chunkier wiggle. _scr is reused across arms, so the
-    // per-vertex array the ship cached (KMAX*PMAX) never exists.
-    function regenArm(i) {
+    // replaying the wander walk from the seed angle at stride `ws` (>= 2): the
+    // hash16/isin walk touches only the strided anchors (amp scaled by ws so the
+    // kink magnitude holds), and the in-between radii are linearly filled (cheap
+    // integer interpolation, no hash16/isin). drawArms widens `ws` as the dish
+    // saturates so the TOTAL regen work per onUpdate stays bounded -- the regen,
+    // not the draw count, is what grew all day and tripped the watchdog (INK_MAX
+    // meters dc calls only). Every arm keeps its reach, heading and colour grade;
+    // only the fine wiggle coarsens. That is the deliberate trade: the dish STATE
+    // is the record of the day (and is untouched here), the exact render is not.
+    // _scr is reused across arms, so the per-vertex array the ship cached
+    // (KMAX*PMAX) never exists.
+    function regenArm(i, ws) {
         var a = _tha0[i];
         var rb = _thrb[i];
         var np = _thnp[i];
-        var k = 0;
+        _scr[0] = packPt(coordX(a, rb), coordY(a, rb), rb);
+        var k = ws;
+        var last = 0;
         while (k < np) {
             var rr = rb + k * STEP;
-            if (k > 0) {
-                var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * 2)) / 127;
-                a = (a + da) % 256;
-            }
+            var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * ws)) / 127;
+            a = (a + da) % 256;
             _scr[k] = packPt(coordX(a, rr), coordY(a, rr), rr);
-            k += 2;
+            last = k;
+            k += ws;
         }
-        for (k = 1; k < np; k += 2) {
-            var lo = _scr[k - 1];
-            var hi = (k + 1 < np) ? _scr[k + 1] : lo;
-            _scr[k] = packPt((upx(lo) + upx(hi)) / 2, (upy(lo) + upy(hi)) / 2,
-                             rb + k * STEP);
+        if (last != np - 1) {                // the skeleton always closes to the tip
+            var rrt = rb + (np - 1) * STEP;
+            var dat = (GenArt.isin(GenArt.hash16(a, rrt, 1) & 255) * (AMP * ws)) / 127;
+            a = (a + dat) % 256;
+            _scr[np - 1] = packPt(coordX(a, rrt), coordY(a, rrt), rrt);
+        }
+        for (var m = 1; m < np; m++) {       // linear-fill the non-anchor radii
+            if ((m % ws) == 0 || m == np - 1) { continue; }
+            var lo = (m / ws) * ws;
+            var hi = lo + ws;
+            if (hi > np - 1) { hi = np - 1; }
+            var plo = _scr[lo];
+            var phi = _scr[hi];
+            var span = hi - lo;
+            var t = m - lo;
+            _scr[m] = packPt(upx(plo) + ((upx(phi) - upx(plo)) * t) / span,
+                             upy(plo) + ((upy(phi) - upy(plo)) * t) / span,
+                             rb + m * STEP);
         }
     }
 
@@ -529,17 +560,23 @@ class BioBloom {
     // is stored. Merging skeleton+fur per arm keeps the regen walk to ONE pass.
     function drawArms(dc) {
         var tot = 0;
+        var totv = 0;
         for (var i = 0; i < _nfil; i++) {
             if (_thnp[i] > 1) { tot += _thnp[i] - 1; }
+            totv += _thnp[i];
         }
         var stride = 1;
         if (tot > SK_CAP) { stride = tot / SK_CAP + 1; }
+        // Regen walk stride: widen it past REGEN_CAP so the total vertices walked
+        // per onUpdate (the hash16/isin cost) can't grow with the dish. >= 2 always.
+        var ws = 2;
+        if (totv > REGEN_CAP) { ws = totv / REGEN_CAP + 1; }
         var haveCol = (_coln > 0);
         var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
             var np = _thnp[i];
             if (np < 1) { continue; }
-            regenArm(i);
+            regenArm(i, ws);
             if (np >= 2) {                   // skeleton (structural)
                 var prev = 0;
                 var k = stride;

@@ -83,12 +83,17 @@ BAR_CLEAR = 4
 
 INK_MAX = 700
 SK_CAP = 520
+REGEN_CAP = 96            # bound on total arm vertices walked/frame: the regen
+                          # stride widens past this so the per-frame hash16/isin
+                          # cost can't grow all day and trip the watchdog (the
+                          # draw budget INK_MAX never saw it). Mirrors BioBloom.mc.
 
 
 class BioBloomParam:
     def __init__(self, mom_mode=MOM_MODE, coarse=False):
         self.mom_mode = mom_mode
-        self.coarse = coarse              # regenerate at 2*STEP + midpoint-fill
+        self.coarse = coarse              # regenerate at a dish-size-bounded stride
+        self._ws = 2                      # current regen walk stride (set in render)
         self.prev = None
         self.win = []
         self.fil = []
@@ -128,24 +133,47 @@ class BioBloomParam:
         return pts
 
     def _arm_vertices_coarse(self, a, rb, np):
-        """Walk the wiggle every 2*STEP (half the hash16/isin work) with the amp
-        doubled to keep the kink magnitude, then midpoint-fill the in-between
-        radii so the fur's radius grid is unchanged. Trades a chunkier wiggle for
-        ~half the regeneration cost."""
+        """Strided wander walk: hash16/isin only at anchors k = 0, ws, 2*ws, ...
+        (amp scaled by ws to hold the kink magnitude) + the tip, then linear-fill
+        the in-between radii (cheap integer interp, no hash16/isin). The stride
+        self._ws widens with dish size (set in _draw_arms) so the per-frame regen
+        cost is BOUNDED -- the parametric regen, not the draw count, is what grew
+        all day and tripped the watchdog (INK_MAX meters dc calls only). Every arm
+        keeps its reach/heading/colour; only the fine wiggle coarsens. Mirrors
+        BioBloom.mc regenArm(). Wiggle parity across ws is intentionally dropped:
+        the dish STATE, not its render, is the record of the day."""
+        ws = self._ws
         pts = [None] * np
-        k = 0
+        pts[0] = (CX + idiv(rb * isin(a + 64), 127),
+                  CY + idiv(rb * isin(a), 127), rb)
+        k = ws
+        last = 0
         while k < np:
             rr = rb + k * STEP
-            if k > 0:
-                da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * 2), 127)
-                a = imod(a + da, 256)
+            da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
+            a = imod(a + da, 256)
             pts[k] = (CX + idiv(rr * isin(a + 64), 127),
                       CY + idiv(rr * isin(a), 127), rr)
-            k += 2
-        for k in range(1, np, 2):
-            lo = pts[k - 1]
-            hi = pts[k + 1] if k + 1 < np else lo
-            pts[k] = ((lo[0] + hi[0]) // 2, (lo[1] + hi[1]) // 2, rb + k * STEP)
+            last = k
+            k += ws
+        if last != np - 1:                       # the skeleton always closes to the tip
+            rr = rb + (np - 1) * STEP
+            da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
+            a = imod(a + da, 256)
+            pts[np - 1] = (CX + idiv(rr * isin(a + 64), 127),
+                           CY + idiv(rr * isin(a), 127), rr)
+        for m in range(1, np):                   # linear-fill the non-anchor radii
+            if m % ws == 0 or m == np - 1:
+                continue
+            lo = idiv(m, ws) * ws
+            hi = lo + ws
+            if hi > np - 1:
+                hi = np - 1
+            plo, phi = pts[lo], pts[hi]
+            span = hi - lo
+            t = m - lo
+            pts[m] = (plo[0] + idiv((phi[0] - plo[0]) * t, span),
+                      plo[1] + idiv((phi[1] - plo[1]) * t, span), rb + m * STEP)
         return pts
 
     def _tip(self, f):
@@ -351,12 +379,19 @@ class BioBloomParam:
         # One walk per arm: regenerate its vertices, draw its skeleton, then its
         # fur. Decimate the skeleton when the whole dish is large (same as ship).
         tot = 0
+        totv = 0
         for f in self.fil:
             if f["np"] > 1:
                 tot += f["np"] - 1
+            totv += f["np"]
         stride = 1
         if tot > SK_CAP:
             stride = idiv(tot, SK_CAP) + 1
+        # regen walk stride: widen past REGEN_CAP so total vertices walked/frame
+        # (the hash16/isin cost) can't grow with the dish. >= 2 always.
+        self._ws = 2
+        if totv > REGEN_CAP:
+            self._ws = idiv(totv, REGEN_CAP) + 1
         have_col = bool(self.colony["bands"])
         reach = self.colony["reach"]
         for f in self.fil:
