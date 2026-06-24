@@ -81,7 +81,13 @@ BAR_ON = 40
 BAR_HI = 50
 BAR_CLEAR = 4
 
-INK_MAX = 700
+INK_MAX = 560            # render DRAW budget. The watchdog limits VM instructions,
+                         # and each draw now carries far more hash16/isin work than
+                         # when this was tuned (parametric regen + bloom spine fans);
+                         # the whole face trips on cumulative cost across all layers,
+                         # so BioBloom must leave headroom. A normal day's full dish
+                         # draws < 560 (unaffected); this only clips the worst-case
+                         # active-growth peak. Mirrors BioBloom.mc.
 SK_CAP = 520
 REGEN_CAP = 96            # bound on total arm vertices walked/frame: the regen
                           # stride widens past this so the per-frame hash16/isin
