@@ -77,7 +77,17 @@ class BioBloom {
     const CBANDS = 80;         // cap on colony bands (reach R0..78 => ~71)
     const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
-    const INK_MAX = 700;       // total primitives per onUpdate (watchdog backstop)
+    const INK_MAX = 560;       // render budget per onUpdate. This is a DRAW count,
+                               // but the watchdog limits VM INSTRUCTIONS, and each
+                               // draw now carries far more hash16/isin work than
+                               // when this was tuned (parametric regen + the bloom
+                               // spine fans). The whole face trips on CUMULATIVE
+                               // cost across all 9 layers (the wrist crash died in
+                               // the clock layer, #8), so BioBloom -- the dominant,
+                               // dish-sized layer -- must leave headroom for the
+                               // rest. 560 keeps the worst-case active-growth frame
+                               // well under budget; a normal day never reaches it
+                               // (its full dish draws < 560) so it is unaffected.
     const SK_CAP = 520;        // decimate the skeleton above this many segments
     const REGEN_CAP = 96;      // bound on total arm vertices WALKED per onUpdate.
                                // The parametric skeleton regenerates vertices at
