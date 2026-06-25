@@ -81,14 +81,13 @@ BAR_ON = 40
 BAR_HI = 50
 BAR_CLEAR = 4
 
-INK_MAX = 560            # render DRAW budget. The watchdog limits VM instructions,
-                         # and each draw now carries far more hash16/isin work than
-                         # when this was tuned (parametric regen + bloom spine fans);
-                         # the whole face trips on cumulative cost across all layers,
-                         # so BioBloom must leave headroom. A normal day's full dish
-                         # draws < 560 (unaffected); this only clips the worst-case
-                         # active-growth peak. Mirrors BioBloom.mc.
-SK_CAP = 520
+INK_MAX = 420            # hard backstop on dc primitives/onUpdate. On-device the
+                         # render is dominated by per-vertex/per-spine METHOD CALLS
+                         # this sandbox's VM proxy does NOT model, so it under-read
+                         # the real cost badly. The dish now self-bounds well under
+                         # this (coarse anchor arms + capped spines); the backstop
+                         # only catches a pathological frame. Mirrors BioBloom.mc.
+SK_CAP = 520             # (unused since arms became anchor polylines; kept for refs)
 REGEN_CAP = 96            # bound on total arm vertices walked/frame: the regen
                           # stride widens past this so the per-frame hash16/isin
                           # cost can't grow all day and trip the watchdog (the
@@ -110,7 +109,6 @@ class BioBloomParam:
         self.bar = 0
         self.bloom_base = imod(hash16(SEEDS, 17, 3), 256)
         self._col_lut = [COLOR_BLACK] * (CR_MAX + 1)
-        self._bl_lut = [COLOR_BLACK] * (REACH_CAP + 1)
         for i in range(SEEDS):
             a = imod(idiv(i * 256, SEEDS) + imod(hash16(91, i, 5), 16), 256)
             v = 2 + imod(hash16(7, i, 1), 3)
@@ -139,47 +137,31 @@ class BioBloomParam:
         return pts
 
     def _arm_vertices_coarse(self, a, rb, np):
-        """Strided wander walk: hash16/isin only at anchors k = 0, ws, 2*ws, ...
-        (amp scaled by ws to hold the kink magnitude) + the tip, then linear-fill
-        the in-between radii (cheap integer interp, no hash16/isin). The stride
-        self._ws widens with dish size (set in _draw_arms) so the per-frame regen
-        cost is BOUNDED -- the parametric regen, not the draw count, is what grew
-        all day and tripped the watchdog (INK_MAX meters dc calls only). Every arm
-        keeps its reach/heading/colour; only the fine wiggle coarsens. Mirrors
-        BioBloom.mc regenArm(). Wiggle parity across ws is intentionally dropped:
-        the dish STATE, not its render, is the record of the day."""
+        """Emit ONLY the strided anchors (k = 0, ws, 2*ws, ... + the tip) as a
+        compact list -- NO per-vertex fill. drawArms draws the arm as those few
+        anchor-to-anchor segments. Mirrors BioBloom.mc regenArm(): the per-vertex
+        fill the old version did expanded ~REGEN_CAP anchors back to ~np vertices
+        and processed every one, and that per-vertex method-call work (NOT modelled
+        by this sandbox's VM proxy) was ~90% of the real on-device frame -- the
+        watchdog trip. Emitting only anchors cuts it ~8x. The stride self._ws
+        widens with dish size so total anchors stay ~REGEN_CAP."""
         ws = self._ws
-        pts = [None] * np
-        pts[0] = (CX + idiv(rb * isin(a + 64), 127),
-                  CY + idiv(rb * isin(a), 127), rb)
-        k = ws
-        last = 0
+        pts = []
+        k = 0
         while k < np:
             rr = rb + k * STEP
-            da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
-            a = imod(a + da, 256)
-            pts[k] = (CX + idiv(rr * isin(a + 64), 127),
-                      CY + idiv(rr * isin(a), 127), rr)
-            last = k
+            if k > 0:
+                da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
+                a = imod(a + da, 256)
+            pts.append((CX + idiv(rr * isin(a + 64), 127),
+                        CY + idiv(rr * isin(a), 127), rr))
             k += ws
-        if last != np - 1:                       # the skeleton always closes to the tip
+        if k - ws != np - 1:                      # ensure the tip is the last anchor
             rr = rb + (np - 1) * STEP
             da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
             a = imod(a + da, 256)
-            pts[np - 1] = (CX + idiv(rr * isin(a + 64), 127),
-                           CY + idiv(rr * isin(a), 127), rr)
-        for m in range(1, np):                   # linear-fill the non-anchor radii
-            if m % ws == 0 or m == np - 1:
-                continue
-            lo = idiv(m, ws) * ws
-            hi = lo + ws
-            if hi > np - 1:
-                hi = np - 1
-            plo, phi = pts[lo], pts[hi]
-            span = hi - lo
-            t = m - lo
-            pts[m] = (plo[0] + idiv((phi[0] - plo[0]) * t, span),
-                      plo[1] + idiv((phi[1] - plo[1]) * t, span), rb + m * STEP)
+            pts.append((CX + idiv(rr * isin(a + 64), 127),
+                        CY + idiv(rr * isin(a), 127), rr))
         return pts
 
     def _tip(self, f):
@@ -382,54 +364,29 @@ class BioBloomParam:
         return self._col_lut[rr if rr <= CR_MAX else CR_MAX]
 
     def _draw_arms(self, dc):
-        # One walk per arm: regenerate its vertices, draw its skeleton, then its
-        # fur. Decimate the skeleton when the whole dish is large (same as ship).
-        tot = 0
+        # Each arm = its coarse anchor polyline + a little per-anchor fur. `ws` is
+        # sized from the dish so total anchors stay ~REGEN_CAP, bounding cost.
         totv = 0
         for f in self.fil:
-            if f["np"] > 1:
-                tot += f["np"] - 1
             totv += f["np"]
-        stride = 1
-        if tot > SK_CAP:
-            stride = idiv(tot, SK_CAP) + 1
-        # regen walk stride: widen past REGEN_CAP so total vertices walked/frame
-        # (the hash16/isin cost) can't grow with the dish. >= 2 always.
         self._ws = 2
         if totv > REGEN_CAP:
             self._ws = idiv(totv, REGEN_CAP) + 1
         have_col = bool(self.colony["bands"])
         reach = self.colony["reach"]
         for f in self.fil:
-            np = f["np"]
-            if np < 1:
+            if f["np"] < 1:
                 continue
             pts = self._arm_vertices(f)
-            # skeleton arms (structural), coloured by the colony radius-LUT
-            if np >= 2:
-                prev = 0
-                k = stride
-                while k < np:
-                    if self._ink <= 0:
-                        return
-                    x0, y0, _ = pts[prev]
-                    x1, y1, rr = pts[k]
-                    dc.setColor(self._col_at(rr) if have_col else COLOR_DK_GRAY,
-                                COLOR_BLACK)
-                    dc.drawLine(x0, y0, x1, y1)
-                    self._ink -= 1
-                    prev = k
-                    k += stride
-                if prev != np - 1:
-                    if self._ink <= 0:
-                        return
-                    x0, y0, _ = pts[prev]
-                    x1, y1, rr = pts[np - 1]
-                    dc.setColor(self._col_at(rr) if have_col else COLOR_DK_GRAY,
-                                COLOR_BLACK)
-                    dc.drawLine(x0, y0, x1, y1)
-                    self._ink -= 1
-            # fur along this arm (detail), out to where the colony has filled
+            for j in range(1, len(pts)):          # skeleton: anchor to anchor
+                if self._ink <= 0:
+                    return
+                x0, y0, _ = pts[j - 1]
+                x1, y1, rr = pts[j]
+                dc.setColor(self._col_at(rr) if have_col else COLOR_DK_GRAY,
+                            COLOR_BLACK)
+                dc.drawLine(x0, y0, x1, y1)
+                self._ink -= 1
             if not have_col:
                 continue
             lim = idiv(f["L"], UNIT) - TRAIL
@@ -438,22 +395,18 @@ class BioBloomParam:
             if lim <= R0:
                 continue
             a = f["a"]
-            k = 2
-            while k < np:
+            for j in range(1, len(pts)):          # fur: a spine at each anchor
+                x, y, rr = pts[j]
+                if rr > lim:
+                    break                         # anchors are radius-ordered
                 if self._ink <= 0:
                     return
-                rr = R0 + k * STEP
-                if rr > lim:
-                    break
-                if imod(k, 3) == 0:
-                    x, y, _ = pts[k]
-                    dc.setColor(self._col_at(rr), COLOR_BLACK)
-                    a2 = imod(a + k * 13, 256)
-                    le = 3 + imod(k, 4)
-                    dc.drawLine(x, y, x + idiv(le * isin(a2 + 64), 127),
-                                y + idiv(le * isin(a2), 127))
-                    self._ink -= 1
-                k += 1
+                dc.setColor(self._col_at(rr), COLOR_BLACK)
+                a2 = imod(a + j * 37, 256)
+                le = 3 + imod(j, 4)
+                dc.drawLine(x, y, x + idiv(le * isin(a2 + 64), 127),
+                            y + idiv(le * isin(a2), 127))
+                self._ink -= 1
 
     def _fill_lut(self, bands, rmax, lut):
         n = len(bands)
@@ -469,39 +422,36 @@ class BioBloomParam:
     def _draw_bloom(self, dc, b):
         if not b["bands"]:
             return
-        self._fill_lut(b["bands"], REACH_CAP, self._bl_lut)
+        # ONE colour for the whole bloom: the hottest HR-zone band it reached (the
+        # episode's peak). Mirrors BioBloom.mc -- a per-radius colour LUT was built
+        # for every bloom every frame, and on the saturated dish that LUT fill was
+        # exactly where the watchdog tripped (reproduced in the sim). The bloom's
+        # position, size and peak-zone colour are the HR-episode data that matter;
+        # the within-bloom cooldown gradient was fine detail. setColor once.
+        hot, hot_color = -1, COLOR_DK_GRAY
+        for (_r0, _r1, c) in b["bands"]:
+            if c in HR_RAMP:
+                zi = HR_RAMP.index(c)
+                if zi > hot:
+                    hot, hot_color = zi, c
         ang, reach, w, salt = b["ang"], b["reach"], b["w"], b["salt"]
         bx, by = b["bx"], b["by"]
-        nsp = 6 + imod(hash16(salt, 1, 1), 6)
-        dc.setColor(self._bl_lut[BASE], COLOR_BLACK)
+        nsp = 4 + imod(hash16(salt, 1, 1), 4)
+        dc.setColor(hot_color, COLOR_BLACK)
         dc.fillCircle(bx, by, 1 + idiv(w, 8))
+        # Each spine = one straight line from the anchor (1 hash16 + 2 isin + 1 draw).
         for k in range(nsp):
             if self._ink <= 0:
                 return
-            off = imod(hash16(salt, k, 4), 121) - 60
-            lf = 90 + imod(hash16(salt, k, 5), 166)
-            bow = imod(hash16(salt, k, 7), 13) - 6
-            fork = imod(hash16(salt, k, 6), 2) == 0
+            h1 = hash16(salt, k, 4)
+            off = imod(h1, 121) - 60
+            lf = 90 + imod(idiv(h1, 121), 166)
             a2 = imod(ang + off, 256)
-            dx, dy = isin(a2 + 64), isin(a2)
-            px, py = isin(a2 + 128), isin(a2 + 64)
             tip = BASE + idiv((reach - BASE) * lf, 256)
-            mr = idiv(tip, 2)
-            mx = bx + idiv(mr * dx, 127) + idiv(bow * px, 127)
-            my = by + idiv(mr * dy, 127) + idiv(bow * py, 127)
-            ex = bx + idiv(tip * dx, 127)
-            ey = by + idiv(tip * dy, 127)
-            dc.setColor(self._bl_lut[tip if tip <= REACH_CAP else REACH_CAP],
-                        COLOR_BLACK)
-            dc.drawLine(bx, by, mx, my)
-            dc.drawLine(mx, my, ex, ey)
-            self._ink -= 2
-            if fork:
-                a3 = imod(a2 + (24 if (off & 1) == 0 else -24), 256)
-                fr = idiv(tip, 3)
-                dc.drawLine(mx, my, mx + idiv(fr * isin(a3 + 64), 127),
-                            my + idiv(fr * isin(a3), 127))
-                self._ink -= 1
+            ex = bx + idiv(tip * isin(a2 + 64), 127)
+            ey = by + idiv(tip * isin(a2), 127)
+            dc.drawLine(bx, by, ex, ey)
+            self._ink -= 1
 
     def state_bytes(self):
         # Live RAM proxy. The PARAMETRIC win: arms are 7 scalars each (no vertex
