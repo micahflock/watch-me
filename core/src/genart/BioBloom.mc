@@ -77,26 +77,21 @@ class BioBloom {
     const CBANDS = 80;         // cap on colony bands (reach R0..78 => ~71)
     const DKGREY = 9;          // colour index for COLOR_DK_GRAY (idle / unknown HR)
     const LTGREY = 10;         // colour index for COLOR_LT_GRAY (colony idle)
-    const INK_MAX = 560;       // render budget per onUpdate. This is a DRAW count,
-                               // but the watchdog limits VM INSTRUCTIONS, and each
-                               // draw now carries far more hash16/isin work than
-                               // when this was tuned (parametric regen + the bloom
-                               // spine fans). The whole face trips on CUMULATIVE
-                               // cost across all 9 layers (the wrist crash died in
-                               // the clock layer, #8), so BioBloom -- the dominant,
-                               // dish-sized layer -- must leave headroom for the
-                               // rest. 560 keeps the worst-case active-growth frame
-                               // well under budget; a normal day never reaches it
-                               // (its full dish draws < 560) so it is unaffected.
-    const SK_CAP = 520;        // decimate the skeleton above this many segments
-    const REGEN_CAP = 96;      // bound on total arm vertices WALKED per onUpdate.
-                               // The parametric skeleton regenerates vertices at
-                               // render (hash16/isin per vertex); that cost is NOT
-                               // metered by the draw budget (INK_MAX counts dc
-                               // calls only) and grew all day with the dish until
-                               // it tripped the watchdog. drawArms widens the regen
-                               // stride above this so the per-frame regen work is
-                               // bounded no matter how grown the dish is.
+    const INK_MAX = 420;       // hard backstop on dc primitives per onUpdate. The
+                               // real watchdog limits VM INSTRUCTIONS, and on-device
+                               // profiling showed BioBloom render is ~92% of the
+                               // frame and dominated by per-vertex/per-spine METHOD
+                               // CALLS (coordX/packPt/isin/...), which the integer
+                               // art-sandbox never modelled -- so its "VM units" badly
+                               // under-read the truth and the budget was set far too
+                               // high (700, then 560) while the wrist kept tripping.
+                               // The dish now self-bounds well under this (coarse
+                               // anchor arms + capped spines), so this only catches a
+                               // pathological frame; it is not the normal governor.
+    const REGEN_CAP = 96;      // total arm ANCHORS emitted per onUpdate. drawArms
+                               // widens the walk stride past this so the per-frame
+                               // arm cost can't grow with the dish (regenArm emits
+                               // only these anchors -- no per-vertex fill).
 
     // ---- last night's sleep -> a morning seed colony --------------------------
     // The dish resets at midnight and used to wake up EMPTY (blank centre). It
@@ -168,8 +163,7 @@ class BioBloom {
     // scan -- which grew all day toward the band caps and tripped the watchdog
     // late in a long day -- into an O(1) array read, so render cost no longer
     // grows with how many bands the dish has accreted.
-    var _colLut;               // radius 0..CR_MAX     -> colony colour
-    var _blLut;                // radius 0..REACH_CAP   -> current bloom colour
+    var _colLut;               // radius 0..CR_MAX     -> colony colour (arms+fur)
 
     function initialize() {
         _tha0 = new [KMAX]; _tha = new [KMAX]; _thL = new [KMAX];
@@ -185,7 +179,6 @@ class BioBloom {
         _ord = new [KMAX];
         _scr = new [PMAX];
         _colLut = new [CR_MAX + 1];
-        _blLut = new [REACH_CAP + 1];
         _bloomBase = GenArt.hash16(SEEDS, 17, 3) % 256;
         // Sleep meters live ACROSS the midnight reset, so they are initialised
         // here (once) and deliberately left untouched by reset().
@@ -514,125 +507,92 @@ class BioBloom {
         }
     }
 
-    // Regenerate arm i's vertices into the _scr scratch (packPt(x, y, rr)) by
-    // replaying the wander walk from the seed angle at stride `ws` (>= 2): the
-    // hash16/isin walk touches only the strided anchors (amp scaled by ws so the
-    // kink magnitude holds), and the in-between radii are linearly filled (cheap
-    // integer interpolation, no hash16/isin). drawArms widens `ws` as the dish
-    // saturates so the TOTAL regen work per onUpdate stays bounded -- the regen,
-    // not the draw count, is what grew all day and tripped the watchdog (INK_MAX
-    // meters dc calls only). Every arm keeps its reach, heading and colour grade;
-    // only the fine wiggle coarsens. That is the deliberate trade: the dish STATE
-    // is the record of the day (and is untouched here), the exact render is not.
-    // _scr is reused across arms, so the per-vertex array the ship cached
-    // (KMAX*PMAX) never exists.
+    // Regenerate arm i as a COARSE ANCHOR POLYLINE into the _scr scratch
+    // (packPt(x, y, rr) at _scr[0..n-1]); returns the anchor count n. The wander
+    // walk strides by `ws` (>= 2) and emits ONLY the strided anchors (plus the
+    // tip), compactly -- there is NO per-vertex fill. drawArms then draws the arm
+    // as those few anchor-to-anchor segments.
+    //
+    // This is the binding watchdog fix. The earlier version walked ~REGEN_CAP
+    // anchors but linear-FILLED all ~np vertices and processed every one; that
+    // per-vertex work (coordX/coordY/packPt/upx/upy method calls over ~800
+    // vertices x 20 arms, EVERY onUpdate) was ~90% of the whole frame on-device.
+    // The art-sandbox proxy counts hash16/isin but NOT that method-call overhead,
+    // so it badly under-read the real cost. Emitting only the anchors cuts the
+    // per-frame vertex work ~8x. drawArms sizes `ws` from the dish so the total
+    // anchors per onUpdate stay ~REGEN_CAP, bounding cost however grown the dish.
+    // Every arm keeps its reach, heading and colour grade; only the wiggle
+    // coarsens (the dish STATE is the day's record and is untouched). _scr is
+    // reused across arms, so no per-vertex array ever exists.
     function regenArm(i, ws) {
         var a = _tha0[i];
         var rb = _thrb[i];
         var np = _thnp[i];
-        _scr[0] = packPt(coordX(a, rb), coordY(a, rb), rb);
-        var k = ws;
-        var last = 0;
+        var n = 0;
+        var k = 0;
         while (k < np) {
             var rr = rb + k * STEP;
-            var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * ws)) / 127;
-            a = (a + da) % 256;
-            _scr[k] = packPt(coordX(a, rr), coordY(a, rr), rr);
-            last = k;
+            if (k > 0) {
+                var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * ws)) / 127;
+                a = (a + da) % 256;
+            }
+            _scr[n] = packPt(coordX(a, rr), coordY(a, rr), rr);
+            n += 1;
             k += ws;
         }
-        if (last != np - 1) {                // the skeleton always closes to the tip
+        if (k - ws != np - 1) {              // ensure the tip is the last anchor
             var rrt = rb + (np - 1) * STEP;
             var dat = (GenArt.isin(GenArt.hash16(a, rrt, 1) & 255) * (AMP * ws)) / 127;
             a = (a + dat) % 256;
-            _scr[np - 1] = packPt(coordX(a, rrt), coordY(a, rrt), rrt);
+            _scr[n] = packPt(coordX(a, rrt), coordY(a, rrt), rrt);
+            n += 1;
         }
-        for (var m = 1; m < np; m++) {       // linear-fill the non-anchor radii
-            if ((m % ws) == 0 || m == np - 1) { continue; }
-            var lo = (m / ws) * ws;
-            var hi = lo + ws;
-            if (hi > np - 1) { hi = np - 1; }
-            var plo = _scr[lo];
-            var phi = _scr[hi];
-            var span = hi - lo;
-            var t = m - lo;
-            _scr[m] = packPt(upx(plo) + ((upx(phi) - upx(plo)) * t) / span,
-                             upy(plo) + ((upy(phi) - upy(plo)) * t) / span,
-                             rb + m * STEP);
-        }
+        return n;
     }
 
-    // Draw each arm's skeleton AND fur together, regenerating its vertices once.
-    // DECIMATE the skeleton (draw every `stride`-th vertex) once the dish is
-    // large so it can't outrun the budget; the arm tip is always drawn so each
-    // arm reaches its true length. Arms are coloured by the colony radius-LUT
-    // (the same HR-zone-vs-radius gradient the fur uses), so no per-vertex colour
-    // is stored. Merging skeleton+fur per arm keeps the regen walk to ONE pass.
+    // Draw every arm as its coarse anchor polyline (skeleton) plus a little fur,
+    // coloured by the colony radius-LUT. `ws` is sized from the dish so the TOTAL
+    // anchors across all arms stay ~REGEN_CAP -- so the per-onUpdate cost is
+    // bounded however large the dish grows (the anchor count, not a draw budget,
+    // is now the governor). Anchors are radius-ordered (rb..tip), so the fur stops
+    // at the colony reach with a break.
     function drawArms(dc) {
-        var tot = 0;
         var totv = 0;
-        for (var i = 0; i < _nfil; i++) {
-            if (_thnp[i] > 1) { tot += _thnp[i] - 1; }
-            totv += _thnp[i];
-        }
-        var stride = 1;
-        if (tot > SK_CAP) { stride = tot / SK_CAP + 1; }
-        // Regen walk stride: widen it past REGEN_CAP so the total vertices walked
-        // per onUpdate (the hash16/isin cost) can't grow with the dish. >= 2 always.
+        for (var i = 0; i < _nfil; i++) { totv += _thnp[i]; }
         var ws = 2;
         if (totv > REGEN_CAP) { ws = totv / REGEN_CAP + 1; }
         var haveCol = (_coln > 0);
         var reach = _colreach;
         for (var i = 0; i < _nfil; i++) {
-            var np = _thnp[i];
-            if (np < 1) { continue; }
-            regenArm(i, ws);
-            if (np >= 2) {                   // skeleton (structural)
-                var prev = 0;
-                var k = stride;
-                while (k < np) {
-                    if (_ink <= 0) { return; }
-                    var a = _scr[prev]; var b = _scr[k];
-                    var rr = upci(b);
-                    dc.setColor(haveCol ? _colLut[(rr <= CR_MAX) ? rr : CR_MAX]
-                                        : Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
-                    dc.drawLine(upx(a), upy(a), upx(b), upy(b));
-                    _ink -= 1;
-                    prev = k;
-                    k += stride;
-                }
-                if (prev != np - 1) {        // always close to the arm tip
-                    if (_ink <= 0) { return; }
-                    var a = _scr[prev]; var b = _scr[np - 1];
-                    var rr = upci(b);
-                    dc.setColor(haveCol ? _colLut[(rr <= CR_MAX) ? rr : CR_MAX]
-                                        : Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
-                    dc.drawLine(upx(a), upy(a), upx(b), upy(b));
-                    _ink -= 1;
-                }
+            if (_thnp[i] < 1) { continue; }
+            var n = regenArm(i, ws);
+            for (var j = 1; j < n; j++) {        // skeleton: anchor to anchor
+                if (_ink <= 0) { return; }
+                var pa = _scr[j - 1]; var pb = _scr[j];
+                var rr = upci(pb);
+                dc.setColor(haveCol ? _colLut[(rr <= CR_MAX) ? rr : CR_MAX]
+                                    : Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
+                dc.drawLine(upx(pa), upy(pa), upx(pb), upy(pb));
+                _ink -= 1;
             }
-            if (!haveCol) { continue; }      // fur needs the colony LUT
+            if (!haveCol) { continue; }          // fur needs the colony LUT
             var lim = _thL[i] / UNIT - TRAIL;
             if (lim > reach) { lim = reach; }
             if (lim <= R0) { continue; }
             var ang = _tha[i];
-            var kf = 2;
-            while (kf < np) {
+            for (var j = 1; j < n; j++) {         // fur: a spine at each anchor
+                var pt = _scr[j];
+                var rrf = upci(pt);
+                if (rrf > lim) { break; }         // radius-ordered -> stop at reach
                 if (_ink <= 0) { return; }
-                var rrf = R0 + kf * STEP;
-                if (rrf > lim) { break; }
-                if ((kf % 3) == 0) {
-                    var v = _scr[kf];
-                    var x = upx(v); var y = upy(v);
-                    dc.setColor(_colLut[(rrf <= CR_MAX) ? rrf : CR_MAX],
-                        Gfx.COLOR_TRANSPARENT);
-                    var a2 = (ang + kf * 13) % 256;
-                    var le = 3 + (kf % 4);
-                    dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
-                        y + (le * GenArt.isin(a2)) / 127);
-                    _ink -= 1;
-                }
-                kf += 1;
+                var x = upx(pt); var y = upy(pt);
+                dc.setColor(_colLut[(rrf <= CR_MAX) ? rrf : CR_MAX],
+                    Gfx.COLOR_TRANSPARENT);
+                var a2 = (ang + j * 37) % 256;
+                var le = 3 + (j % 4);
+                dc.drawLine(x, y, x + (le * GenArt.isin(a2 + 64)) / 127,
+                    y + (le * GenArt.isin(a2)) / 127);
+                _ink -= 1;
             }
         }
     }
@@ -684,58 +644,44 @@ class BioBloom {
         }
     }
 
-    // Fill _blLut[0..REACH_CAP] with bloom bi's colour at each radius (same sweep).
-    function fillBloomLut(bi) {
-        var base = bi * BBANDS; var n = _blnb[bi];
-        var j = 0;
-        for (var r = 0; r <= REACH_CAP; r++) {
-            while (j < n && (_blband[base + j] & 0xFF) < r) { j++; }
-            var ci = (j < n) ? ((_blband[base + j] >> 8) & 0xFF)
-                             : ((_blband[base + n - 1] >> 8) & 0xFF);
-            _blLut[r] = colorOf(ci);
-        }
-    }
-
     // A bloom = a burst of bowed, sometimes-forking spines fired outward along
     // its arm, each coloured by the HR-zone band at its tip. The fan (angles,
     // lengths, bow, forks) is a cheap deterministic function of the bloom salt,
     // recomputed each frame and just scaled by reach as the bloom grows.
     function drawBloom(dc, bi) {
-        if (_blnb[bi] == 0) { return; }
-        fillBloomLut(bi);                            // O(1) colour lookups below
+        var nb = _blnb[bi];
+        if (nb == 0) { return; }
+        // ONE colour for the whole bloom -- the HOTTEST band it ever reached (the
+        // episode's peak HR zone). A per-radius colour LUT (fillBloomLut) was built
+        // for EVERY bloom EVERY frame, and on the saturated dish that LUT fill was
+        // exactly where the watchdog tripped (reproduced in the sim). A bloom's
+        // position, size and peak-zone colour -- the HR-episode data -- are what
+        // matter; the within-bloom cooldown gradient was fine detail. setColor once,
+        // not per spine.
+        var base = bi * BBANDS;
+        var hot = 0;
+        for (var b = 0; b < nb; b++) {
+            var c = (_blband[base + b] >> 8) & 0xFF;
+            if (c != DKGREY && c != LTGREY && c > hot) { hot = c; }
+        }
         var ang = _blang[bi];
         var reach = _blreach[bi]; var w = _blw[bi]; var salt = _blsalt[bi];
         var bx = _blbx[bi]; var by = _blby[bi];
-        var nsp = 6 + (GenArt.hash16(salt, 1, 1) % 6);
-        dc.setColor(_blLut[BASE], Gfx.COLOR_TRANSPARENT);
+        var nsp = 4 + (GenArt.hash16(salt, 1, 1) % 4);
+        dc.setColor(colorOf(hot), Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(bx, by, 1 + w / 8);            // tiny anchor node (1..3px)
+        // Each spine is a single straight line from the anchor (one hash16 for its
+        // angle + length, two isin, one drawLine).
         for (var k = 0; k < nsp; k++) {
             if (_ink <= 0) { return; }
-            var off = (GenArt.hash16(salt, k, 4) % 121) - 60;
-            var lf = 90 + (GenArt.hash16(salt, k, 5) % 166);
-            var bow = (GenArt.hash16(salt, k, 7) % 13) - 6;
-            var fork = (GenArt.hash16(salt, k, 6) % 2) == 0;
+            var h1 = GenArt.hash16(salt, k, 4);
+            var off = (h1 % 121) - 60;
+            var lf = 90 + ((h1 / 121) % 166);
             var a2 = (ang + off) % 256;
-            var dx = GenArt.isin(a2 + 64); var dy = GenArt.isin(a2);
-            var px = GenArt.isin(a2 + 128); var py = GenArt.isin(a2 + 64);
             var tip = BASE + ((reach - BASE) * lf) / 256;
-            var mr = tip / 2;
-            var mx = bx + (mr * dx) / 127 + (bow * px) / 127;
-            var my = by + (mr * dy) / 127 + (bow * py) / 127;
-            var ex = bx + (tip * dx) / 127;
-            var ey = by + (tip * dy) / 127;
-            dc.setColor(_blLut[(tip <= REACH_CAP) ? tip : REACH_CAP],
-                Gfx.COLOR_TRANSPARENT);
-            dc.drawLine(bx, by, mx, my);             // bowed spine, 2 segments
-            dc.drawLine(mx, my, ex, ey);
-            _ink -= 2;
-            if (fork) {                              // branch at the elbow
-                var a3 = (a2 + (((off & 1) == 0) ? 24 : -24)) % 256;
-                var fr = tip / 3;
-                dc.drawLine(mx, my, mx + (fr * GenArt.isin(a3 + 64)) / 127,
-                    my + (fr * GenArt.isin(a3)) / 127);
-                _ink -= 1;
-            }
+            dc.drawLine(bx, by, bx + (tip * GenArt.isin(a2 + 64)) / 127,
+                by + (tip * GenArt.isin(a2)) / 127);
+            _ink -= 1;
         }
     }
 
