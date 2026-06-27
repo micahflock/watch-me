@@ -51,19 +51,25 @@ class BioBloom {
     const KACT = 6;            // movement -> growth (smaller => faster threads)
     const STEP = 2;            // px of radius per appended vertex
     // Arm SHAPE (headAngle): an arm is a SMOOTH curve -- a gentle, mostly-constant
-    // curvature (a circular arc; sign + tightness from the seed hash) plus one slow
-    // undulation, all a pure function of (a0, rb, along-arm distance d). Because the
-    // heading is smooth in d, coarsening the regen stride (regenArm) just samples
-    // the SAME curve at fewer points -- it can only drop fidelity, never inject the
-    // jagged staggered wander the old per-anchor random walk did (it re-rolled a
-    // fresh AMP*ws turn at every stride, so a coarse arm was a DIFFERENT, wilder
-    // shape than the fine one -- "kinda ugly"). Reads as an organic tendril, and
-    // stays regenerable: the arm is still a pure function of its saved scalars.
-    const CURL_RATE = 22;      // base curl tightness (heading units per CURL_DIV px)
-    const CURL_VAR = 12;       // per-arm spread on the curl rate (seed-hashed)
+    // curvature (a circular arc; sign + tightness from the seed hash) plus TWO
+    // undulations (a primary swing and a finer detail harmonic) that give the arm a
+    // tighter, more TEXTURED wiggle. All a pure function of (a0, rb, along-arm
+    // distance d). Because the heading is smooth in d, coarsening the regen stride
+    // (regenArm) just samples the SAME curve at fewer points -- it can only drop
+    // fidelity, never inject the jagged staggered wander the old per-anchor random
+    // walk did (it re-rolled a fresh AMP*ws turn at every stride, so a coarse arm
+    // was a DIFFERENT, wilder shape than the fine one -- "kinda ugly"). The
+    // frequencies are kept low enough that even the widest stride on a saturated
+    // dish samples them without aliasing back into that jaggedness. Reads as a
+    // textured tendril, and stays regenerable: an arm is a pure function of its
+    // saved scalars.
+    const CURL_RATE = 15;      // base curl tightness (heading units per CURL_DIV px)
+    const CURL_VAR = 9;        // per-arm spread on the curl rate (seed-hashed)
     const CURL_DIV = 64;       // divisor: rate*d/CURL_DIV = heading turn at distance d
-    const UND_SW = 14;         // undulation swing (heading units, 256 == full turn)
-    const UND_FR = 3;          // undulation frequency along the arm
+    const UND1_SW = 9;         // primary undulation swing (heading units, 256==turn)
+    const UND1_FR = 4;         // primary undulation frequency along the arm
+    const UND2_SW = 5;         // detail-harmonic swing (the added texture)
+    const UND2_FR = 7;         // detail-harmonic frequency (finer twists)
     const KMAX = 20;           // cap on live filaments (trimmed 22->20 for RAM:
                                // shrinks the dish AND the save() transient peak)
     const SEEDS = 9;           // initial threads, spread around the centre
@@ -222,15 +228,17 @@ class BioBloom {
 
     // Smooth arm heading at along-arm distance d (px from the base) for an arm
     // seeded at angle a0, base radius rb. curl = a circular-arc bend (constant
-    // curvature, sign + rate from the seed hash); und = one slow undulation,
-    // ZEROED at d == 0 so the arm leaves the centre RADIALLY (at a0) and only then
-    // curves -- so it reads as a ray that bends, not an off-axis squiggle. Smooth
-    // in d, so regenArm can stride coarsely without changing the shape. headFrom is
-    // the per-anchor inner form with the per-arm constants hoisted out (regenArm
-    // computes them once); headAngle is the convenience form that derives them.
-    function headFrom(a0, rate, sign, ph, und0, d) {
+    // curvature, sign + rate from the seed hash); und = a primary undulation plus a
+    // finer detail harmonic (the texture), each ZEROED at d == 0 so the arm leaves
+    // the centre RADIALLY (at a0) and only then curves -- so it reads as a ray that
+    // twists, not an off-axis squiggle. Smooth in d, so regenArm can stride coarsely
+    // without changing the shape. headFrom is the per-anchor inner form with the
+    // per-arm constants hoisted out (regenArm computes them once); headAngle is the
+    // convenience form that derives them.
+    function headFrom(a0, rate, sign, ph, u0, ph2, u0b, d) {
         var curl = sign * ((rate * d) / CURL_DIV);
-        var und = (UND_SW * (GenArt.isin((d * UND_FR + ph) & 255) - und0)) / 127;
+        var und = (UND1_SW * (GenArt.isin((d * UND1_FR + ph) & 255) - u0)) / 127
+                + (UND2_SW * (GenArt.isin((d * UND2_FR + ph2) & 255) - u0b)) / 127;
         var a = (a0 + curl + und) % 256;
         if (a < 0) { a += 256; }
         return a;
@@ -240,7 +248,9 @@ class BioBloom {
         var rate = CURL_RATE + (h % CURL_VAR);
         var sign = ((h & 1) != 0) ? 1 : -1;
         var ph = GenArt.hash16(a0, 7, 3) % 256;
-        return headFrom(a0, rate, sign, ph, GenArt.isin(ph), d);
+        var ph2 = GenArt.hash16(a0, 11, 5) % 256;
+        return headFrom(a0, rate, sign, ph, GenArt.isin(ph),
+                        ph2, GenArt.isin(ph2), d);
     }
 
     function packPt(x, y, ci) { return (ci << 16) | ((x & 0xFF) << 8) | (y & 0xFF); }
@@ -573,12 +583,14 @@ class BioBloom {
         var rate = CURL_RATE + (h % CURL_VAR);
         var sign = ((h & 1) != 0) ? 1 : -1;
         var ph = GenArt.hash16(a0, 7, 3) % 256;
-        var und0 = GenArt.isin(ph);
+        var u0 = GenArt.isin(ph);
+        var ph2 = GenArt.hash16(a0, 11, 5) % 256;
+        var u0b = GenArt.isin(ph2);
         var n = 0;
         var k = 0;
         while (k < np) {
             var d = k * STEP;
-            var a = headFrom(a0, rate, sign, ph, und0, d);
+            var a = headFrom(a0, rate, sign, ph, u0, ph2, u0b, d);
             var rr = rb + d;
             _scr[n] = packPt(coordX(a, rr), coordY(a, rr), rr);
             n += 1;
@@ -586,7 +598,7 @@ class BioBloom {
         }
         if (k - ws != np - 1) {              // ensure the tip is the last anchor
             var dt = (np - 1) * STEP;
-            var at = headFrom(a0, rate, sign, ph, und0, dt);
+            var at = headFrom(a0, rate, sign, ph, u0, ph2, u0b, dt);
             var rrt = rb + dt;
             _scr[n] = packPt(coordX(at, rrt), coordY(at, rrt), rrt);
             n += 1;
