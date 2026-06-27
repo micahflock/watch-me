@@ -30,6 +30,56 @@ limit, split the test suite or trim fixtures.
    the console line is the practical channel.
 4. Static budget check: `scripts/memcheck.sh devface`.
 
+## RAM by UI component (measured, two-worlds)
+
+`Instrument` only samples whole-app `usedMemory`. To decompose it,
+`faces/two-worlds/tests/TestTwoWorlds.mc` → `testLayerRamProfile` is the RAM
+analog of `testLayerCostProfile`: it allocates each `onLayout` component in render
+order and records the `getSystemStats().usedMemory` **delta** each one adds. Run
+`scripts/test.sh two-worlds` and read the `RAM bytes:` debug line. Render the chart
+with `python3 sketches/ram_breakdown.py` (→ `sketches/out/ram-breakdown.png`).
+
+Measured deltas (SDK 9.2.0, debug sim) — the face's own allocation footprint:
+
+| UI component | bytes | % of UI alloc |
+|---|---:|---:|
+| BioBloom dish (arrays sized to the caps) | 5,976 | 45.1% |
+| Font bitmaps (time / date / dow / colon) | 4,880 | 36.8% |
+| Field mask (188 merged rects) | 1,080 | 8.2% |
+| Sun / north marker (`_quad`) | 320 | 2.4% |
+| Snapshot (device state, ~21 fields) | 320 | 2.4% |
+| Compositor (10-ref render list) | 216 | 1.6% |
+| Breach warning | 160 | 1.2% |
+| Uplink (phone bars) | 104 | 0.8% |
+| Border | 96 | 0.7% |
+| Battery | 96 | 0.7% |
+| **Total UI allocation** | **13,248** | **100%** |
+
+Read the **deltas, not the absolute total** (the debug build also carries the
+unit-test suite, so its `usedMemory` ≈ 64 KB is not the release figure). The UI we
+allocate is ~12.9 KB (~20% of the 64 KB limit); the rest is the Monkey C runtime /
+bytecode working set.
+
+**Measured release runtime (two-worlds, `-r`):** `usedMemory` **55,208 B** of
+`totalMemory` **61,256 B** the app is given (≈53.9 / 59.8 KB) — under the 57.6 KB
+policy ceiling, with **~6 KB free** to the app ceiling and **~10 KB** to the 64 KB
+hard limit. So the ~13 KB of UI data rides on a ~42 KB runtime/bytecode baseline.
+The unoptimized build (no `-r`, what `scripts/test.sh` runs) reads ~57/59 KB — `-r`
+both lowers used and frees more total, roughly tripling the free headroom (2 → 6
+KB). To re-measure: release stubs the `Instrument` overlay, so either read the
+sim's memory view, or temporarily have the `(:release)` `Instrument.tickEnd` print
+`getSystemStats()` and run `scripts/sim.sh two-worlds` (revert after).
+
+Two findings worth keeping:
+
+- **The dish does not grow over the day.** Every BioBloom array is pre-allocated at
+  its cap (`KMAX`/`BMAX`/`BBANDS`/`CBANDS`) in `initialize()`, so `bloomGrown` is
+  **0 B** — a full accreted day fills existing slots, it never allocates more. RAM
+  is bounded by the caps, full stop.
+- **Font bitmaps nearly equal the whole dish** (4,880 vs 5,976 B). Decoded pixel
+  data, not Numbers — the cheapest place to claw back RAM if ever needed is the
+  font strips, not the generative art.
+
 ## How the watchdog budget was measured
 
 The simulator (and device) abort an `onUpdate` that executes too long —

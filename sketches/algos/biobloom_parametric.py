@@ -16,10 +16,11 @@ Why this is the version that helps the 64 KB ceiling, not just the save blob:
     live allocation) disappears. Regeneration streams one arm at a time into a
     PMAX-slot scratch, so we do NOT just relocate _pt into a frame buffer.
   * save()/load() shrink too: arms persist as scalars, no vertex dump.
-  * reload is LOSSLESS: the wander uses a FIXED amp (AMP), so an arm is a pure
-    function of (a0, rb, np) -- regenerating gives back exactly the live arm.
-    The cost is dropping flag D7 (HR-variability -> wander amplitude); AMP is
-    chosen so the dish keeps its organic tangle (see sketches/save_compare.py).
+  * reload is LOSSLESS: the shape is a smooth curve `head(a0, rb, d)` (a per-arm
+    curl + one undulation), a pure function of (a0, rb, np), so regenerating gives
+    back exactly the live arm. A smooth heading (vs the old per-anchor random walk)
+    is also what makes a COARSELY-regenerated arm still look organic instead of
+    jaggedly staggered -- coarsening just samples the same curve at fewer points.
 
 Trade vs biobloom.py: skeleton and fur are drawn together per arm (one walk),
 so the global skeleton>blooms>fur ink priority becomes blooms>(skeleton+fur).
@@ -59,9 +60,37 @@ KMAX = 20
 SEEDS = 9
 BMAX = 16
 PMAX = 41                 # max vertices an arm regenerates to (R0..RMAX by STEP)
-AMP = 3                   # fixed wander amplitude (was 1 + vrange//10; see module
-                          # docstring -- a constant makes the arm regenerable and
-                          # was tuned to keep the organic look)
+# Arm SHAPE: a smooth per-arm curl (a circular arc, sign+rate from the seed hash)
+# plus TWO undulations (a primary swing + a finer detail harmonic) for a tighter,
+# more TEXTURED wiggle. A pure function of (a0, rb, along-arm distance d). The
+# heading is smooth in d, so coarse regen samples the SAME curve -- it cannot inject
+# the jagged wander the old per-anchor AMP*ws random walk did. The frequencies stay
+# low enough that the widest stride on a saturated dish samples them without
+# aliasing back into jaggedness. Mirrors BioBloom.mc.
+CURL_RATE = 8            # low: veins head OUTWARD like slime-mold strands (the
+CURL_VAR = 6             # organic look comes from the branching tree, not meander)
+CURL_DIV = 64
+UND1_SW = 7
+UND1_FR = 4
+UND2_SW = 4
+UND2_FR = 7
+
+
+def head(a0, rb, d):
+    """Smooth arm heading at along-arm distance d (px). Both undulations zeroed at
+    d==0 so the arm leaves the centre radially (at a0) then twists. Mirrors
+    BioBloom.mc."""
+    h = hash16(a0, rb, 2)
+    rate = CURL_RATE + imod(h, CURL_VAR)
+    sign = 1 if (h & 1) else -1
+    ph = imod(hash16(a0, 7, 3), 256)
+    ph2 = imod(hash16(a0, 11, 5), 256)
+    u0 = isin(ph)
+    u0b = isin(ph2)
+    curl = sign * idiv(rate * d, CURL_DIV)
+    und = (idiv(UND1_SW * (isin(imod(d * UND1_FR + ph, 256)) - u0), 127)
+           + idiv(UND2_SW * (isin(imod(d * UND2_FR + ph2, 256)) - u0b), 127))
+    return imod(a0 + curl + und, 256)
 
 ACTIVE = 4
 MOM_MODE = "cooldown"
@@ -118,62 +147,51 @@ class BioBloomParam:
     # ---- arm geometry: regenerate vertices from (a0, rb, np) ------------------
 
     def _arm_vertices(self, f):
-        """Replay the fixed-amp wiggle walk. Returns [(x, y, rr), ...]. This is
-        the one allocation per arm per frame -- a PMAX-slot scratch in the .mc,
-        reused across arms (NOT a persistent per-arm cache)."""
-        a = f["a0"]
+        """Sample the smooth heading curve (head) at every vertex. Returns
+        [(x, y, rr), ...]. This is the one allocation per arm per frame -- a
+        PMAX-slot scratch in the .mc, reused across arms (NOT a persistent cache)."""
+        a0 = f["a0"]
         rb, np = f["rb"], f["np"]
         if self.coarse:
-            return self._arm_vertices_coarse(a, rb, np)
+            return self._arm_vertices_coarse(a0, rb, np)
         pts = []
         for k in range(np):
             rr = rb + k * STEP
-            if k > 0:
-                da = idiv(isin(hash16(a, rr, 1) & 255) * AMP, 127)
-                a = imod(a + da, 256)
-            x = CX + idiv(rr * isin(a + 64), 127)
-            y = CY + idiv(rr * isin(a), 127)
-            pts.append((x, y, rr))
+            a = head(a0, rb, k * STEP)
+            pts.append((CX + idiv(rr * isin(a + 64), 127),
+                        CY + idiv(rr * isin(a), 127), rr))
         return pts
 
-    def _arm_vertices_coarse(self, a, rb, np):
-        """Emit ONLY the strided anchors (k = 0, ws, 2*ws, ... + the tip) as a
-        compact list -- NO per-vertex fill. drawArms draws the arm as those few
-        anchor-to-anchor segments. Mirrors BioBloom.mc regenArm(): the per-vertex
-        fill the old version did expanded ~REGEN_CAP anchors back to ~np vertices
-        and processed every one, and that per-vertex method-call work (NOT modelled
-        by this sandbox's VM proxy) was ~90% of the real on-device frame -- the
-        watchdog trip. Emitting only anchors cuts it ~8x. The stride self._ws
-        widens with dish size so total anchors stay ~REGEN_CAP."""
+    def _arm_vertices_coarse(self, a0, rb, np):
+        """Emit ONLY the strided anchors (k = 0, ws, 2*ws, ... + the tip), sampling
+        the SAME smooth heading curve as the fine version -- NO per-vertex fill, and
+        coarsening cannot change the shape (it just samples fewer points on the same
+        curve). Mirrors BioBloom.mc regenArm(): per-anchor method-call work (NOT
+        modelled by this sandbox's VM proxy) was ~90% of the real on-device frame;
+        emitting only anchors cuts it, and the smooth curve made it both prettier and
+        cheaper (no per-anchor hash16). self._ws widens with dish size to bound it."""
         ws = self._ws
         pts = []
         k = 0
         while k < np:
             rr = rb + k * STEP
-            if k > 0:
-                da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
-                a = imod(a + da, 256)
+            a = head(a0, rb, k * STEP)
             pts.append((CX + idiv(rr * isin(a + 64), 127),
                         CY + idiv(rr * isin(a), 127), rr))
             k += ws
         if k - ws != np - 1:                      # ensure the tip is the last anchor
             rr = rb + (np - 1) * STEP
-            da = idiv(isin(hash16(a, rr, 1) & 255) * (AMP * ws), 127)
-            a = imod(a + da, 256)
+            a = head(a0, rb, (np - 1) * STEP)
             pts.append((CX + idiv(rr * isin(a + 64), 127),
                         CY + idiv(rr * isin(a), 127), rr))
         return pts
 
     def _tip(self, f):
-        """Arm tip (x, y) without building the whole arm -- walk the angle to the
-        last vertex. Used to anchor blooms (was f['pts'][-1])."""
-        a = f["a0"]
+        """Arm tip (x, y) -- the heading curve evaluated at the tip distance. Anchors
+        blooms exactly where the rendered skeleton reaches (was f['pts'][-1])."""
         rb, np = f["rb"], f["np"]
-        rr = rb
-        for k in range(1, np):
-            rr = rb + k * STEP
-            da = idiv(isin(hash16(a, rr, 1) & 255) * AMP, 127)
-            a = imod(a + da, 256)
+        rr = rb + (np - 1) * STEP
+        a = head(f["a0"], rb, (np - 1) * STEP)
         return CX + idiv(rr * isin(a + 64), 127), CY + idiv(rr * isin(a), 127)
 
     def _longish(self, salt):
@@ -197,11 +215,11 @@ class BioBloomParam:
         if f["L"] > RMAX * UNIT:
             f["L"] = RMAX * UNIT
         while idiv(f["L"], UNIT) >= f["next"] and f["next"] <= RMAX:
-            rr = f["next"]
-            da = idiv(isin(hash16(f["a"], rr, 1) & 255) * AMP, 127)
-            f["a"] = imod(f["a"] + da, 256)
             f["np"] += 1
             f["next"] += STEP
+        # _tha is the heading at the current TIP (so blooms/branches/nearest use the
+        # point the skeleton actually reaches). The shape is a pure function of d.
+        f["a"] = head(f["a0"], f["rb"], (f["np"] - 1) * STEP)
 
     # ---- per-minute simulation (identical to biobloom.py except _grow_fil) -----
 
@@ -232,9 +250,13 @@ class BioBloomParam:
                 self._grow_fil(self.fil[i], move)
                 i += 1
             if rising and len(self.fil) < KMAX:
+                # Branch ATTACHED at the parent's exact tip point (same angle, exact
+                # tip radius). The parent curve is append-only, so the fork point
+                # stays on it; the child diverges via its own curl. Mirrors
+                # BioBloom.mc -- no parent index stored, a0 encodes the attachment.
                 src = self._longish(steps)
-                na = imod(src["a"] + 10 + imod(hash16(steps, nf, 9), 22), 256)
-                rr = idiv(src["L"], UNIT)
+                na = src["a"]
+                rr = src["rb"] + (src["np"] - 1) * STEP
                 v = 2 + imod(hash16(steps, nf, 4), 3)
                 self.fil.append({"a0": na, "a": na, "L": rr * UNIT,
                                  "next": rr + STEP, "v": v, "np": 1, "rb": rr})

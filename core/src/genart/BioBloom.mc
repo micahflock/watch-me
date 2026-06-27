@@ -9,7 +9,11 @@ using Toybox.Graphics as Gfx;
 // morning sleep-seed colony is ported from sketches/algos/biobloom_morning.py.
 //
 // A filament skeleton grows from the centre, extending ONLY when you move, so a
-// lazy day stays small and an active day reaches outward. A central MAIN COLONY
+// lazy day stays small and an active day reaches outward. New filaments spawn as
+// ATTACHED branches -- each is seeded at its parent's exact tip point and forks
+// outward from there (see stepMinute), so the skeleton reads as one connected,
+// slime-mold-like network radiating from the centre rather than loose arms. A
+// central MAIN COLONY
 // fills in behind the arms (clinging to them, stippled — not concentric), grows
 // only while moving, and is banded by the HR zone during that movement, going
 // grey/dark grey when it grows while the inactivity meter is up. Every elevated-
@@ -19,10 +23,11 @@ using Toybox.Graphics as Gfx;
 // large while an anxiety spike (HR up, no movement) stays a small node.
 //
 // State is flat Number arrays. Arms are PARAMETRIC: each is a handful of scalars
-// (seed angle a0, head angle, length, next, vigor, vertex count np, base radius
-// rb) and its vertices are REGENERATED at render time by replaying a fixed-amp
-// wiggle walk from a0 -- so the big per-vertex array is gone and a reload is
-// lossless (an arm is a pure function of its scalars). Blooms/colony bands are
+// (seed angle a0, head angle, length, next, vertex count np, base radius rb,
+// vigor) and its shape is REGENERATED at render time by sampling a smooth heading
+// curve (headAngle: a gentle per-arm curl + one undulation, see below) from a0 --
+// so the big per-vertex array is gone and a reload is lossless (an arm is a pure
+// function of its scalars). Blooms/colony bands are
 // one Number each (colorIdx<<8 | rEnd). Colour index 0..8 maps to HR_RAMP (a biobloom-local
 // 9-step HR ramp, finer than the shared GenArt.ZONE_COLORS, so the other faces
 // are untouched); 9 == DK_GRAY (idle / unknown HR), 10 == LT_GRAY (colony idle
@@ -37,7 +42,9 @@ using Toybox.Graphics as Gfx;
 // DRAW work so a large dish can never outrun the watchdog — the per-dot stipple
 // did. The arm regeneration (parametric vertices replayed each frame) is the
 // other unbounded cost: it is hash16/isin work the ink budget does not see, so it
-// is bounded separately by widening the regen stride past REGEN_CAP (regenArm).
+// is bounded separately by widening the regen stride past REGEN_CAP (regenArm) --
+// and because the heading curve is smooth, that wider stride costs less without
+// making the arm uglier (it samples the same curve at fewer points).
 class BioBloom {
 
     const CX = 107;
@@ -47,9 +54,30 @@ class BioBloom {
     const UNIT = 64;
     const KACT = 6;            // movement -> growth (smaller => faster threads)
     const STEP = 2;            // px of radius per appended vertex
-    const AMP = 3;             // fixed wander amplitude (was 1 + vrange/10). A
-                               // constant makes an arm regenerable from its seed
-                               // angle; tuned to keep the organic tangle.
+    // Arm SHAPE (headAngle): an arm is a SMOOTH curve -- a gentle, mostly-constant
+    // curvature (a circular arc; sign + tightness from the seed hash) plus TWO
+    // undulations (a primary swing and a finer detail harmonic) that give the arm a
+    // tighter, more TEXTURED wiggle. All a pure function of (a0, rb, along-arm
+    // distance d). Because the heading is smooth in d, coarsening the regen stride
+    // (regenArm) just samples the SAME curve at fewer points -- it can only drop
+    // fidelity, never inject the jagged staggered wander the old per-anchor random
+    // walk did (it re-rolled a fresh AMP*ws turn at every stride, so a coarse arm
+    // was a DIFFERENT, wilder shape than the fine one -- "kinda ugly"). The
+    // frequencies are kept low enough that even the widest stride on a saturated
+    // dish samples them without aliasing back into that jaggedness. Reads as a
+    // textured tendril, and stays regenerable: an arm is a pure function of its
+    // saved scalars.
+    const CURL_RATE = 8;       // base curl tightness (heading units per CURL_DIV px).
+                               // Kept LOW so a vein heads OUTWARD like a slime-mold
+                               // strand instead of meandering tangentially back
+                               // toward the centre; the organic quality comes from
+                               // the branching tree, not from arms wandering.
+    const CURL_VAR = 6;        // per-arm spread on the curl rate (seed-hashed)
+    const CURL_DIV = 64;       // divisor: rate*d/CURL_DIV = heading turn at distance d
+    const UND1_SW = 7;         // primary undulation swing (heading units, 256==turn)
+    const UND1_FR = 4;         // primary undulation frequency along the arm
+    const UND2_SW = 4;         // detail-harmonic swing (the added texture)
+    const UND2_FR = 7;         // detail-harmonic frequency (finer twists)
     const KMAX = 20;           // cap on live filaments (trimmed 22->20 for RAM:
                                // shrinks the dish AND the save() transient peak)
     const SEEDS = 9;           // initial threads, spread around the centre
@@ -206,6 +234,33 @@ class BioBloom {
     function coordX(a, r) { return CX + (r * GenArt.isin(a + 64)) / 127; }
     function coordY(a, r) { return CY + (r * GenArt.isin(a)) / 127; }
 
+    // Smooth arm heading at along-arm distance d (px from the base) for an arm
+    // seeded at angle a0, base radius rb. curl = a circular-arc bend (constant
+    // curvature, sign + rate from the seed hash); und = a primary undulation plus a
+    // finer detail harmonic (the texture), each ZEROED at d == 0 so the arm leaves
+    // the centre RADIALLY (at a0) and only then curves -- so it reads as a ray that
+    // twists, not an off-axis squiggle. Smooth in d, so regenArm can stride coarsely
+    // without changing the shape. headFrom is the per-anchor inner form with the
+    // per-arm constants hoisted out (regenArm computes them once); headAngle is the
+    // convenience form that derives them.
+    function headFrom(a0, rate, sign, ph, u0, ph2, u0b, d) {
+        var curl = sign * ((rate * d) / CURL_DIV);
+        var und = (UND1_SW * (GenArt.isin((d * UND1_FR + ph) & 255) - u0)) / 127
+                + (UND2_SW * (GenArt.isin((d * UND2_FR + ph2) & 255) - u0b)) / 127;
+        var a = (a0 + curl + und) % 256;
+        if (a < 0) { a += 256; }
+        return a;
+    }
+    function headAngle(a0, rb, d) {
+        var h = GenArt.hash16(a0, rb, 2);
+        var rate = CURL_RATE + (h % CURL_VAR);
+        var sign = ((h & 1) != 0) ? 1 : -1;
+        var ph = GenArt.hash16(a0, 7, 3) % 256;
+        var ph2 = GenArt.hash16(a0, 11, 5) % 256;
+        return headFrom(a0, rate, sign, ph, GenArt.isin(ph),
+                        ph2, GenArt.isin(ph2), d);
+    }
+
     function packPt(x, y, ci) { return (ci << 16) | ((x & 0xFF) << 8) | (y & 0xFF); }
     function upx(v) { return (v >> 8) & 0xFF; }
     function upy(v) { return v & 0xFF; }
@@ -303,10 +358,17 @@ class BioBloom {
             var nf = _nfil;
             for (var i = 0; i < nf; i++) { growFil(i, move); }
             if (rising && _nfil < KMAX) {
+                // Branch ATTACHED to its parent: seed it at the parent's exact tip
+                // POINT -- same angle (_tha[src] is the parent's heading at its tip)
+                // and the parent's exact tip radius. Since an arm's curve is
+                // append-only, that fork point stays permanently ON the parent, so
+                // the child grows out of it instead of starting in mid-air. The fork
+                // DIVERGENCE comes from the child's own curl (its seed hash differs),
+                // so it splits outward like a slime-mold vein. No parent index is
+                // stored -- the child's a0 alone encodes where it attaches.
                 var src = longish(salt);
-                var na = (_tha[src] + 10
-                         + (GenArt.hash16(salt, nf, 9) % 22)) % 256;
-                var rr = _thL[src] / UNIT;
+                var na = _tha[src];
+                var rr = _thrb[src] + (_thnp[src] - 1) * STEP;
                 var v = 2 + (GenArt.hash16(salt, nf, 4) % 3);
                 var j = _nfil;
                 _tha0[j] = na; _tha[j] = na; _thL[j] = rr * UNIT;
@@ -341,12 +403,13 @@ class BioBloom {
         _thL[i] += (move * _thv[i]) / 3;
         if (_thL[i] > RMAX * UNIT) { _thL[i] = RMAX * UNIT; }
         while (_thL[i] / UNIT >= _thnext[i] && _thnext[i] <= RMAX) {
-            var rr = _thnext[i];
-            var da = (GenArt.isin(GenArt.hash16(_tha[i], rr, 1) & 255) * AMP) / 127;
-            _tha[i] = (_tha[i] + da) % 256;
             if (_thnp[i] < PMAX) { _thnp[i] += 1; }   // cap np to the regen scratch
             _thnext[i] += STEP;
         }
+        // The arm shape is a pure function of (a0, rb, d); keep _tha as the heading
+        // at the current TIP so the bloom anchor (seedBloom), branch seeding and
+        // nearest()/fur use the same point the skeleton actually reaches.
+        _tha[i] = headAngle(_tha0[i], _thrb[i], (_thnp[i] - 1) * STEP);
     }
 
     function seedBloom(zi) {
@@ -508,43 +571,51 @@ class BioBloom {
     }
 
     // Regenerate arm i as a COARSE ANCHOR POLYLINE into the _scr scratch
-    // (packPt(x, y, rr) at _scr[0..n-1]); returns the anchor count n. The wander
-    // walk strides by `ws` (>= 2) and emits ONLY the strided anchors (plus the
-    // tip), compactly -- there is NO per-vertex fill. drawArms then draws the arm
-    // as those few anchor-to-anchor segments.
+    // (packPt(x, y, rr) at _scr[0..n-1]); returns the anchor count n. It samples the
+    // arm's SMOOTH heading curve (headFrom) at the strided anchors (k = 0, ws, ...
+    // + the tip) -- there is NO per-vertex fill. drawArms then draws the arm as
+    // those few anchor-to-anchor segments.
     //
-    // This is the binding watchdog fix. The earlier version walked ~REGEN_CAP
-    // anchors but linear-FILLED all ~np vertices and processed every one; that
-    // per-vertex work (coordX/coordY/packPt/upx/upy method calls over ~800
-    // vertices x 20 arms, EVERY onUpdate) was ~90% of the whole frame on-device.
-    // The art-sandbox proxy counts hash16/isin but NOT that method-call overhead,
-    // so it badly under-read the real cost. Emitting only the anchors cuts the
-    // per-frame vertex work ~8x. drawArms sizes `ws` from the dish so the total
-    // anchors per onUpdate stay ~REGEN_CAP, bounding cost however grown the dish.
-    // Every arm keeps its reach, heading and colour grade; only the wiggle
-    // coarsens (the dish STATE is the day's record and is untouched). _scr is
-    // reused across arms, so no per-vertex array ever exists.
+    // Two things keep this cheap AND good-looking:
+    //   * The heading is a smooth function of distance (headFrom), so striding by
+    //     `ws` samples the SAME curve at fewer points -- coarsening only drops
+    //     fidelity, it never injects wander. (The old version re-rolled a fresh
+    //     AMP*ws random turn at each stride, so a coarse arm was a DIFFERENT, far
+    //     wilder/jagged shape than the fine one -- the "ugly" the curve fixes.)
+    //   * The per-arm curl constants (rate/sign/ph/und0) are hoisted out of the
+    //     loop, so each anchor costs ~one isin for the undulation plus the two in
+    //     coordX/coordY -- it dropped the old per-anchor hash16 entirely, so the
+    //     smoother arm is also CHEAPER per anchor.
+    // drawArms sizes `ws` from the dish so the total anchors per onUpdate stay
+    // ~REGEN_CAP, bounding cost however grown the dish. _scr is reused across arms,
+    // so no per-vertex array ever exists; the dish STATE is the day's record and is
+    // untouched (the arm is still a pure function of its saved scalars a0, rb, np).
     function regenArm(i, ws) {
-        var a = _tha0[i];
+        var a0 = _tha0[i];
         var rb = _thrb[i];
         var np = _thnp[i];
+        var h = GenArt.hash16(a0, rb, 2);            // per-arm curl constants, hoisted
+        var rate = CURL_RATE + (h % CURL_VAR);
+        var sign = ((h & 1) != 0) ? 1 : -1;
+        var ph = GenArt.hash16(a0, 7, 3) % 256;
+        var u0 = GenArt.isin(ph);
+        var ph2 = GenArt.hash16(a0, 11, 5) % 256;
+        var u0b = GenArt.isin(ph2);
         var n = 0;
         var k = 0;
         while (k < np) {
-            var rr = rb + k * STEP;
-            if (k > 0) {
-                var da = (GenArt.isin(GenArt.hash16(a, rr, 1) & 255) * (AMP * ws)) / 127;
-                a = (a + da) % 256;
-            }
+            var d = k * STEP;
+            var a = headFrom(a0, rate, sign, ph, u0, ph2, u0b, d);
+            var rr = rb + d;
             _scr[n] = packPt(coordX(a, rr), coordY(a, rr), rr);
             n += 1;
             k += ws;
         }
         if (k - ws != np - 1) {              // ensure the tip is the last anchor
-            var rrt = rb + (np - 1) * STEP;
-            var dat = (GenArt.isin(GenArt.hash16(a, rrt, 1) & 255) * (AMP * ws)) / 127;
-            a = (a + dat) % 256;
-            _scr[n] = packPt(coordX(a, rrt), coordY(a, rrt), rrt);
+            var dt = (np - 1) * STEP;
+            var at = headFrom(a0, rate, sign, ph, u0, ph2, u0b, dt);
+            var rrt = rb + dt;
+            _scr[n] = packPt(coordX(at, rrt), coordY(at, rrt), rrt);
             n += 1;
         }
         return n;
