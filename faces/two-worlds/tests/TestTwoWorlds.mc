@@ -1,5 +1,6 @@
 using Toybox.Test;
 using Toybox.System as Sys;
+using Toybox.WatchUi as Ui;
 
 // Unit tests for two-worlds face-specific logic. The clock/readout/marker
 // geometry is exercised by rendering; the data-binding math is tested here.
@@ -75,6 +76,89 @@ function testLayerCostProfile(logger) {
         + "  fieldmask=" + (tMask * 1000 / N)
         + "  border=" + (tBorder * 1000 / N)
         + "  north=" + (tNorth * 1000 / N));
+    return true;
+}
+
+// Whole-app RAM is sampled per tick by Instrument (getSystemStats().usedMemory),
+// but nothing decomposes it per UI component. This is the RAM analog of
+// testLayerCostProfile: it allocates each onLayout component in render order and
+// records the usedMemory DELTA each one adds, so we get a per-component byte
+// breakdown to sit next to the per-layer time profile. Logging only (GC /
+// quantization make absolute bytes host-dependent -- read the deltas, not totals).
+//
+// Notes on reading the numbers:
+//  * BioBloom pre-allocates every array at its CAP in initialize(), so its RAM is
+//    essentially FIXED -- "bloomFixed" is the whole dish; "bloomGrown" is the extra
+//    a full day of accreted state adds on top (expected ~small, the caps bound it).
+//  * The font strips (StripGlyphs) are decoded bitmaps -- their cost is pixel data,
+//    not Numbers, so they can rival the dish; measured live here via loadResource.
+//  * A shared one-time table (GenArt._sin, 256 Numbers) is allocated before the
+//    baseline so it does not land on any single component.
+function ramUsed() {
+    var st = Sys.getSystemStats();
+    return (st != null && st has :usedMemory) ? st.usedMemory : 0;
+}
+function ramTotal() {
+    var st = Sys.getSystemStats();
+    return (st != null && st has :totalMemory) ? st.totalMemory : 0;
+}
+
+(:test)
+function testLayerRamProfile(logger) {
+    var hold = [];                       // keep every allocation alive (no GC)
+    GenArt.initSinTable();               // shared LUT, before the baseline
+
+    var m0 = ramUsed();
+    var bloom = new BioBloom(); hold.add(bloom);
+    var bloomFixed = ramUsed() - m0;     // dish arrays, all pre-sized to the caps
+
+    // Grow a saturated dish (same schedule as testLayerCostProfile), reusing one
+    // Snapshot so the delta is the dish's accreted state, not 1000 GC'd snapshots.
+    var s = new Snapshot();
+    s.year = 2026; s.month = 6; s.day = 14;
+    var cum = 0; var g0 = ramUsed();
+    for (var t = 0; t < 1000; t++) {
+        s.hour = t / 60; s.minute = t % 60;
+        cum += ((t % 7) == 0) ? 130 : 8;
+        s.steps = cum; s.heartRate = 95 + (t % 40);
+        bloom.advance(s);
+    }
+    var bloomGrown = ramUsed() - g0;
+
+    var a;
+    a = ramUsed(); var fm = new FieldMaskComponent(); hold.add(fm);
+    var fieldmask = ramUsed() - a;
+    a = ramUsed(); var bd = new BorderComponent(); hold.add(bd);
+    var border = ramUsed() - a;
+    a = ramUsed(); var up = new UplinkComponent(); hold.add(up);
+    var uplink = ramUsed() - a;
+    a = ramUsed(); var bt = new BatteryComponent(); hold.add(bt);
+    var battery = ramUsed() - a;
+    a = ramUsed(); var no = new NorthComponent(); hold.add(no);
+    var north = ramUsed() - a;
+    a = ramUsed(); var br = new BreachComponent(); hold.add(br);
+    var breach = ramUsed() - a;
+    a = ramUsed(); var comp = new Compositor(); hold.add(comp);
+    var compositor = ramUsed() - a;
+    a = ramUsed(); var snap = new Snapshot(); hold.add(snap);
+    var snapshot = ramUsed() - a;
+
+    // Bitmap-backed UI: the 7-seg time strip, day/date strips and the colon glyph.
+    a = ramUsed();
+    var timeStrip = new StripGlyphs(Rez.Drawables.FontTime, 18); hold.add(timeStrip);
+    var colon     = Ui.loadResource(Rez.Drawables.FontColon);    hold.add(colon);
+    var dowStrip  = new StripGlyphs(Rez.Drawables.FontDow, 18);   hold.add(dowStrip);
+    var dateStrip = new StripGlyphs(Rez.Drawables.FontDate, 6);   hold.add(dateStrip);
+    var bitmaps = ramUsed() - a;
+
+    var total = ramUsed();
+    logger.debug("RAM bytes: bloomFixed=" + bloomFixed + " bloomGrown=" + bloomGrown
+        + " bitmaps=" + bitmaps + " fieldmask=" + fieldmask + " border=" + border
+        + " uplink=" + uplink + " battery=" + battery + " north=" + north
+        + " breach=" + breach + " compositor=" + compositor
+        + " snapshot=" + snapshot);
+    logger.debug("RAM total used=" + total + " of total=" + ramTotal()
+        + " (limit 65536, ceiling 58982)  hold=" + hold.size());
     return true;
 }
 
