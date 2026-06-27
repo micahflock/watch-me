@@ -61,26 +61,35 @@ SEEDS = 9
 BMAX = 16
 PMAX = 41                 # max vertices an arm regenerates to (R0..RMAX by STEP)
 # Arm SHAPE: a smooth per-arm curl (a circular arc, sign+rate from the seed hash)
-# plus one slow undulation, a pure function of (a0, rb, along-arm distance d). The
+# plus TWO undulations (a primary swing + a finer detail harmonic) for a tighter,
+# more TEXTURED wiggle. A pure function of (a0, rb, along-arm distance d). The
 # heading is smooth in d, so coarse regen samples the SAME curve -- it cannot inject
-# the jagged wander the old per-anchor AMP*ws random walk did. Mirrors BioBloom.mc.
-CURL_RATE = 22
-CURL_VAR = 12
+# the jagged wander the old per-anchor AMP*ws random walk did. The frequencies stay
+# low enough that the widest stride on a saturated dish samples them without
+# aliasing back into jaggedness. Mirrors BioBloom.mc.
+CURL_RATE = 15
+CURL_VAR = 9
 CURL_DIV = 64
-UND_SW = 14
-UND_FR = 3
+UND1_SW = 9
+UND1_FR = 4
+UND2_SW = 5
+UND2_FR = 7
 
 
 def head(a0, rb, d):
-    """Smooth arm heading at along-arm distance d (px). Undulation zeroed at d==0 so
-    the arm leaves the centre radially (at a0) then curves. Mirrors BioBloom.mc."""
+    """Smooth arm heading at along-arm distance d (px). Both undulations zeroed at
+    d==0 so the arm leaves the centre radially (at a0) then twists. Mirrors
+    BioBloom.mc."""
     h = hash16(a0, rb, 2)
     rate = CURL_RATE + imod(h, CURL_VAR)
     sign = 1 if (h & 1) else -1
     ph = imod(hash16(a0, 7, 3), 256)
-    und0 = isin(ph)
+    ph2 = imod(hash16(a0, 11, 5), 256)
+    u0 = isin(ph)
+    u0b = isin(ph2)
     curl = sign * idiv(rate * d, CURL_DIV)
-    und = idiv(UND_SW * (isin(imod(d * UND_FR + ph, 256)) - und0), 127)
+    und = (idiv(UND1_SW * (isin(imod(d * UND1_FR + ph, 256)) - u0), 127)
+           + idiv(UND2_SW * (isin(imod(d * UND2_FR + ph2, 256)) - u0b), 127))
     return imod(a0 + curl + und, 256)
 
 ACTIVE = 4
