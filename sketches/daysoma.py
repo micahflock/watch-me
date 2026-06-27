@@ -25,7 +25,9 @@ like the BioBloom dish. The watchdog, not RAM, is the budget; every renderer
 below self-bounds its primitive count with an ink budget.
 """
 
-from device import idiv, imod, hash16, account
+from device import (idiv, imod, hash16, account,
+                    COLOR_DK_RED, COLOR_RED, COLOR_ORANGE, COLOR_YELLOW,
+                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_BLUE, COLOR_DK_BLUE)
 from daybuckets import hr_zi, HR_RAMP, CX, CY, px, py  # reuse the shared HR ramp
 
 ZLUT = 32              # size of the per-frame zone-colour lookup table
@@ -34,6 +36,33 @@ ACTIVE = 4             # zone idx >= this is an elevated-HR minute (HR >= 105)
 EMAX = 16             # cap on stored episodes (bright foci)
 KACT = 6              # steps/min -> one growth unit (matches BioBloom)
 MOM_DIV = 16          # steps/min -> banked-magnitude units during an episode
+
+# --- sleep inference (ported from BioBloom): no sleep API at 2.4, so sleep is
+# overnight quiescence -- night-hour minutes with no movement and a resting HR.
+# _night accrues it; at the midnight rollover its total is handed to sleep_seed
+# (the value the morning visual reads) and keeps accruing through the early
+# morning; the first solid movement freezes the seed and clears the meter.
+REST_HR = 72           # HR at/below this counts as resting
+IDLE_SPM = 1           # steps/min at/below this is "still"
+NIGHT_START = 20       # hour >= this OR <= NIGHT_END is "night"
+NIGHT_END = 10
+MORNING_END = 11       # up to this hour the seed still tracks the night
+WAKE_START = 5         # earliest hour a "got up" movement clears the meter
+SLEEP_CAP = 600        # cap the rest meter (~10 h)
+
+# hours-slept ramp: cool = well rested, warm = short night. Indexed by
+# (hours - 3), clamped 0..7 (<=3 h .. >=10 h) -- same scheme as BioBloom.
+SLEEP_RAMP = [COLOR_DK_RED, COLOR_RED, COLOR_ORANGE, COLOR_YELLOW,
+              COLOR_DK_GREEN, COLOR_GREEN, COLOR_BLUE, COLOR_DK_BLUE]
+
+
+def sleep_slot(mins):
+    s = idiv(mins, 60) - 3
+    if s < 0:
+        s = 0
+    if s > 7:
+        s = 7
+    return s
 
 
 class DayRecord:
@@ -50,6 +79,9 @@ class DayRecord:
         self._epi_on = False
         self._epi_idx = -1
         self._lastday = -1
+        # sleep meters live ACROSS the midnight reset (not touched by reset())
+        self._night = 0            # live overnight rest meter (minutes)
+        self.sleep_seed = 0        # frozen "last night's sleep" the morning reads
 
     def reset(self):
         for i in range(9):
@@ -70,9 +102,15 @@ class DayRecord:
             return
         day = snap.day if snap.day is not None else 0
         if day != self._lastday:
+            # hand the overnight meter to the new day's seed BEFORE wiping
+            self.sleep_seed = self._night
             self.reset()
             self._lastday = day
-            self.seed = imod(hash16(day, 17, 3), 4096)
+            # date-driven per-day seed: the art's SHAPE/placement varies day to
+            # day (the fxhash principle), independent of the activity data.
+            mo = snap.month if snap.month is not None else 1
+            yr = snap.year if snap.year is not None else 2026
+            self.seed = imod(hash16(day, mo * 32 + (yr & 63), 3), 4096)
 
         spm = 0
         st = snap.steps
@@ -87,9 +125,21 @@ class DayRecord:
         else:
             self.idle_min += 1
 
-        zi = hr_zi(snap.heartRate)
+        hr = snap.heartRate
+        zi = hr_zi(hr)
         if zi >= 0:
             self.zone_min[zi] += 1
+
+        # --- overnight quiescence -> last night's sleep ---
+        hh = snap.hour
+        quiescent = (spm <= IDLE_SPM) and (hr is None or hr <= REST_HR)
+        is_night = (hh >= NIGHT_START or hh <= NIGHT_END)
+        if is_night and quiescent and self._night < SLEEP_CAP:
+            self._night += 1
+        if hh <= MORNING_END and self._night > self.sleep_seed:
+            self.sleep_seed = self._night          # morning seed tracks the night
+        if spm >= KACT and WAKE_START <= hh <= MORNING_END and self._night > 0:
+            self._night = 0                        # got up -> freeze + clear
 
         # elevated-HR episode: rising edge opens a new focus; while it stays up we
         # track its peak zone and grow its magnitude (duration + banked movement).
@@ -125,14 +175,31 @@ def zone_color(z):
     return HR_RAMP[z] if z >= 0 else None
 
 
+# The HR zone the day spent the most minutes in, considering only zones >= floor
+# (-1 if none). floor=0 is the literal dominant zone; floor=ACTIVE gives the
+# dominant ELEVATED zone -- "what kind of exertion characterised the day", which
+# is the meaningful, colourful one (the literal dominant is almost always a cool
+# rest zone, since most of any day is spent not exercising).
+def dominant_zone(rec, floor=0):
+    best = -1
+    bestn = 0
+    for z in range(floor, 9):
+        if rec.zone_min[z] > bestn:
+            bestn = rec.zone_min[z]
+            best = z
+    return best
+
+
 # Build a ZLUT-entry table that maps a uniform draw -> an HR zone weighted by the
 # minutes spent in each zone. Built ONCE per frame (not per element): an element's
 # colour is then lut[hash & (ZLUT-1)], an O(1) read. This is the LUT discipline
 # from docs/watchdog-debugging.md -- a per-element 9-zone scan is the band-scan
 # trap that the sandbox proxy cannot see but the wrist feels. Returns None when
 # there is no HR history yet (caller falls back to a neutral/cool colour).
-def zone_lut(rec):
-    tot = rec.hr_total()
+def zone_lut(rec, floor=0):
+    tot = 0
+    for z in range(floor, 9):
+        tot += rec.zone_min[z]
     if tot <= 0:
         return None
     account(ZLUT + 9)                     # charge the one-time build to the proxy
@@ -140,7 +207,7 @@ def zone_lut(rec):
     for i in range(ZLUT):
         x = idiv(i * tot, ZLUT)
         acc = 0
-        for z in range(9):
+        for z in range(floor, 9):
             acc += rec.zone_min[z]
             if x < acc:
                 lut[i] = z
