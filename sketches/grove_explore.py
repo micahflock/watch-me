@@ -107,8 +107,23 @@ def explore_shapes():
          "day-to-day cushion shape (same activity, different date seed)")
 
 
+def explore_best4():
+    times = ["6:30", "16:30", "23:30"]
+    tm = [m for m in (mins(s) for s in times)]
+    snaps = synthetic_day(profile="active")
+    combos = [("tint", "crown"), ("tips", "crown"),
+              ("histo", "crown"), ("tint", "core")]
+    rows = []
+    for tuft, sleep in combos:
+        caps = capture(grove_base.make(tuft, sleep), snaps, tm)
+        rows.append((tuft + "+" + sleep, [caps[t] for t in tm]))
+    grid(os.path.join(OUT, "explore-best4.png"), rows, times,
+         "strongest grove combos (active day, ~6.5 h slept)")
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     explore_tufts()
     explore_sleep()
     explore_shapes()
+    explore_best4()
