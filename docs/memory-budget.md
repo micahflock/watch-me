@@ -58,7 +58,19 @@ Measured deltas (SDK 9.2.0, debug sim) — the face's own allocation footprint:
 Read the **deltas, not the absolute total** (the debug build also carries the
 unit-test suite, so its `usedMemory` ≈ 64 KB is not the release figure). The UI we
 allocate is ~12.9 KB (~20% of the 64 KB limit); the rest is the Monkey C runtime /
-bytecode working set. Two findings worth keeping:
+bytecode working set.
+
+**Measured release runtime (two-worlds, `-r`):** `usedMemory` **55,208 B** of
+`totalMemory` **61,256 B** the app is given (≈53.9 / 59.8 KB) — under the 57.6 KB
+policy ceiling, with **~6 KB free** to the app ceiling and **~10 KB** to the 64 KB
+hard limit. So the ~13 KB of UI data rides on a ~42 KB runtime/bytecode baseline.
+The unoptimized build (no `-r`, what `scripts/test.sh` runs) reads ~57/59 KB — `-r`
+both lowers used and frees more total, roughly tripling the free headroom (2 → 6
+KB). To re-measure: release stubs the `Instrument` overlay, so either read the
+sim's memory view, or temporarily have the `(:release)` `Instrument.tickEnd` print
+`getSystemStats()` and run `scripts/sim.sh two-worlds` (revert after).
+
+Two findings worth keeping:
 
 - **The dish does not grow over the day.** Every BioBloom array is pre-allocated at
   its cap (`KMAX`/`BMAX`/`BBANDS`/`CBANDS`) in `initialize()`, so `bloomGrown` is
