@@ -32,8 +32,12 @@ python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
 
 Renders `sketches/algos/<algo>.py` across a simulated biometric day into a
 captioned strip PNG (`sketches/out/<algo>-scrub.png`) in well under a second —
-no SDK, no PRG. Captions show the primitive count (watchdog proxy vs ~25k),
-state bytes (RAM proxy), and any off-palette color use.
+no SDK, no PRG. Captions show the watchdog proxy (estimated VM instructions vs
+~25k), state bytes (RAM proxy), and any off-palette color use. **The proxy is a
+loose LOWER BOUND, not proof of safety** — it cannot see the per-element
+method-call cost (`coordX`/`packPt`/`setColor`/`drawLine` dispatch) that
+dominates on-device, so a frame it calls fine can still trip the watchdog on the
+wrist. When a trip happens, the simulator is ground truth: **docs/watchdog-debugging.md**.
 
 - `sketches/device.py` is a **faithful** fr735xt model, not a loose mock:
   `hash16` / `isin` (integer sine LUT) / `zoneIndex` / the 14-color palette
@@ -67,6 +71,13 @@ state bytes (RAM proxy), and any off-palette color use.
   builds. Watchdog: ~25–30k VM instructions per `onUpdate` — the binding
   constraint. One `onUpdate` per minute; no seconds hand. Measured numbers
   and how to re-measure: docs/memory-budget.md.
+- **Debugging a watchdog trip / "Code Executed Too Long" crash / render-cost
+  regression → read `docs/watchdog-debugging.md` FIRST.** It has the sim
+  watchdog reproduction (pin a saturated dish, run the *release* PRG), the
+  crash-PC decode against `bin/<face>.prg.debug.xml`, the real per-layer cost
+  profile (`testLayerCostProfile`), the cost levers that worked, and the dead
+  ends (the sandbox proxy's blind spot, `INK_MAX` shuffling, the midnight-reset
+  red herring) — four rounds of lessons so the next trip takes one.
 - Display 215×180 semiround, fixed 14-color palette (COLOR_YELLOW is amber
   0xFFAA00). No GPS/sensors in watch faces — location comes from `lat`/`lng`
   app properties.

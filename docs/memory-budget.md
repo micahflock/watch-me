@@ -50,4 +50,7 @@ number; `Instrument`'s ms reading is for trend-watching, not the limit itself.
 
 Adding a heavy generative or per-pixel layer later: keep its per-tick cost
 inside the budget by spreading work across ticks, and measure with the overlay
-before and after — the watchdog gives no warning, only crashes.
+before and after — the watchdog gives no warning, only crashes. When one does
+crash, **docs/watchdog-debugging.md** is the playbook: reproduce the trip in the
+sim, decode the crash PCs, and measure the real per-layer cost (the Python
+sandbox proxy can't see the method-call cost that actually trips it).
