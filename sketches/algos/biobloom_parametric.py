@@ -67,12 +67,12 @@ PMAX = 41                 # max vertices an arm regenerates to (R0..RMAX by STEP
 # the jagged wander the old per-anchor AMP*ws random walk did. The frequencies stay
 # low enough that the widest stride on a saturated dish samples them without
 # aliasing back into jaggedness. Mirrors BioBloom.mc.
-CURL_RATE = 15
-CURL_VAR = 9
+CURL_RATE = 8            # low: veins head OUTWARD like slime-mold strands (the
+CURL_VAR = 6             # organic look comes from the branching tree, not meander)
 CURL_DIV = 64
-UND1_SW = 9
+UND1_SW = 7
 UND1_FR = 4
-UND2_SW = 5
+UND2_SW = 4
 UND2_FR = 7
 
 
@@ -250,9 +250,13 @@ class BioBloomParam:
                 self._grow_fil(self.fil[i], move)
                 i += 1
             if rising and len(self.fil) < KMAX:
+                # Branch ATTACHED at the parent's exact tip point (same angle, exact
+                # tip radius). The parent curve is append-only, so the fork point
+                # stays on it; the child diverges via its own curl. Mirrors
+                # BioBloom.mc -- no parent index stored, a0 encodes the attachment.
                 src = self._longish(steps)
-                na = imod(src["a"] + 10 + imod(hash16(steps, nf, 9), 22), 256)
-                rr = idiv(src["L"], UNIT)
+                na = src["a"]
+                rr = src["rb"] + (src["np"] - 1) * STEP
                 v = 2 + imod(hash16(steps, nf, 4), 3)
                 self.fil.append({"a0": na, "a": na, "L": rr * UNIT,
                                  "next": rr + STEP, "v": v, "np": 1, "rb": rr})
