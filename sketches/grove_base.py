@@ -18,6 +18,8 @@ sleep_mode -- how last night's inferred sleep (daysoma.sleep_seed) shows:
   'core'   a spore clump at the centre UNDER the cushion, sized by hours slept
            and coloured by sleep quality (cool = rested) -- BioBloom-faithful;
            the day's growth overgrows it
+  'coretop' same spore, but drawn ON TOP of the colony so last night's sleep
+           stays visible at the heart all day (same cost as 'core')
   'crown'  the cushion's bright inner crown is coloured by sleep quality (the
            moss's heart glows by how well you slept) -- always visible, ambient
   'dew'    a ring of sleep-coloured 'dew' beads around the rim at dawn, count by
@@ -244,6 +246,10 @@ class MossGrove:
             dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead)
             ink -= 2
+
+        # --- sleep 'coretop': spore drawn last, so it stays on top all day ---
+        if self.sleep_mode == "coretop":
+            ink = self.draw_core(dc, rec.sleep_seed, ink)
 
 
 def make(tuft_mode="green", sleep_mode="none"):

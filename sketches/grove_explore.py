@@ -121,9 +121,22 @@ def explore_best4():
          "strongest grove combos (active day, ~6.5 h slept)")
 
 
+def explore_coretop():
+    times = ["6:30", "13:05", "16:30", "23:30"]
+    tm = [m for m in (mins(s) for s in times)]
+    snaps = synthetic_day(profile="active")
+    rows = []
+    for sleep in ["core", "coretop"]:
+        caps = capture(grove_base.make("tint", sleep), snaps, tm)
+        rows.append(("tint+" + sleep, [caps[t] for t in tm]))
+    grid(os.path.join(OUT, "explore-coretop.png"), rows, times,
+         "spore under (core) vs on top (coretop) -- active day")
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     explore_tufts()
     explore_sleep()
     explore_shapes()
     explore_best4()
+    explore_coretop()
