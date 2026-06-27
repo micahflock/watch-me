@@ -9,7 +9,11 @@ using Toybox.Graphics as Gfx;
 // morning sleep-seed colony is ported from sketches/algos/biobloom_morning.py.
 //
 // A filament skeleton grows from the centre, extending ONLY when you move, so a
-// lazy day stays small and an active day reaches outward. A central MAIN COLONY
+// lazy day stays small and an active day reaches outward. New filaments spawn as
+// ATTACHED branches -- each is seeded at its parent's exact tip point and forks
+// outward from there (see stepMinute), so the skeleton reads as one connected,
+// slime-mold-like network radiating from the centre rather than loose arms. A
+// central MAIN COLONY
 // fills in behind the arms (clinging to them, stippled — not concentric), grows
 // only while moving, and is banded by the HR zone during that movement, going
 // grey/dark grey when it grows while the inactivity meter is up. Every elevated-
@@ -63,12 +67,16 @@ class BioBloom {
     // dish samples them without aliasing back into that jaggedness. Reads as a
     // textured tendril, and stays regenerable: an arm is a pure function of its
     // saved scalars.
-    const CURL_RATE = 15;      // base curl tightness (heading units per CURL_DIV px)
-    const CURL_VAR = 9;        // per-arm spread on the curl rate (seed-hashed)
+    const CURL_RATE = 8;       // base curl tightness (heading units per CURL_DIV px).
+                               // Kept LOW so a vein heads OUTWARD like a slime-mold
+                               // strand instead of meandering tangentially back
+                               // toward the centre; the organic quality comes from
+                               // the branching tree, not from arms wandering.
+    const CURL_VAR = 6;        // per-arm spread on the curl rate (seed-hashed)
     const CURL_DIV = 64;       // divisor: rate*d/CURL_DIV = heading turn at distance d
-    const UND1_SW = 9;         // primary undulation swing (heading units, 256==turn)
+    const UND1_SW = 7;         // primary undulation swing (heading units, 256==turn)
     const UND1_FR = 4;         // primary undulation frequency along the arm
-    const UND2_SW = 5;         // detail-harmonic swing (the added texture)
+    const UND2_SW = 4;         // detail-harmonic swing (the added texture)
     const UND2_FR = 7;         // detail-harmonic frequency (finer twists)
     const KMAX = 20;           // cap on live filaments (trimmed 22->20 for RAM:
                                // shrinks the dish AND the save() transient peak)
@@ -350,10 +358,17 @@ class BioBloom {
             var nf = _nfil;
             for (var i = 0; i < nf; i++) { growFil(i, move); }
             if (rising && _nfil < KMAX) {
+                // Branch ATTACHED to its parent: seed it at the parent's exact tip
+                // POINT -- same angle (_tha[src] is the parent's heading at its tip)
+                // and the parent's exact tip radius. Since an arm's curve is
+                // append-only, that fork point stays permanently ON the parent, so
+                // the child grows out of it instead of starting in mid-air. The fork
+                // DIVERGENCE comes from the child's own curl (its seed hash differs),
+                // so it splits outward like a slime-mold vein. No parent index is
+                // stored -- the child's a0 alone encodes where it attaches.
                 var src = longish(salt);
-                var na = (_tha[src] + 10
-                         + (GenArt.hash16(salt, nf, 9) % 22)) % 256;
-                var rr = _thL[src] / UNIT;
+                var na = _tha[src];
+                var rr = _thrb[src] + (_thnp[src] - 1) * STEP;
                 var v = 2 + (GenArt.hash16(salt, nf, 4) % 3);
                 var j = _nfil;
                 _tha0[j] = na; _tha[j] = na; _thL[j] = rr * UNIT;
