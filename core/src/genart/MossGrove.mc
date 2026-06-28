@@ -65,6 +65,7 @@ class MossGrove {
     var _seed;                 // per-DAY shape/placement seed (from the date)
     var _night; var _sleepSeed;              // sleep meters (survive the reset)
     var _lastDay; var _prev;                 // _prev = last cumulative steps
+    var _lastMin;              // minute-of-day last accreted (dup-call guard)
     var _epiOn; var _epiIdx;
     // render scratch (allocated once)
     var _sp;                   // per-day shape params [p1,p2,f1,f2,am1,am2]
@@ -88,6 +89,7 @@ class MossGrove {
         for (var i = 0; i < EMAX; i++) { _epz[i] = 0; _emag[i] = 0; }
         _nepi = 0;
         _prev = null;
+        _lastMin = -1;
         _epiOn = false; _epiIdx = -1;
     }
 
@@ -96,6 +98,7 @@ class MossGrove {
     function advance(state) {
         if (state.hour == null || state.minute == null) { return; }
         var day = (state.day != null) ? state.day : 0;
+        var now = state.hour * 60 + state.minute;
         if (day != _lastDay) {
             _sleepSeed = _night;             // hand last night to the new day
             reset();
@@ -103,6 +106,17 @@ class MossGrove {
             var mo = (state.month != null) ? state.month : 1;
             var yr = (state.year != null) ? state.year : 2026;
             _seed = GenArt.hash16(day, mo * 32 + (yr & 63), 3) % 4096;
+            _lastMin = now - 1;              // so this minute accretes exactly once
+        } else if (now == _lastMin) {
+            return;                          // ALREADY processed this minute --
+                                             // onUpdate fires again on every wrist
+                                             // raise (onExitSleep); without this guard
+                                             // each glance re-counts the minute and
+                                             // inflates idle/zone/sleep/episodes.
+        } else if (now < _lastMin) {
+            _lastMin = now;                  // clock moved back (sync/manual set):
+            if (state.steps != null) { _prev = state.steps; }
+            return;                          // resync, don't accrete a bogus minute
         }
 
         var spm = 0;
@@ -145,6 +159,7 @@ class MossGrove {
         } else {
             _epiOn = false; _epiIdx = -1;
         }
+        _lastMin = now;
     }
 
     // ---- helpers -------------------------------------------------------------
@@ -184,14 +199,14 @@ class MossGrove {
                     + (_sp[5] * GenArt.isin((a * _sp[3] + _sp[1]) & 255)) / 127;
     }
 
-    // fill a lumpy disc out to edge(a)*scalepct/100 as a fan of NA triangles
-    function fan(dc, scalepct) {
-        var e0 = (edge(0, 0) * scalepct) / 100;
+    // fill a lumpy disc out to edge(base,a)*scalepct/100 as a fan of NA triangles
+    function fan(dc, base, scalepct) {
+        var e0 = (edge(base, 0) * scalepct) / 100;
         var x0 = coordX(0, e0);
         var y0 = coordY(0, e0);
         for (var i = 1; i <= NA; i++) {
             var a = ((i * 256) / NA) & 255;
-            var e = (edge(0, a) * scalepct) / 100;
+            var e = (edge(base, a) * scalepct) / 100;
             var x1 = coordX(a, e);
             var y1 = coordY(a, e);
             _tri[0][0] = CX;  _tri[0][1] = CY;
@@ -231,9 +246,9 @@ class MossGrove {
 
         // central cushion: dark mound + bright green crown
         dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
-        fan(dc, 100);
+        fan(dc, base, 100);
         dc.setColor(Gfx.COLOR_GREEN, Gfx.COLOR_TRANSPARENT);
-        fan(dc, 60);
+        fan(dc, base, 60);
 
         // satellite tufts straddling the rim
         var nt = (ntuft > 0) ? ntuft : 1;
@@ -366,12 +381,13 @@ class MossGrove {
     const SAVE_MAGIC = 0x6033E;
 
     function save() {
-        var n = 12 + 9 + _nepi * 2;
+        var n = 13 + 9 + _nepi * 2;
         var a = new [n];
         var p = 0;
         a[p] = SAVE_MAGIC; p++;
         a[p] = _lastDay; p++;
         a[p] = (_prev == null) ? -1 : _prev; p++;
+        a[p] = _lastMin; p++;
         a[p] = _seed; p++;
         a[p] = _night; p++;
         a[p] = _sleepSeed; p++;
@@ -387,11 +403,12 @@ class MossGrove {
     }
 
     function load(a) {
-        if (a == null || a.size() < 21 || a[0] != SAVE_MAGIC) { return; }
+        if (a == null || a.size() < 22 || a[0] != SAVE_MAGIC) { return; }
         var sz = a.size();
         var p = 1;
         _lastDay = a[p]; p++;
         var pv = a[p]; p++; _prev = (pv < 0) ? null : pv;
+        _lastMin = a[p]; p++;
         _seed = a[p]; p++;
         _night = a[p]; p++;
         _sleepSeed = a[p]; p++;
