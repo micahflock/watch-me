@@ -27,3 +27,4 @@ sim.out
 # Python sandbox bytecode
 __pycache__/
 *.pyc
+!/bin/two-worlds-v2.prg

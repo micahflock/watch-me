@@ -1,35 +1,42 @@
 #!/usr/bin/env python3
-"""Moss hybrid -- "grove": a growing cushion ringed by colony tufts.
+"""moss_grove -- the LOCKED two-worlds V2 biometric visualization.
 
-Combines the two strongest moss variants:
-  * a central CUSHION (cushion.py) -- a solid two-tone lumpy mound -- for
-    cohesion, and
-  * satellite COLONY tufts (colony.py) -- dense little clumps that straddle the
-    cushion rim so they merge into one organism rather than floating free.
+Configuration chosen across the exploration: tuft colour = dominant ELEVATED
+zone ("tint"), sleep = spore nucleus drawn ON TOP ("coretop"). Centred 2/5 up
+from the bottom (CY=108), like BioBloom, so the artificial overlay (clock, etc.)
+rides above the organism.
 
-Growth is tuned to span the whole day. act_units on an active day runs ~1300
-(after the morning) to ~3400 (by night), so the cushion radius and the NUMBER of
-tufts are scaled across that range: a lazy morning is a small bud, tufts pop in
-one by one as activity accumulates, and a full active day is a broad cushion
-fringed with tufts. A rest day stays a small quiet patch; a heavy day saturates.
+This file is the PARITY REFERENCE for core/src/genart/MossGrove.mc (the
+strataflock.py role): it mirrors the record (daysoma) + render so the .mc ports
+mechanically. The day organism, from the heart out:
 
-Each elevated-HR EPISODE fruits a bright peak-zone bead -- on a tuft if there is
-one, else on the cushion crown -- so efforts read as fruiting bodies that build
-up over the day. Per-frame zone LUT for colour, self-bounded by INK, deterministic
-from the day seed; time-of-day not encoded.
+  sleep nucleus  last night's inferred sleep -- a spore clump at the centre,
+                 size = hours, colour = quality (cool rested / warm short),
+                 drawn last so it stays visible all day
+  cushion        a solid two-tone lumpy mound; radius grows with the day's total
+                 movement; per-day shape from the date seed (shape_params)
+  tufts          satellite colony clumps straddling the rim, popping in as
+                 activity accrues; grains glow the dominant ELEVATED HR zone
+  texture        granular green stipple + fuzzy rim fringe
+  episodes       elevated-HR events as bright peak-zone fruiting beads on tufts
+
+Time-of-day is intentionally not encoded. Self-bounded by INK; ~12k VM-instr/
+frame (half the ~25k watchdog), ~245 B state.
 """
 
 import daysoma as DS
-from daysoma import zone_color, zone_lut, place, ZLUT, CX, CY
+from daysoma import (zone_color, zone_lut, place, dominant_zone, sleep_slot,
+                     SLEEP_RAMP, ZLUT, ACTIVE)
 from daybuckets import px, py
-from mossutil import edge, fan
+from mossutil import edge, fan, shape_params
 from device import (idiv, imod, hash16, isin, COLOR_TRANSPARENT, COLOR_BLACK,
                     COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW)
 
+CX = 107
+CY = 108               # 2/5 of the 180px height up from the bottom (BioBloom centre)
 INK = 340
 NA = 30                # rim samples for the cushion fans
-WARM_Z = 5
-BASE_DIV = 60          # act_units -> cushion radius (calibrated to the day range)
+BASE_DIV = 60          # act_units -> cushion radius
 TUFT_DIV = 600         # act_units -> one more satellite tuft
 
 
@@ -43,8 +50,37 @@ class MossGrove:
     def state_bytes(self):
         return self.rec.state_bytes()
 
-    # one dense colony tuft centred at (tx,ty); solid blob + stipple on top
-    def tuft(self, dc, seed, lut, j, tx, ty, tsize, ink):
+    # last night's sleep: a spore clump at the centre (BioBloom-style scatter)
+    def draw_spore(self, dc, mins, ink):
+        if mins <= 0:
+            return ink
+        hours = idiv(mins, 60)
+        slot = sleep_slot(mins)
+        reach = 6 + 2 * hours
+        if reach > 28:
+            reach = 28
+        rim = idiv(reach * 2, 3)
+        dc.setColor(SLEEP_RAMP[slot], COLOR_TRANSPARENT)
+        dc.fillCircle(CX, CY, 3)
+        nodes = 7 + hours * 2
+        for k in range(nodes):
+            if ink <= 0:
+                break
+            h = hash16(91, k, 6)
+            a = imod(idiv(k * 256, nodes) + (h % 36), 256)
+            r1 = imod(hash16(73, k, 2), reach)
+            r2 = imod(hash16(29, k, 4), reach)
+            rr = 2 + (r1 if r1 < r2 else r2)
+            ci = slot
+            if rr >= rim and slot >= 1:
+                ci = slot - 1
+            dc.setColor(SLEEP_RAMP[ci], COLOR_TRANSPARENT)
+            dc.fillCircle(px(CX, rr, a), py(CY, rr, a), 1 + (h % 3))
+            ink -= 1
+        return ink
+
+    # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
+    def draw_tuft(self, dc, seed, j, tx, ty, tsize, accent, ink):
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
         dc.fillCircle(tx, ty, idiv(tsize, 2))
         ink -= 1
@@ -57,14 +93,9 @@ class MossGrove:
             a2, rr2, h = place(seed, j * 64 + i, 3, tsize)
             gx = tx + idiv(rr2 * isin(a2 + 64), 127)
             gy = ty + idiv(rr2 * isin(a2), 127)
-            warm = (lut is not None) and (lut[h & (ZLUT - 1)] >= WARM_Z) \
-                and ((h >> 5) & 3) == 0
-            if warm:
-                col = zone_color(lut[h & (ZLUT - 1)])
-            elif ((h >> 6) & 7) == 0:
-                col = COLOR_YELLOW
-            else:
-                col = COLOR_GREEN if (h & 1) else COLOR_DK_GREEN
+            col = COLOR_GREEN if (h & 1) else COLOR_DK_GREEN
+            if accent is not None and ((h >> 6) & 3) != 0:
+                col = accent                   # most grains glow the exertion colour
             dc.setColor(col, COLOR_TRANSPARENT)
             dc.fillCircle(gx, gy, 1)
             ink -= 1
@@ -76,41 +107,41 @@ class MossGrove:
             return
         ink = INK
         seed = rec.seed
-        lut = zone_lut(rec)
+        sp = shape_params(seed)                # per-day lumpy outline
+        dz = dominant_zone(rec, ACTIVE)        # the day's exertion colour
+        if dz < 0:
+            dz = dominant_zone(rec)
+        dzcol = zone_color(dz) if dz >= 0 else None
         act = rec.act_units
 
-        base = 4 + idiv(act, BASE_DIV)             # cushion grows across the day
+        base = 4 + idiv(act, BASE_DIV)
         if base > 54:
             base = 54
-        ntuft = idiv(act, TUFT_DIV)                # tufts pop in as activity accrues
+        ntuft = idiv(act, TUFT_DIV)
         if ntuft > 7:
             ntuft = 7
-        tsize = 7 + idiv(act, 320)                 # tufts also fatten a little
+        tsize = 7 + idiv(act, 320)
         if tsize > 16:
             tsize = 16
 
-        # --- central cushion: solid dark mound + brighter crown ---
+        # --- central cushion: dark mound + bright green crown ---
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
-        fan(dc, CX, CY, base, 100, NA)
+        fan(dc, CX, CY, base, 100, NA, sp)
         dc.setColor(COLOR_GREEN, COLOR_TRANSPARENT)
-        fan(dc, CX, CY, base, 60, NA)
+        fan(dc, CX, CY, base, 60, NA, sp)
 
-        # --- satellite tufts straddling the rim (deterministic positions) ---
-        tx_list = []
-        ty_list = []
+        # --- satellite tufts straddling the rim ---
         for j in range(ntuft):
             if ink <= 0:
                 break
             hj = hash16(seed, j, 31)
             a = imod(idiv(j * 256, ntuft if ntuft else 1) + (hj & 31), 256)
-            rr = idiv(edge(base, a) * (85 + (hj >> 8) % 30), 100)   # ~0.85..1.15 rim
+            rr = idiv(edge(base, a, sp) * (85 + (hj >> 8) % 30), 100)
             tx = px(CX, rr, a)
             ty = py(CY, rr, a)
-            tx_list.append(tx)
-            ty_list.append(ty)
-            ink = self.tuft(dc, seed, lut, j, tx, ty, tsize, ink)
+            ink = self.draw_tuft(dc, seed, j, tx, ty, tsize, dzcol, ink)
 
-        # --- granular texture + warm flecks over the cushion ---
+        # --- granular texture over the cushion ---
         n = 50 + idiv(act, 12)
         if n > 130:
             n = 130
@@ -118,13 +149,9 @@ class MossGrove:
             if ink <= 0:
                 break
             a, rr0, h = place(seed, i, 1, base)
-            lim = edge(base, a)
+            lim = edge(base, a, sp)
             rr = idiv(rr0 * lim, base) if base > 0 else 0
-            warm = (lut is not None) and (lut[h & (ZLUT - 1)] >= WARM_Z) \
-                and ((h >> 5) & 3) == 0
-            if warm:
-                col = zone_color(lut[h & (ZLUT - 1)])
-            elif (h & 1) == 0:
+            if (h & 1) == 0:
                 col = COLOR_DK_GREEN
             else:
                 col = COLOR_YELLOW if ((h >> 6) & 7) == 0 else COLOR_GREEN
@@ -138,13 +165,13 @@ class MossGrove:
             if ink <= 0:
                 break
             a = imod(idiv(i * 256, NA), 256)
-            e = edge(base, a)
+            e = edge(base, a, sp)
             le = 2 + (hash16(seed, i, 9) & 1)
             dc.drawLine(px(CX, e, a), py(CY, e, a),
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
-        # --- episodes: bright fruiting beads, on a tuft if available ---
+        # --- episodes: bright fruiting beads on tufts (else crown) ---
         for e in range(rec.nepi):
             if ink <= 0:
                 break
@@ -152,16 +179,21 @@ class MossGrove:
             bead = 2 + idiv(mag, 16)
             if bead > 4:
                 bead = 4
-            if len(tx_list) > 0:
-                t = imod(hash16(seed, e, 41), len(tx_list))
+            if ntuft > 0:
+                t = imod(hash16(seed, e, 41), ntuft)
+                hj = hash16(seed, t, 31)
+                ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
+                trr = idiv(edge(base, ta, sp) * (85 + (hj >> 8) % 30), 100)
+                tx = px(CX, trr, ta)
+                ty = py(CY, trr, ta)
                 he = hash16(seed, e, 42)
                 off = idiv(tsize, 2) + (he >> 8) % 3
                 a = he & 0xFF
-                x = tx_list[t] + idiv(off * isin(a + 64), 127)
-                y = ty_list[t] + idiv(off * isin(a), 127)
+                x = tx + idiv(off * isin(a + 64), 127)
+                y = ty + idiv(off * isin(a), 127)
             else:
                 a = imod(hash16(seed, e, 42), 256)
-                rr = idiv(edge(base, a) * 3, 5)
+                rr = idiv(edge(base, a, sp) * 3, 5)
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
@@ -169,6 +201,9 @@ class MossGrove:
             dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead)
             ink -= 2
+
+        # --- sleep nucleus drawn LAST: stays on top of the colony all day ---
+        self.draw_spore(dc, rec.sleep_seed, ink)
 
 
 def build():

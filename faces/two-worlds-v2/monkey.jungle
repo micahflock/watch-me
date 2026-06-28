@@ -1,0 +1,12 @@
+# Release jungle for two-worlds-v2.
+# Shared core source is pulled in via sourcePath concatenation (no barrels).
+# Resources (fonts, launcher icon, settings) are SHARED with the two-worlds face
+# via resourcePath, so the V2 face owns only its source.
+
+project.manifest = manifest.xml
+
+# Face source + shared core. Paths are relative to this jungle file.
+base.sourcePath = source;../../core/src
+
+# Reuse the two-worlds resources (fonts, launcher icon, settings).
+base.resourcePath = ../two-worlds/resources
