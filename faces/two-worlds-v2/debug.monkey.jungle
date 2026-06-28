@@ -1,0 +1,8 @@
+# Debug jungle for two-worlds-v2. Built WITHOUT monkeyc -r so (:debug)
+# instrumentation compiles in and (:release) stubs drop out.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source;../../core/src
+
+base.resourcePath = ../two-worlds/resources
