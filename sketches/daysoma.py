@@ -76,6 +76,7 @@ class DayRecord:
         self.nepi = 0
         self.seed = 1
         self._prev = None
+        self._lastmin = -1          # minute-of-day last accreted (dup-call guard)
         self._epi_on = False
         self._epi_idx = -1
         self._lastday = -1
@@ -94,6 +95,7 @@ class DayRecord:
             self.emag[i] = 0
         self.nepi = 0
         self._prev = None
+        self._lastmin = -1
         self._epi_on = False
         self._epi_idx = -1
 
@@ -101,6 +103,7 @@ class DayRecord:
         if snap.hour is None or snap.minute is None:
             return
         day = snap.day if snap.day is not None else 0
+        now = snap.hour * 60 + snap.minute
         if day != self._lastday:
             # hand the overnight meter to the new day's seed BEFORE wiping
             self.sleep_seed = self._night
@@ -111,6 +114,14 @@ class DayRecord:
             mo = snap.month if snap.month is not None else 1
             yr = snap.year if snap.year is not None else 2026
             self.seed = imod(hash16(day, mo * 32 + (yr & 63), 3), 4096)
+            self._lastmin = now - 1            # this minute accretes exactly once
+        elif now == self._lastmin:
+            return                             # dup call this minute (wrist raise)
+        elif now < self._lastmin:
+            self._lastmin = now                # clock moved back -> resync only
+            if snap.steps is not None:
+                self._prev = snap.steps
+            return
 
         spm = 0
         st = snap.steps
@@ -159,6 +170,7 @@ class DayRecord:
         else:
             self._epi_on = False
             self._epi_idx = -1
+        self._lastmin = now
 
     def hr_total(self):
         t = 0
