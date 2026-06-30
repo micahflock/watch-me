@@ -99,7 +99,7 @@ class MossGrove:
         # never visually touches the blight, however much it spreads.
         if wakes > 0:
             wr = scl(2)                        # white core radius
-            ring = wr + scl(1)                 # thin guaranteed black ring
+            br = wr + scl(3)                   # thick black border (as before)
             for w in range(wakes):
                 if ink <= 0:
                     break
@@ -109,16 +109,16 @@ class MossGrove:
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
                 dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
-                dc.fillCircle(x, y, ring)
-                # ragged border: 1-5 small blobs anchored ON the ring's outer
-                # perimeter, so the black edge bumps irregularly (disrupted
-                # growth) without enlarging the blight much
+                dc.fillCircle(x, y, br)
+                # ragged border: 1-5 small blobs anchored ON the thick border's
+                # outer edge, so it bumps irregularly (disrupted growth) while the
+                # border stays thick
                 nb = 1 + (hash16(w, 5, 9) % 5)
                 for k in range(nb):
                     hb = hash16(w + 41, k, 8)
                     ba = imod(idiv(k * 256, nb) + (hb % 40), 256)
-                    dc.fillCircle(x + idiv(ring * isin(ba + 64), 127),
-                                  y + idiv(ring * isin(ba), 127), scl(1))
+                    dc.fillCircle(x + idiv(br * isin(ba + 64), 127),
+                                  y + idiv(br * isin(ba), 127), scl(1))
                 dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
                 dc.fillCircle(x, y, wr)
                 ink -= (nb + 2)
