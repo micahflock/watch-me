@@ -130,9 +130,9 @@ class MossGrove:
         ntuft = idiv(act, TUFT_DIV)
         if ntuft > 7:
             ntuft = 7
-        tsize = 7 + idiv(act, 320)
-        if tsize > 16:
-            tsize = 16
+        tsize = 10 + idiv(act, 240)
+        if tsize > 23:
+            tsize = 23
         tsize = scl(tsize)
 
         # --- central cushion: dark mound + bright green crown ---
@@ -187,10 +187,10 @@ class MossGrove:
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            bead = 2 + idiv(mag, 16)
-            if bead > 4:
-                bead = 4
-            bead = scl(bead)
+            bead = 3 + idiv(mag, 12)
+            if bead > 6:
+                bead = 6
+            bead = idiv(scl(bead) * 3, 2)      # 1.5x larger episode beads
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
