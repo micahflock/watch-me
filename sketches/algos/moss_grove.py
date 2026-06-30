@@ -99,7 +99,8 @@ class MossGrove:
         # never visually touches the blight, however much it spreads.
         if wakes > 0:
             wr = scl(2)                        # white core radius
-            br = wr + scl(3)                   # + thick black border
+            ring = wr + scl(1)                 # thin guaranteed black ring
+            nb = 7                             # ragged black blobs around it
             for w in range(wakes):
                 if ink <= 0:
                     break
@@ -109,10 +110,19 @@ class MossGrove:
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
                 dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
-                dc.fillCircle(x, y, br)
+                dc.fillCircle(x, y, ring)
+                # ragged border: blobs spread around at VARIED radii, so the
+                # black silhouette bulges and the moss creeps in between -- reads
+                # as disrupted growth, not a clean hole
+                for k in range(nb):
+                    hb = hash16(w + 41, k, 8)
+                    ba = imod(idiv(k * 256, nb) + (hb % 30), 256)
+                    bd = ring + (hb >> 6) % (scl(4) + 1)   # ring .. ring+scl(4)
+                    dc.fillCircle(x + idiv(bd * isin(ba + 64), 127),
+                                  y + idiv(bd * isin(ba), 127), scl(2))
                 dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
                 dc.fillCircle(x, y, wr)
-                ink -= 2
+                ink -= (nb + 2)
         return ink
 
     # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
