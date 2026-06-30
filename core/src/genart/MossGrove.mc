@@ -30,6 +30,8 @@ class MossGrove {
     const NA = 30;             // rim samples for the cushion fans
     const BASE_DIV = 60;       // act units -> cushion radius
     const TUFT_DIV = 600;      // act units -> one more satellite tuft
+    const SCN = 5;             // overall size scale = SCN/SCD (= 1.25x), applied
+    const SCD = 4;             // to every radial extent
 
     const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute
     const EMAX = 16;           // cap on stored episodes
@@ -183,6 +185,8 @@ class MossGrove {
         return best;
     }
 
+    function scl(v) { return v * SCN / SCD; }
+
     function sleepSlot(mins) {
         var s = mins / 60 - 3;
         if (s < 0) { s = 0; }
@@ -229,8 +233,8 @@ class MossGrove {
         _sp[1] = GenArt.hash16(seed, 2, 3) % 256;
         _sp[2] = 2 + GenArt.hash16(seed, 3, 3) % 3;
         _sp[3] = 4 + GenArt.hash16(seed, 4, 3) % 4;
-        _sp[4] = 7 + GenArt.hash16(seed, 5, 3) % 7;
-        _sp[5] = 3 + GenArt.hash16(seed, 6, 3) % 4;
+        _sp[4] = scl(7 + GenArt.hash16(seed, 5, 3) % 7);   // amplitudes scale too
+        _sp[5] = scl(3 + GenArt.hash16(seed, 6, 3) % 4);
 
         var dz = dominantZone(ACTIVE);
         if (dz < 0) { dz = dominantZone(0); }
@@ -239,10 +243,12 @@ class MossGrove {
 
         var base = 4 + act / BASE_DIV;
         if (base > 54) { base = 54; }
+        base = scl(base);                       // 1.25x overall scale
         var ntuft = act / TUFT_DIV;
         if (ntuft > 7) { ntuft = 7; }
         var tsize = 7 + act / 320;
         if (tsize > 16) { tsize = 16; }
+        tsize = scl(tsize);
 
         // central cushion: dark mound + bright green crown
         dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
@@ -297,6 +303,7 @@ class MossGrove {
             var mag = _emag[e];
             var bead = 2 + mag / 16;
             if (bead > 4) { bead = 4; }
+            bead = scl(bead);
             var x; var y;
             if (ntuft > 0) {
                 var t = GenArt.hash16(seed, e, 41) % ntuft;
@@ -355,9 +362,10 @@ class MossGrove {
         var slot = sleepSlot(mins);
         var reach = 6 + 2 * hours;
         if (reach > 28) { reach = 28; }
+        reach = scl(reach);
         var rim = (reach * 2) / 3;
         dc.setColor(SLEEP_RAMP[slot], Gfx.COLOR_TRANSPARENT);
-        dc.fillCircle(CX, CY, 3);
+        dc.fillCircle(CX, CY, scl(3));
         var nodes = 7 + hours * 2;
         for (var k = 0; k < nodes; k++) {
             if (_ink <= 0) { break; }
