@@ -187,9 +187,9 @@ class MossGrove:
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            bead = 2 + idiv(mag, 16)
-            if bead > 4:
-                bead = 4
+            bead = 3 + idiv(mag, 12)
+            if bead > 6:
+                bead = 6
             bead = scl(bead)
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
