@@ -246,8 +246,8 @@ class MossGrove {
         base = scl(base);                       // 1.25x overall scale
         var ntuft = act / TUFT_DIV;
         if (ntuft > 7) { ntuft = 7; }
-        var tsize = 7 + act / 320;
-        if (tsize > 16) { tsize = 16; }
+        var tsize = 10 + act / 240;            // larger activity clusters
+        if (tsize > 23) { tsize = 23; }
         tsize = scl(tsize);
 
         // central cushion: dark mound + bright green crown
@@ -301,9 +301,9 @@ class MossGrove {
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
-            var bead = 2 + mag / 16;
-            if (bead > 4) { bead = 4; }
-            bead = scl(bead);
+            var bead = 3 + mag / 12;
+            if (bead > 6) { bead = 6; }
+            bead = scl(bead) * 3 / 2;          // 1.5x larger episode beads
             var x; var y;
             if (ntuft > 0) {
                 var t = GenArt.hash16(seed, e, 41) % ntuft;
