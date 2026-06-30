@@ -190,7 +190,7 @@ class MossGrove:
             bead = 3 + idiv(mag, 12)
             if bead > 6:
                 bead = 6
-            bead = scl(bead)
+            bead = idiv(scl(bead) * 3, 2)      # 1.5x larger episode beads
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
