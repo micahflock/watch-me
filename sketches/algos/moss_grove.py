@@ -30,7 +30,7 @@ from daysoma import (zone_color, zone_lut, place, dominant_zone, sleep_slot,
 from daybuckets import px, py
 from mossutil import edge, fan, shape_params
 from device import (idiv, imod, hash16, isin, COLOR_TRANSPARENT, COLOR_BLACK,
-                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW)
+                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE)
 
 CX = 107
 CY = 108               # 2/5 of the 180px height up from the bottom (BioBloom centre)
@@ -56,15 +56,22 @@ class MossGrove:
     def state_bytes(self):
         return self.rec.state_bytes()
 
-    # last night's sleep: a spore clump at the centre (BioBloom-style scatter)
-    def draw_spore(self, dc, mins, ink):
+    # last night's sleep: a spore clump at the centre (BioBloom-style scatter).
+    # wakes = wake-up events 12-6am: each one warms the clump a step, loosens its
+    # scatter, and adds one violet speck orbiting outside (a literal count).
+    def draw_spore(self, dc, mins, wakes, ink):
         if mins <= 0:
             return ink
         hours = idiv(mins, 60)
-        slot = sleep_slot(mins)
+        slot = sleep_slot(mins) - wakes        # restless -> warmer
+        if slot < 0:
+            slot = 0
         reach = 6 + 2 * hours
         if reach > 28:
             reach = 28
+        reach += 3 * wakes                     # restless -> wider, looser scatter
+        if reach > 40:
+            reach = 40
         reach = scl(reach)
         rim = idiv(reach * 2, 3)
         dc.setColor(SLEEP_RAMP[slot], COLOR_TRANSPARENT)
@@ -77,13 +84,45 @@ class MossGrove:
             a = imod(idiv(k * 256, nodes) + (h % 36), 256)
             r1 = imod(hash16(73, k, 2), reach)
             r2 = imod(hash16(29, k, 4), reach)
-            rr = 2 + (r1 if r1 < r2 else r2)
+            # more wakes -> less centre-bias (looser): blend min toward the mean
+            inner = r1 if r1 < r2 else r2
+            rr = 2 + (inner if wakes == 0 else idiv(inner + r1 + r2, 3))
             ci = slot
             if rr >= rim and slot >= 1:
                 ci = slot - 1
             dc.setColor(SLEEP_RAMP[ci], COLOR_TRANSPARENT)
             dc.fillCircle(px(CX, rr, a), py(CY, rr, a), 1 + (h % 3))
             ink -= 1
+        # one "blighted" speck per wake-up, orbiting just outside the clump: a
+        # white dot inside a THICK black border. Drawn last (with the spore, on
+        # top of everything), the black ring carves a permanent gap so the moss
+        # never visually touches the blight, however much it spreads.
+        if wakes > 0:
+            wr = scl(2)                        # white core radius
+            br = wr + scl(3)                   # thick black border (as before)
+            for w in range(wakes):
+                if ink <= 0:
+                    break
+                hw = hash16(53, w, 7)
+                a = imod(idiv(w * 256, wakes) + (hw % 24), 256)
+                rr = reach + scl(4) + (hw % 4)
+                x = px(CX, rr, a)
+                y = py(CY, rr, a)
+                dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, br)
+                # ragged border: 1-5 small blobs sitting tangent ON the thick
+                # border's outer edge (inner side touching br, body protruding)
+                # so they read as bumps disrupting the rim, not buried under it
+                nb = 1 + (hash16(w, 5, 9) % 5)
+                bd = br + scl(1)                # tangent: center one blob-radius out
+                for k in range(nb):
+                    hb = hash16(w + 41, k, 8)
+                    ba = imod(idiv(k * 256, nb) + (hb % 40), 256)
+                    dc.fillCircle(x + idiv(bd * isin(ba + 64), 127),
+                                  y + idiv(bd * isin(ba), 127), scl(1))
+                dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, wr)
+                ink -= (nb + 2)
         return ink
 
     # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
@@ -215,7 +254,7 @@ class MossGrove:
             ink -= 2
 
         # --- sleep nucleus drawn LAST: stays on top of the colony all day ---
-        self.draw_spore(dc, rec.sleep_seed, ink)
+        self.draw_spore(dc, rec.sleep_seed, rec.wake_seed, ink)
 
 
 def build():

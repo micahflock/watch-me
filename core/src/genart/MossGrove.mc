@@ -46,6 +46,8 @@ class MossGrove {
     const MORNING_END = 11;
     const WAKE_START = 5;
     const SLEEP_CAP = 600;
+    const WAKE_WIN_END = 6;    // wake EVENTS counted only for hours [0, this)
+    const WAKE_SPM = 6;        // steps/min burst that marks a wake-up
 
     // 9-step HR ramp (cool rest -> hot effort), finer than GenArt.ZONE_COLORS.
     const HR_BOUNDS = [60, 80, 95, 105, 120, 138, 152, 165];
@@ -66,6 +68,7 @@ class MossGrove {
     var _epz; var _emag; var _nepi;          // episodes: peak zone + magnitude
     var _seed;                 // per-DAY shape/placement seed (from the date)
     var _night; var _sleepSeed;              // sleep meters (survive the reset)
+    var _wakes; var _wakeSeed; var _awake;   // wake events (0-6am), survive reset
     var _lastDay; var _prev;                 // _prev = last cumulative steps
     var _lastMin;              // minute-of-day last accreted (dup-call guard)
     var _epiOn; var _epiIdx;
@@ -81,6 +84,7 @@ class MossGrove {
         _sp = new [6];
         _tri = [[0, 0], [0, 0], [0, 0]];
         _night = 0; _sleepSeed = 0;          // survive reset(); init once
+        _wakes = 0; _wakeSeed = 0; _awake = false;
         _lastDay = -1; _prev = null;
         reset();
     }
@@ -103,6 +107,7 @@ class MossGrove {
         var now = state.hour * 60 + state.minute;
         if (day != _lastDay) {
             _sleepSeed = _night;             // hand last night to the new day
+            _wakeSeed = _wakes;
             reset();
             _lastDay = day;
             var mo = (state.month != null) ? state.month : 1;
@@ -140,9 +145,21 @@ class MossGrove {
         var quiescent = (spm <= IDLE_SPM) && (hr == null || hr <= REST_HR);
         var isNight = (hh >= NIGHT_START || hh <= NIGHT_END);
         if (isNight && quiescent && _night < SLEEP_CAP) { _night += 1; }
+        // wake EVENTS: a movement burst during [0,6) am, debounced to a rising
+        // edge so one up-and-about stretch counts once (not per minute).
+        if (hh >= 0 && hh < WAKE_WIN_END) {
+            if (spm >= WAKE_SPM) {
+                if (!_awake) { _wakes += 1; _awake = true; }
+            } else if (spm <= IDLE_SPM) {
+                _awake = false;
+            }
+        }
         if (hh <= MORNING_END && _night > _sleepSeed) { _sleepSeed = _night; }
+        if (hh <= MORNING_END && _wakes > _wakeSeed) { _wakeSeed = _wakes; }
         if (spm >= KACT && hh >= WAKE_START && hh <= MORNING_END && _night > 0) {
             _night = 0;
+            _wakes = 0;
+            _awake = false;
         }
 
         // elevated-HR episode: rising edge opens a focus; track peak + magnitude
@@ -331,7 +348,7 @@ class MossGrove {
         }
 
         // sleep nucleus drawn LAST: stays on top of the colony all day
-        drawSpore(dc, _sleepSeed);
+        drawSpore(dc, _sleepSeed, _wakeSeed);
     }
 
     function drawTuft(dc, seed, j, tx, ty, tsize, accent) {
@@ -356,12 +373,18 @@ class MossGrove {
         }
     }
 
-    function drawSpore(dc, mins) {
+    // last night's sleep: a spore clump at the centre. wakes = wake-ups 12-6am:
+    // each warms the clump a step, loosens its scatter, and adds one white
+    // "blight" speck (thick black border, ragged outer edge) orbiting outside.
+    function drawSpore(dc, mins, wakes) {
         if (mins <= 0) { return; }
         var hours = mins / 60;
-        var slot = sleepSlot(mins);
+        var slot = sleepSlot(mins) - wakes;          // restless -> warmer
+        if (slot < 0) { slot = 0; }
         var reach = 6 + 2 * hours;
         if (reach > 28) { reach = 28; }
+        reach += 3 * wakes;                           // restless -> wider, looser
+        if (reach > 40) { reach = 40; }
         reach = scl(reach);
         var rim = (reach * 2) / 3;
         dc.setColor(SLEEP_RAMP[slot], Gfx.COLOR_TRANSPARENT);
@@ -373,12 +396,42 @@ class MossGrove {
             var a = ((k * 256) / nodes + (h % 36)) % 256;
             var r1 = GenArt.hash16(73, k, 2) % reach;
             var r2 = GenArt.hash16(29, k, 4) % reach;
-            var rr = 2 + ((r1 < r2) ? r1 : r2);
+            var inner = (r1 < r2) ? r1 : r2;
+            // more wakes -> less centre-bias (looser): blend min toward the mean
+            var rr = 2 + ((wakes == 0) ? inner : (inner + r1 + r2) / 3);
             var ci = slot;
             if (rr >= rim && slot >= 1) { ci = slot - 1; }
             dc.setColor(SLEEP_RAMP[ci], Gfx.COLOR_TRANSPARENT);
             dc.fillCircle(coordX(a, rr), coordY(a, rr), 1 + (h % 3));
             _ink -= 1;
+        }
+        // one "blight" speck per wake-up, orbiting just outside the clump: a
+        // white dot in a THICK black border whose outer edge is roughened by
+        // 1-5 half-size blobs sitting tangent on it (disrupted growth).
+        if (wakes > 0) {
+            var wr = scl(2);
+            var br = wr + scl(3);
+            var bd = br + scl(1);
+            for (var w = 0; w < wakes; w++) {
+                if (_ink <= 0) { break; }
+                var hw = GenArt.hash16(53, w, 7);
+                var wa = ((w * 256) / wakes + (hw % 24)) % 256;
+                var wrr = reach + scl(4) + (hw % 4);
+                var x = coordX(wa, wrr);
+                var y = coordY(wa, wrr);
+                dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
+                dc.fillCircle(x, y, br);
+                var nb = 1 + (GenArt.hash16(w, 5, 9) % 5);
+                for (var k2 = 0; k2 < nb; k2++) {
+                    var hb = GenArt.hash16(w + 41, k2, 8);
+                    var ba = ((k2 * 256) / nb + (hb % 40)) % 256;
+                    dc.fillCircle(x + (bd * GenArt.isin(ba + 64)) / 127,
+                                  y + (bd * GenArt.isin(ba)) / 127, scl(1));
+                }
+                dc.setColor(Gfx.COLOR_WHITE, Gfx.COLOR_TRANSPARENT);
+                dc.fillCircle(x, y, wr);
+                _ink -= (nb + 2);
+            }
         }
     }
 
@@ -386,10 +439,10 @@ class MossGrove {
     // The record is tiny (a few scalars + zoneMin[9] + nepi episode pairs), so a
     // reload restores it exactly. Validated on load: a wrong magic or out-of-range
     // count drops to a blank record rather than half-loading.
-    const SAVE_MAGIC = 0x6033E;
+    const SAVE_MAGIC = 0x6033F;  // bumped: wake fields added to the layout
 
     function save() {
-        var n = 13 + 9 + _nepi * 2;
+        var n = 15 + 9 + _nepi * 2;
         var a = new [n];
         var p = 0;
         a[p] = SAVE_MAGIC; p++;
@@ -399,6 +452,8 @@ class MossGrove {
         a[p] = _seed; p++;
         a[p] = _night; p++;
         a[p] = _sleepSeed; p++;
+        a[p] = _wakes; p++;
+        a[p] = _wakeSeed; p++;
         a[p] = _actUnits; p++;
         a[p] = _activeMin; p++;
         a[p] = _idleMin; p++;
@@ -411,7 +466,7 @@ class MossGrove {
     }
 
     function load(a) {
-        if (a == null || a.size() < 22 || a[0] != SAVE_MAGIC) { return; }
+        if (a == null || a.size() < 24 || a[0] != SAVE_MAGIC) { return; }
         var sz = a.size();
         var p = 1;
         _lastDay = a[p]; p++;
@@ -420,6 +475,8 @@ class MossGrove {
         _seed = a[p]; p++;
         _night = a[p]; p++;
         _sleepSeed = a[p]; p++;
+        _wakes = a[p]; p++;
+        _wakeSeed = a[p]; p++;
         _actUnits = a[p]; p++;
         _activeMin = a[p]; p++;
         _idleMin = a[p]; p++;
