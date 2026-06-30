@@ -130,9 +130,9 @@ class MossGrove:
         ntuft = idiv(act, TUFT_DIV)
         if ntuft > 7:
             ntuft = 7
-        tsize = 7 + idiv(act, 320)
-        if tsize > 16:
-            tsize = 16
+        tsize = 10 + idiv(act, 240)
+        if tsize > 23:
+            tsize = 23
         tsize = scl(tsize)
 
         # --- central cushion: dark mound + bright green crown ---
