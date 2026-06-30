@@ -30,7 +30,7 @@ from daysoma import (zone_color, zone_lut, place, dominant_zone, sleep_slot,
 from daybuckets import px, py
 from mossutil import edge, fan, shape_params
 from device import (idiv, imod, hash16, isin, COLOR_TRANSPARENT, COLOR_BLACK,
-                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW, COLOR_PURPLE)
+                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE)
 
 CX = 107
 CY = 108               # 2/5 of the 180px height up from the bottom (BioBloom centre)
@@ -93,17 +93,26 @@ class MossGrove:
             dc.setColor(SLEEP_RAMP[ci], COLOR_TRANSPARENT)
             dc.fillCircle(px(CX, rr, a), py(CY, rr, a), 1 + (h % 3))
             ink -= 1
-        # one violet speck per wake-up, orbiting just outside the clump
+        # one "blighted" speck per wake-up, orbiting just outside the clump: a
+        # white dot inside a THICK black border. Drawn last (with the spore, on
+        # top of everything), the black ring carves a permanent gap so the moss
+        # never visually touches the blight, however much it spreads.
         if wakes > 0:
-            dc.setColor(COLOR_PURPLE, COLOR_TRANSPARENT)
+            wr = scl(2)                        # white core radius
+            br = wr + scl(3)                   # + thick black border
             for w in range(wakes):
                 if ink <= 0:
                     break
                 hw = hash16(53, w, 7)
                 a = imod(idiv(w * 256, wakes) + (hw % 24), 256)
                 rr = reach + scl(4) + (hw % 4)
-                dc.fillCircle(px(CX, rr, a), py(CY, rr, a), scl(2))
-                ink -= 1
+                x = px(CX, rr, a)
+                y = py(CY, rr, a)
+                dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, br)
+                dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, wr)
+                ink -= 2
         return ink
 
     # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
