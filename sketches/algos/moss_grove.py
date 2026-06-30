@@ -38,6 +38,12 @@ INK = 340
 NA = 30                # rim samples for the cushion fans
 BASE_DIV = 60          # act_units -> cushion radius
 TUFT_DIV = 600         # act_units -> one more satellite tuft
+SCN = 5                # overall size scale = SCN/SCD (= 1.25x), applied to every
+SCD = 4                # radial extent: cushion, lumpiness, tufts, spore, beads
+
+
+def scl(v):
+    return idiv(v * SCN, SCD)
 
 
 class MossGrove:
@@ -59,9 +65,10 @@ class MossGrove:
         reach = 6 + 2 * hours
         if reach > 28:
             reach = 28
+        reach = scl(reach)
         rim = idiv(reach * 2, 3)
         dc.setColor(SLEEP_RAMP[slot], COLOR_TRANSPARENT)
-        dc.fillCircle(CX, CY, 3)
+        dc.fillCircle(CX, CY, scl(3))
         nodes = 7 + hours * 2
         for k in range(nodes):
             if ink <= 0:
@@ -108,6 +115,8 @@ class MossGrove:
         ink = INK
         seed = rec.seed
         sp = shape_params(seed)                # per-day lumpy outline
+        # scale the lumpiness amplitudes with the overall size (sp = tuple)
+        sp = (sp[0], sp[1], sp[2], sp[3], scl(sp[4]), scl(sp[5]))
         dz = dominant_zone(rec, ACTIVE)        # the day's exertion colour
         if dz < 0:
             dz = dominant_zone(rec)
@@ -117,12 +126,14 @@ class MossGrove:
         base = 4 + idiv(act, BASE_DIV)
         if base > 54:
             base = 54
+        base = scl(base)                       # 1.25x overall scale
         ntuft = idiv(act, TUFT_DIV)
         if ntuft > 7:
             ntuft = 7
         tsize = 7 + idiv(act, 320)
         if tsize > 16:
             tsize = 16
+        tsize = scl(tsize)
 
         # --- central cushion: dark mound + bright green crown ---
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
@@ -179,6 +190,7 @@ class MossGrove:
             bead = 2 + idiv(mag, 16)
             if bead > 4:
                 bead = 4
+            bead = scl(bead)
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
