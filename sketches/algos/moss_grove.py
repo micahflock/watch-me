@@ -110,15 +110,16 @@ class MossGrove:
                 y = py(CY, rr, a)
                 dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
                 dc.fillCircle(x, y, br)
-                # ragged border: 1-5 small blobs anchored ON the thick border's
-                # outer edge, so it bumps irregularly (disrupted growth) while the
-                # border stays thick
+                # ragged border: 1-5 small blobs sitting tangent ON the thick
+                # border's outer edge (inner side touching br, body protruding)
+                # so they read as bumps disrupting the rim, not buried under it
                 nb = 1 + (hash16(w, 5, 9) % 5)
+                bd = br + scl(1)                # tangent: center one blob-radius out
                 for k in range(nb):
                     hb = hash16(w + 41, k, 8)
                     ba = imod(idiv(k * 256, nb) + (hb % 40), 256)
-                    dc.fillCircle(x + idiv(br * isin(ba + 64), 127),
-                                  y + idiv(br * isin(ba), 127), scl(1))
+                    dc.fillCircle(x + idiv(bd * isin(ba + 64), 127),
+                                  y + idiv(bd * isin(ba), 127), scl(1))
                 dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
                 dc.fillCircle(x, y, wr)
                 ink -= (nb + 2)
