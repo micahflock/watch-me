@@ -49,6 +49,8 @@ NIGHT_END = 10
 MORNING_END = 11       # up to this hour the seed still tracks the night
 WAKE_START = 5         # earliest hour a "got up" movement clears the meter
 SLEEP_CAP = 600        # cap the rest meter (~10 h)
+WAKE_WIN_END = 6       # wake EVENTS are counted only for hours [0, WAKE_WIN_END)
+WAKE_SPM = 6           # steps/min burst that marks a wake-up (above sleep noise)
 
 # hours-slept ramp: cool = well rested, warm = short night. Indexed by
 # (hours - 3), clamped 0..7 (<=3 h .. >=10 h) -- same scheme as BioBloom.
@@ -83,6 +85,9 @@ class DayRecord:
         # sleep meters live ACROSS the midnight reset (not touched by reset())
         self._night = 0            # live overnight rest meter (minutes)
         self.sleep_seed = 0        # frozen "last night's sleep" the morning reads
+        self._wakes = 0            # live count of wake events this night (0-6am)
+        self.wake_seed = 0         # frozen wake count the morning spore reads
+        self._awake = False        # debounce: currently in a wake burst
 
     def reset(self):
         for i in range(9):
@@ -105,8 +110,9 @@ class DayRecord:
         day = snap.day if snap.day is not None else 0
         now = snap.hour * 60 + snap.minute
         if day != self._lastday:
-            # hand the overnight meter to the new day's seed BEFORE wiping
+            # hand the overnight meters to the new day's seeds BEFORE wiping
             self.sleep_seed = self._night
+            self.wake_seed = self._wakes
             self.reset()
             self._lastday = day
             # date-driven per-day seed: the art's SHAPE/placement varies day to
@@ -147,10 +153,23 @@ class DayRecord:
         is_night = (hh >= NIGHT_START or hh <= NIGHT_END)
         if is_night and quiescent and self._night < SLEEP_CAP:
             self._night += 1
+        # wake EVENTS: a movement burst during [0,6) am, debounced to a rising
+        # edge so one up-and-about stretch counts once (not per minute).
+        if 0 <= hh < WAKE_WIN_END:
+            if spm >= WAKE_SPM:
+                if not self._awake:
+                    self._wakes += 1
+                    self._awake = True
+            elif spm <= IDLE_SPM:
+                self._awake = False
         if hh <= MORNING_END and self._night > self.sleep_seed:
             self.sleep_seed = self._night          # morning seed tracks the night
+        if hh <= MORNING_END and self._wakes > self.wake_seed:
+            self.wake_seed = self._wakes           # ... and the wake count
         if spm >= KACT and WAKE_START <= hh <= MORNING_END and self._night > 0:
             self._night = 0                        # got up -> freeze + clear
+            self._wakes = 0
+            self._awake = False
 
         # elevated-HR episode: rising edge opens a new focus; while it stays up we
         # track its peak zone and grow its magnitude (duration + banked movement).

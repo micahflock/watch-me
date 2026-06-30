@@ -94,7 +94,32 @@ _SEG_HEAVY = [
     (22.0, 5,   72),   # wind-down
 ]
 
-_PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST, "heavy": _SEG_HEAVY}
+# "restless" — the active day, but a FRAGMENTED night: three wake-ups between
+# 12am and 6am (each a short step burst + HR bump, then back to sleep). Used to
+# develop the sleep-quality spore's wake-event treatment. The daytime is the
+# active profile so only the night differs.
+_SEG_RESTLESS = [
+    (0.0,   0,   52),   # sleep
+    (1.5,   30,  82), (1.55, 0, 54),   # wake 1 ~1:30 (up ~3 min)
+    (3.0,   35,  86), (3.05, 0, 53),   # wake 2 ~3:00
+    (4.5,   28,  80), (4.55, 0, 52),   # wake 3 ~4:30
+    (6.5,   12,  68),   # waking for the day
+    (7.0,   120, 112),  (7.083, 150, 132), (7.166, 158, 150),  # morning run
+    (8.0,   18,  84),
+    (9.0,   3,   62),
+    (12.0,  105, 96),
+    (12.75, 0,   64),
+    (15.0,  6,   134),
+    (15.05, 0,   64),
+    (16.0,  165, 132),
+    (16.05, 5,   72),
+    (17.5,  45,  138),
+    (18.5,  9,   74),
+    (22.0,  1,   58),
+]
+
+_PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST, "heavy": _SEG_HEAVY,
+             "restless": _SEG_RESTLESS}
 
 
 def _segment(h, segs):
