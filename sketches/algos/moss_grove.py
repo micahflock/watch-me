@@ -56,9 +56,24 @@ class MossGrove:
     def state_bytes(self):
         return self.rec.state_bytes()
 
+    # scaled footprint radius of the sleep nucleus (shared by draw_spore and the
+    # episode keep-out). -25% overall vs the clump's node spread so it takes up
+    # less room while the node dots keep their size.
+    def spore_reach(self, mins, wakes):
+        if mins <= 0:
+            return 0
+        hours = idiv(mins, 60)
+        reach = 6 + 2 * hours
+        if reach > 28:
+            reach = 28
+        reach += 3 * wakes                     # restless -> wider, looser scatter
+        if reach > 40:
+            reach = 40
+        return idiv(scl(reach) * 3, 4)         # -25% overall footprint
+
     # last night's sleep: a spore clump at the centre (BioBloom-style scatter).
     # wakes = wake-up events 12-6am: each one warms the clump a step, loosens its
-    # scatter, and adds one violet speck orbiting outside (a literal count).
+    # scatter, and adds one white blight speck orbiting outside (a literal count).
     def draw_spore(self, dc, mins, wakes, ink):
         if mins <= 0:
             return ink
@@ -66,13 +81,7 @@ class MossGrove:
         slot = sleep_slot(mins) - wakes        # restless -> warmer
         if slot < 0:
             slot = 0
-        reach = 6 + 2 * hours
-        if reach > 28:
-            reach = 28
-        reach += 3 * wakes                     # restless -> wider, looser scatter
-        if reach > 40:
-            reach = 40
-        reach = scl(reach)
+        reach = self.spore_reach(mins, wakes)
         rim = idiv(reach * 2, 3)
         dc.setColor(SLEEP_RAMP[slot], COLOR_TRANSPARENT)
         dc.fillCircle(CX, CY, scl(3))
@@ -222,19 +231,25 @@ class MossGrove:
             ink -= 1
 
         # --- episodes: bright fruiting beads on tufts (else crown) ---
+        # keep beads out of the centre so they don't overlap the sleep nucleus
+        keepout = self.spore_reach(rec.sleep_seed, rec.wake_seed) + scl(6)
         for e in range(rec.nepi):
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            bead = 3 + idiv(mag, 12)
-            if bead > 6:
-                bead = 6
-            bead = idiv(scl(bead) * 3, 2)      # 1.5x larger episode beads
+            # gentle slope + high cap so long/hard efforts spread out in size
+            # (a 90-min session reads clearly bigger than a 15-min one) while the
+            # floor stays put. Bead is a final px radius here (already scaled).
+            bead = 4 + idiv(mag, 30)
+            if bead > 18:
+                bead = 18
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
                 ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
                 trr = idiv(edge(base, ta, sp) * (85 + (hj >> 8) % 30), 100)
+                if trr < keepout:
+                    trr = keepout              # push out past the nucleus
                 tx = px(CX, trr, ta)
                 ty = py(CY, trr, ta)
                 he = hash16(seed, e, 42)
@@ -245,6 +260,8 @@ class MossGrove:
             else:
                 a = imod(hash16(seed, e, 42), 256)
                 rr = idiv(edge(base, a, sp) * 3, 5)
+                if rr < keepout:
+                    rr = keepout
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
