@@ -237,10 +237,12 @@ class MossGrove:
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            bead = 3 + idiv(mag, 6)            # 2x more magnitude-driven growth
-            if bead > 9:                       # ... with 2x the growth headroom
-                bead = 9
-            bead = idiv(scl(bead) * 3, 2)      # 1.5x overall bead scale
+            # gentle slope + high cap so long/hard efforts spread out in size
+            # (a 90-min session reads clearly bigger than a 15-min one) while the
+            # floor stays put. Bead is a final px radius here (already scaled).
+            bead = 4 + idiv(mag, 30)
+            if bead > 18:
+                bead = 18
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
