@@ -314,19 +314,23 @@ class MossGrove {
             _ink -= 1;
         }
 
-        // episodes: bright fruiting beads on tufts (else crown)
+        // episodes: bright fruiting beads on tufts (else crown), kept out of the
+        // centre so they don't overlap the sleep nucleus.
+        var keepout = sporeReach(_sleepSeed, _wakeSeed) + scl(6);
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
-            var bead = 3 + mag / 12;
-            if (bead > 6) { bead = 6; }
-            bead = scl(bead) * 3 / 2;          // 1.5x larger episode beads
+            // gentle slope + high cap so long/hard efforts spread out in size
+            // while the floor stays put. Bead is a final px radius (already scaled).
+            var bead = 4 + mag / 30;
+            if (bead > 18) { bead = 18; }
             var x; var y;
             if (ntuft > 0) {
                 var t = GenArt.hash16(seed, e, 41) % ntuft;
                 var hj = GenArt.hash16(seed, t, 31);
                 var ta = ((t * 256) / ntuft + (hj & 31)) % 256;
                 var trr = (edge(base, ta) * (85 + (hj >> 8) % 30)) / 100;
+                if (trr < keepout) { trr = keepout; }
                 var tx = coordX(ta, trr);
                 var ty = coordY(ta, trr);
                 var he = GenArt.hash16(seed, e, 42);
@@ -337,6 +341,7 @@ class MossGrove {
             } else {
                 var a = GenArt.hash16(seed, e, 42) % 256;
                 var rr = (edge(base, a) * 3) / 5;
+                if (rr < keepout) { rr = keepout; }
                 x = coordX(a, rr);
                 y = coordY(a, rr);
             }
@@ -373,6 +378,19 @@ class MossGrove {
         }
     }
 
+    // scaled footprint radius of the sleep nucleus (shared by drawSpore and the
+    // episode keep-out). -25% overall vs the node spread so it takes up less room
+    // while the node dots keep their size.
+    function sporeReach(mins, wakes) {
+        if (mins <= 0) { return 0; }
+        var hours = mins / 60;
+        var reach = 6 + 2 * hours;
+        if (reach > 28) { reach = 28; }
+        reach += 3 * wakes;                           // restless -> wider, looser
+        if (reach > 40) { reach = 40; }
+        return (scl(reach) * 3) / 4;                  // -25% overall footprint
+    }
+
     // last night's sleep: a spore clump at the centre. wakes = wake-ups 12-6am:
     // each warms the clump a step, loosens its scatter, and adds one white
     // "blight" speck (thick black border, ragged outer edge) orbiting outside.
@@ -381,11 +399,7 @@ class MossGrove {
         var hours = mins / 60;
         var slot = sleepSlot(mins) - wakes;          // restless -> warmer
         if (slot < 0) { slot = 0; }
-        var reach = 6 + 2 * hours;
-        if (reach > 28) { reach = 28; }
-        reach += 3 * wakes;                           // restless -> wider, looser
-        if (reach > 40) { reach = 40; }
-        reach = scl(reach);
+        var reach = sporeReach(mins, wakes);
         var rim = (reach * 2) / 3;
         dc.setColor(SLEEP_RAMP[slot], Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(CX, CY, scl(3));
