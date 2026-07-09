@@ -26,8 +26,11 @@ DEFAULT_SP = (0, 40, 3, 5, 8, 4)
 def shape_params(seed):
     p1 = imod(hash16(seed, 1, 3), 256)
     p2 = imod(hash16(seed, 2, 3), 256)
-    f1 = 2 + imod(hash16(seed, 3, 3), 3)      # 2..4 lobes (broad asymmetry)
-    f2 = 4 + imod(hash16(seed, 4, 3), 4)      # 4..7 (finer ripple)
+    # PRIME lobe counts only: 4 lobes reads as a rigid cross once the amplitude
+    # dominates the base (small cushion early in the day). 7 is the ripple
+    # ceiling -- higher primes alias against the NA=30 rim samples.
+    f1 = (2, 3, 5)[imod(hash16(seed, 3, 3), 3)]   # broad asymmetry
+    f2 = (5, 7)[imod(hash16(seed, 4, 3), 2)]      # finer ripple
     am1 = 7 + imod(hash16(seed, 5, 3), 7)     # 7..13 (how lumpy)
     am2 = 3 + imod(hash16(seed, 6, 3), 4)     # 3..6
     return (p1, p2, f1, f2, am1, am2)
