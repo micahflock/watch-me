@@ -10,7 +10,10 @@ entire toolchain themselves on first use (`scripts/ensure-toolchain.sh`: SDK
 manager CLI → agreement+login → SDK 9.2.0 with simulator → fr735xt device
 files → signing key → headless-sim libs). Requirements: `GARMIN_USERNAME` /
 `GARMIN_PASSWORD` in the environment. On Claude Code on the web the container
-is cached after first use, so warm sessions have everything already.
+is cached after first use, so warm sessions have everything already. If a cold
+provision or an SDK tool misbehaves (403/truncated download fetching the
+manager CLI, monkeydo exiting silently, debug-build OOM), read
+**docs/toolchain-notes.md** FIRST — the known failures and fixes are there.
 
 ## Workflows
 
@@ -105,6 +108,11 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
   `pgrep -af Xvfb`), then ImageMagick `convert`.
 - Release builds stub out `Instrument`; read release RAM from the sim's
   status bar instead of the console line.
+- `scripts/test.sh <face>` only runs tests for faces with a `tests/` dir
+  (devface holds the shared-core suite); `monkeydo -t` with no (:test) cases
+  exits silently. Killing a foreground `sim.sh` run (e.g. wrapping it in
+  `timeout`) can take the whole Xvfb/sim stack down with it — launch it
+  detached (`... & disown`) before screenshotting. More: docs/toolchain-notes.md.
 
 ## Sideloading
 

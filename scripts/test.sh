@@ -42,6 +42,17 @@ else
 fi
 
 # --- 2. Run No Evil unit tests -----------------------------------------------
+# A face with no tests/ directory has no (:test) cases: monkeydo -t then exits
+# silently (no output at all, not even an error), which reads as a mysterious
+# failure. Say what's happening instead of attempting the run.
+if [ ! -d "$REPO_ROOT/faces/$FACE/tests" ]; then
+  echo
+  echo "NOTE: faces/$FACE has no tests/ directory, so there are no unit tests to"
+  echo "      run (monkeydo -t would exit with no output). Lint result stands."
+  echo "      The shared-core suite lives in devface: scripts/test.sh devface"
+  exit $RC
+fi
+
 # Provision the toolchain on demand before deciding whether to skip.
 if ! ciq_can_build; then
   ciq_ensure_toolchain || true
