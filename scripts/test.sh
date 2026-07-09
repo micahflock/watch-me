@@ -18,7 +18,7 @@ echo "== API-2.4 forbidden-symbol lint =="
 # These were all introduced in CIQ 3.0+ (or are otherwise off-limits at 2.4) and
 # will fail on fr735xt firmware. Comments are stripped before matching so docs
 # may freely mention the symbols (e.g. "never use Math.atan2").
-FORBIDDEN='Application\.Storage|Application\.Properties|WatchUi\.Layer|Toybox\.Complications|Complications\.|onPartialUpdate|Toybox\.Background|^[[:space:]]*import[[:space:]]|Math\.atan2'
+FORBIDDEN='Application\.Storage|Application\.Properties|WatchUi\.Layer|Toybox\.Complications|Complications\.|onPartialUpdate|Toybox\.Background|^[[:space:]]*import[[:space:]]|Math\.(atan2|floor|ceil|round)'
 LINT_FAIL=0
 while IFS= read -r f; do
   # Strip // line comments, then grep the remainder.
@@ -28,6 +28,12 @@ while IFS= read -r f; do
     LINT_FAIL=1
   fi
 done < <(find "$REPO_ROOT/core/src" "$REPO_ROOT/faces/$FACE/source" -name '*.mc' 2>/dev/null)
+# <palette> is a CIQ 3.x resource feature (quantize PNGs offline instead).
+PALETTE_HITS=$(grep -rn '<palette' "$REPO_ROOT/faces" --include='*.xml' 2>/dev/null || true)
+if [ -n "$PALETTE_HITS" ]; then
+  echo "$PALETTE_HITS"
+  LINT_FAIL=1
+fi
 if [ "$LINT_FAIL" = "1" ]; then
   echo "FAIL: forbidden CIQ-3.0+ symbol(s) found above." >&2
   RC=1
