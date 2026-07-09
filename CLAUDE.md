@@ -16,7 +16,7 @@ is cached after first use, so warm sessions have everything already.
 
 ```bash
 scripts/build.sh <face> [--debug]   # release .prg / debug (tests+instrumentation)
-scripts/test.sh                     # API-2.4 symbol lint + 16 unit tests in the sim
+scripts/test.sh [face]              # API-2.4 symbol lint + the face's unit tests in the sim (default: devface)
 scripts/sim.sh <face> --debug       # headless sim; console prints "used/totalK p<peak> <ms>"
 scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 ```
@@ -105,7 +105,8 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 ## Sideloading
 
 Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
-(docs/sideload.md). `bin/flashtest.prg`, `bin/devface.prg`, and
-`bin/two-worlds.prg` are tracked in the repo for direct download. The compass
-face needs `lat`/`lng` set in the app settings on the watch, else it shows the
-"?" rose; `two-worlds` likewise needs `lat`/`lng` for its sun/north marker.
+(docs/sideload.md). `bin/flashtest.prg`, `bin/devface.prg`,
+`bin/two-worlds.prg`, and `bin/two-worlds-v2.prg` are tracked in the repo for
+direct download. `devface` needs `lat`/`lng` set in the app settings on the
+watch, else it shows the "?" compass rose; `two-worlds` and `two-worlds-v2`
+(shared settings) likewise need `lat`/`lng` for their sun/north marker.

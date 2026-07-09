@@ -7,6 +7,7 @@
 !/bin/flashtest.prg
 !/bin/devface.prg
 !/bin/two-worlds.prg
+!/bin/two-worlds-v2.prg
 
 # Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
 *.der
@@ -27,4 +28,3 @@ sim.out
 # Python sandbox bytecode
 __pycache__/
 *.pyc
-!/bin/two-worlds-v2.prg

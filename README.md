@@ -59,8 +59,9 @@ scripts/build.sh devface --debug     # → bin/devface-debug.prg    (instrumenta
 scripts/sim.sh devface --debug       # headless-capable simulator; console shows
                                      # "used/totalK p<peak> <ms>" every update
 
-scripts/test.sh                      # API-2.4 symbol lint + Run No Evil unit
-                                     # tests in the sim; exit code = pass/fail
+scripts/test.sh [face]               # API-2.4 symbol lint + Run No Evil unit
+                                     # tests in the sim (default face: devface);
+                                     # exit code = pass/fail
 
 # Sideload: copy bin/devface.prg to the watch's /GARMIN/APPS over USB.
 # Full steps: docs/sideload.md
@@ -81,9 +82,16 @@ core/src/astro/   MathX, Solar,          2.4-safe math; NOAA sun position +
                   SunCompass             sunrise/sunset; true-north-from-sun
                                          dial math (all pure, unit-tested)
 core/src/debug/   Instrument             (:debug) overlay/logging, (:release) stubs
-faces/devface/    integration testbed    7-seg HH:MM + date + sun-compass rose +
-                                         instrumentation overlay
-docs/             architecture, api-2.4-notes, memory-budget, sideload
+core/src/genart/  GenArt, StrataField,   biometric generative-art engines +
+                  Flock, BioBloom/-State, shared hash/sine/zone utils and
+                  MossGrove/-State       object-store persistence
+faces/            flashtest, devface,    see docs/architecture.md for what each
+                  strataflock, biobloom, face is; devface is the always-buildable
+                  two-worlds, -v2        integration testbed
+docs/             architecture, api-2.4-notes, memory-budget,
+                  watchdog-debugging, sideload, claude-design-prompt/-handoff
+sketches/         Python sandbox         faithful fr735xt model for iterating on
+                                         generative art without a PRG build
 tools/            make-dow-strip.sh      offline 16-color glyph-strip pipeline
 ```
 
@@ -94,8 +102,9 @@ keep `base.sourcePath = source;../../core/src` in its jungles, and build with
 ## Measured status (acceptance)
 
 - devface builds clean for fr735xt at API 2.4 (SDK 9.2.0) and runs in the sim.
-- 16 unit tests pass (segment lookup, MathX, Solar fixtures, SunCompass
-  dial/rollover).
+- devface's 16 unit tests pass (segment lookup, MathX, Solar fixtures,
+  SunCompass dial/rollover). The other faces carry their own suites — run
+  `scripts/test.sh <face>`.
 - Release PRG on disk ≈ **16 KB** (`scripts/memcheck.sh`); runtime RAM sits
   well under the 57.6 KB ceiling (re-read from the sim — release status bar /
   debug overlay); onUpdate ≈ **8–12 ms**, no watchdog trips. Details in
