@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read the watch-face memory limit for forerunner735xt from the device's
+# Read the watch-face memory limit for fr735xt from the device's
 # compiler.json and report the working ceiling (90%) plus the current PRG size.
 #   scripts/memcheck.sh [face]
 #

@@ -20,11 +20,19 @@ core/src/
   genart/  GenArt.mc        shared generative utils (hash, sine table, HR zones)
            StrataField.mc   day-as-sediment simulation (the "past" layer)
            Flock.mc         murmuration in the sky (the "present" layer)
+           BioBloom.mc      movement-fed living-dish engine (+ BioState.mc
+                            object-store save/load of the day's dish)
+           MossGrove.mc     moss day-organism engine (+ MossState.mc persistence)
 
+faces/flashtest/             sideload smoke test ("FLASH OK" + update counter)
 faces/devface/               integration testbed (zero styling)
 faces/strataflock/           biometric generative art: strata + flock
+faces/biobloom/              the BioBloom dish full-screen, no chrome
 faces/two-worlds/            artificial chrome (clock/readout/gauges) over the
-                             strataflock field, masked to a bordered disc
+                             BioBloom dish, masked to a bordered disc
+faces/two-worlds-v2/         same chrome over the MossGrove organism; owns only
+                             its source — resources shared from ../two-worlds
+                             via the jungle resourcePath
 ```
 
 ## How a face composes (see faces/devface)
