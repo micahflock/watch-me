@@ -25,7 +25,14 @@ captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
   `advance(state)`, `state_bytes()`), the same contract the Compositor draws.
 - **`algos/strataflock.py`** — a line-for-line port of the shipped face, kept
   as the **parity reference**: prove the mirror by checking its scrub against
-  `strataflock-ondevice.png`.
+  `strataflock-ondevice.png`. Later engines follow the same pattern:
+  `algos/biobloom.py` mirrors the BioBloom dish (`faces/biobloom`,
+  `faces/two-worlds`) and `algos/moss_grove.py` mirrors the MossGrove organism
+  (`faces/two-worlds-v2`, checked against `moss_grove-ondevice.png`). The other
+  top-level scripts here (`daybuckets`/`daysoma`/`mossutil`/`grove_*`/
+  `morning_proto`/`scenarios`/`save_compare`/`verify_persist`/`ram_breakdown`)
+  are exploration and measurement harnesses for those engines — each has a
+  docstring saying what it renders.
 
 Because the primitives match 1:1, a winning sandbox algo ports to a `.mc` face
 mechanically. Arc/circle rasterization is the one thing only the SDK sim nails,
