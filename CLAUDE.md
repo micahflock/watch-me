@@ -29,9 +29,15 @@ scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 **Required first step for any new biomorphic/generative display:** prototype
 it as a `sketches/algos/<name>.py` module and iterate on it with `scrub.py`
 in the Python sandbox BEFORE writing any Monkey C or touching the Garmin SDK.
-Only once the algorithm is a keeper do you port it to a face and
-build/sim it through the SDK. Do not skip this even for "simple" ideas — the
-sandbox renders in under a second; a PRG build/sim cycle is minutes.
+Do not skip this even for "simple" ideas — the sandbox renders in under a
+second; a PRG build/sim cycle is minutes.
+
+**STOP after the sandbox and confirm.** Show the sandbox renders (scrub strip
+and/or before/after comparison) and wait for explicit approval before porting
+anything to Monkey C or building a PRG — the owner usually wants to iterate
+on the sandbox output first. This applies to tweaks of existing faces, not
+just new displays. Only after sign-off: port, build, sim, and update the
+tracked `bin/<face>.prg`.
 
 ```bash
 python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
