@@ -26,7 +26,20 @@ if [ ! -x "$MGR" ]; then
   echo "SDK manager CLI not found at $MGR — fetching v0.8.4 from GitHub..."
   mkdir -p "$(dirname "$MGR")"
   curl -sfL "https://github.com/lindell/connect-iq-sdk-manager-cli/releases/download/v0.8.4/connect-iq-sdk-manager-cli_0.8.4_Linux_x86_64.tar.gz" \
-    | tar xz -C "$(dirname "$MGR")" connect-iq-sdk-manager
+    | tar xz -C "$(dirname "$MGR")" connect-iq-sdk-manager \
+    || echo "GitHub release fetch failed (on Claude Code on the web the session's" \
+            "GitHub access is repo-scoped and 403s other repos' assets — docs/toolchain-notes.md)."
+  # Fallback: build from source through the Go module proxy, which the sandbox
+  # allows direct access to even when github.com downloads are blocked.
+  if [ ! -x "$MGR" ]; then
+    GO_BIN="$(command -v go || true)"
+    [ -n "$GO_BIN" ] || { [ -x /usr/local/go/bin/go ] && GO_BIN=/usr/local/go/bin/go; }
+    if [ -n "${GO_BIN:-}" ]; then
+      echo "Building the SDK manager from source via proxy.golang.org instead..."
+      GOBIN="$(dirname "$MGR")" "$GO_BIN" install github.com/lindell/connect-iq-sdk-manager-cli@v0.8.4 \
+        && mv "$(dirname "$MGR")/connect-iq-sdk-manager-cli" "$MGR"
+    fi
+  fi
   [ -x "$MGR" ] || { echo "ERROR: could not install the SDK manager CLI." >&2; exit 1; }
 fi
 
