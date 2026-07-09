@@ -33,6 +33,12 @@ class MossGrove {
     const SCN = 5;             // overall size scale = SCN/SCD (= 1.25x), applied
     const SCD = 4;             // to every radial extent
 
+    // PRIME lobe counts only: 4 lobes reads as a rigid cross once the lump
+    // amplitude dominates the base (small cushion early in the day). 7 is the
+    // ripple ceiling -- higher primes alias against the NA=30 rim samples.
+    const LOBES  = [2, 3, 5];  // cushion outline: broad asymmetry
+    const RIPPLE = [5, 7];     // cushion outline: finer ripple
+
     const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute
     const EMAX = 16;           // cap on stored episodes
     const KACT = 6;            // steps/min -> one growth unit
@@ -248,8 +254,8 @@ class MossGrove {
         // per-day lumpy outline params (hoisted; edge() reads _sp)
         _sp[0] = GenArt.hash16(seed, 1, 3) % 256;
         _sp[1] = GenArt.hash16(seed, 2, 3) % 256;
-        _sp[2] = 2 + GenArt.hash16(seed, 3, 3) % 3;
-        _sp[3] = 4 + GenArt.hash16(seed, 4, 3) % 4;
+        _sp[2] = LOBES[GenArt.hash16(seed, 3, 3) % 3];
+        _sp[3] = RIPPLE[GenArt.hash16(seed, 4, 3) % 2];
         _sp[4] = scl(7 + GenArt.hash16(seed, 5, 3) % 7);   // amplitudes scale too
         _sp[5] = scl(3 + GenArt.hash16(seed, 6, 3) % 4);
 
