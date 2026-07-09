@@ -23,8 +23,12 @@ scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 
 ### Generative-art sandbox — iterate without building a PRG
 
-For developing the algorithmic biometric art, work in the Python sandbox
-under `sketches/` first; only build/sim a face once an algorithm is a keeper.
+**Required first step for any new biomorphic/generative display:** prototype
+it as a `sketches/algos/<name>.py` module and iterate on it with `scrub.py`
+in the Python sandbox BEFORE writing any Monkey C or touching the Garmin SDK.
+Only once the algorithm is a keeper do you port it to a face and
+build/sim it through the SDK. Do not skip this even for "simple" ideas — the
+sandbox renders in under a second; a PRG build/sim cycle is minutes.
 
 ```bash
 python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
