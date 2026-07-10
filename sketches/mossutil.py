@@ -49,16 +49,24 @@ def shape_params(seed):
 # Lumpy patch radius (px) at angle a for a base radius: base + two undulations
 # (+ per-lobe amplitude and the frequency-1 tilt when sp carries them).
 # Pass a shape_params tuple `sp` for per-day variation; default = the old shape.
+#
+# Negative excursions are HALVED (extended sp only): the valleys between lobes
+# stay shallow so the body reads as one fat cushion, not a starfish -- the
+# 2026-07-10 wrist regression. The caller scales the amplitudes by the cushion
+# base (see moss_grove) for the same reason: absolute amps on a sedentary-day
+# base turned the patch into angular spikes.
 def edge(base, a, sp=DEFAULT_SP):
     ph1 = a * sp[2] + sp[0]
-    am1 = sp[4]
     if len(sp) > 6:
-        am1 = idiv(am1 * sp[8][imod(idiv(ph1, 256), sp[2])], 100)
-    e = base + idiv(am1 * isin(imod(ph1, 256)), 127) \
-             + idiv(sp[5] * isin(imod(a * sp[3] + sp[1], 256)), 127)
-    if len(sp) > 6:
-        e += idiv(sp[7] * isin(imod(a + sp[6], 256)), 127)
-    return e
+        am1 = idiv(sp[4] * sp[8][imod(idiv(ph1, 256), sp[2])], 100)
+        d = idiv(am1 * isin(imod(ph1, 256)), 127) \
+          + idiv(sp[5] * isin(imod(a * sp[3] + sp[1], 256)), 127) \
+          + idiv(sp[7] * isin(imod(a + sp[6], 256)), 127)
+        if d < 0:
+            d = idiv(d, 2)
+        return base + d
+    return base + idiv(sp[4] * isin(imod(ph1, 256)), 127) \
+                + idiv(sp[5] * isin(imod(a * sp[3] + sp[1], 256)), 127)
 
 
 # Fill a lumpy disc centred at (cx, cy) out to edge(base,a)*scalepct/100, as a
