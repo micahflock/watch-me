@@ -163,8 +163,10 @@ class MossGrove:
         ink = INK
         seed = rec.seed
         sp = shape_params(seed)                # per-day lumpy outline
-        # scale the lumpiness amplitudes with the overall size (sp = tuple)
-        sp = (sp[0], sp[1], sp[2], sp[3], scl(sp[4]), scl(sp[5]))
+        # scale the lumpiness amplitudes with the overall size (sp = tuple);
+        # per-lobe percents (sp[8]) are ratios and do not scale
+        sp = (sp[0], sp[1], sp[2], sp[3], scl(sp[4]), scl(sp[5]),
+              sp[6], scl(sp[7]), sp[8])
         dz = dominant_zone(rec, ACTIVE)        # the day's exertion colour
         if dz < 0:
             dz = dominant_zone(rec)
