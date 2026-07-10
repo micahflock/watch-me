@@ -40,6 +40,7 @@ BASE_DIV = 60          # act_units -> cushion radius
 TUFT_DIV = 600         # act_units -> one more satellite tuft
 SCN = 5                # overall size scale = SCN/SCD (= 1.25x), applied to every
 SCD = 4                # radial extent: cushion, lumpiness, tufts, spore, beads
+AMPREF = 40            # base radius (px, scaled) at which outline amps reach 100%
 
 
 def scl(v):
@@ -162,11 +163,6 @@ class MossGrove:
             return
         ink = INK
         seed = rec.seed
-        sp = shape_params(seed)                # per-day lumpy outline
-        # scale the lumpiness amplitudes with the overall size (sp = tuple);
-        # per-lobe percents (sp[8]) are ratios and do not scale
-        sp = (sp[0], sp[1], sp[2], sp[3], scl(sp[4]), scl(sp[5]),
-              sp[6], scl(sp[7]), sp[8])
         dz = dominant_zone(rec, ACTIVE)        # the day's exertion colour
         if dz < 0:
             dz = dominant_zone(rec)
@@ -177,6 +173,16 @@ class MossGrove:
         if base > 54:
             base = 54
         base = scl(base)                       # 1.25x overall scale
+
+        sp = shape_params(seed)                # per-day lumpy outline
+        # scale the lumpiness amplitudes with the overall size AND with the
+        # cushion base (min(1, base/AMPREF)): absolute amps on a small
+        # sedentary-day base turned the patch into an angular starfish
+        # (2026-07-10 wrist). Per-lobe percents (sp[8]) are ratios; unscaled.
+        s = 100 if base >= AMPREF else idiv(100 * base, AMPREF)
+        sp = (sp[0], sp[1], sp[2], sp[3],
+              idiv(scl(sp[4]) * s, 100), idiv(scl(sp[5]) * s, 100),
+              sp[6], idiv(scl(sp[7]) * s, 100), sp[8])
         ntuft = idiv(act, TUFT_DIV)
         if ntuft > 7:
             ntuft = 7

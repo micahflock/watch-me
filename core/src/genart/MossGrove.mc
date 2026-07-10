@@ -33,6 +33,8 @@ class MossGrove {
     const TUFT_DIV = 600;      // act units -> one more satellite tuft
     const SCN = 5;             // overall size scale = SCN/SCD (= 1.25x), applied
     const SCD = 4;             // to every radial extent
+    const AMPREF = 40;         // base radius (px, scaled) at which the outline
+                               // amplitudes reach 100% (see render)
 
     // Tip lengths must NOT be uniform (owner call, 2026-07): each lobe's
     // amplitude is hashed to 40..170% (switched at the sine zero-crossings so
@@ -227,13 +229,17 @@ class MossGrove {
 
     // lumpy cushion radius at angle a (uses per-day _sp/_lamp set in render):
     // per-lobe amplitude + two undulations + the frequency-1 tilt. a is 0..255
-    // at every call site, so ph1 is non-negative and / and % behave.
+    // at every call site, so ph1 is non-negative and / and % behave. Negative
+    // excursions are HALVED so the inter-lobe valleys stay shallow and the
+    // body reads as one fat cushion, not a starfish (2026-07-10 wrist).
     function edge(base, a) {
         var ph1 = a * _sp[2] + _sp[0];
         var am1 = (_sp[4] * _lamp[(ph1 / 256) % _sp[2]]) / 100;
-        return base + (am1 * GenArt.isin(ph1 & 255)) / 127
-                    + (_sp[5] * GenArt.isin((a * _sp[3] + _sp[1]) & 255)) / 127
-                    + (_sp[7] * GenArt.isin((a + _sp[6]) & 255)) / 127;
+        var d = (am1 * GenArt.isin(ph1 & 255)) / 127
+              + (_sp[5] * GenArt.isin((a * _sp[3] + _sp[1]) & 255)) / 127
+              + (_sp[7] * GenArt.isin((a + _sp[6]) & 255)) / 127;
+        if (d < 0) { d = d / 2; }
+        return base + d;
     }
 
     // fill a lumpy disc out to edge(base,a)*scalepct/100 as a fan of NA triangles
@@ -261,19 +267,6 @@ class MossGrove {
         _ink = INK_MAX;
         var seed = _seed;
 
-        // per-day lumpy outline params (hoisted; edge() reads _sp/_lamp)
-        _sp[0] = GenArt.hash16(seed, 1, 3) % 256;
-        _sp[1] = GenArt.hash16(seed, 2, 3) % 256;
-        _sp[2] = 2 + GenArt.hash16(seed, 3, 3) % 4;        // 2..5 lobes
-        _sp[3] = RIPPLE[GenArt.hash16(seed, 4, 3) % 2];
-        _sp[4] = scl(7 + GenArt.hash16(seed, 5, 3) % 7);   // amplitudes scale too
-        _sp[5] = scl(3 + GenArt.hash16(seed, 6, 3) % 4);
-        _sp[6] = GenArt.hash16(seed, 7, 3) % 256;          // tilt phase
-        _sp[7] = scl(4 + GenArt.hash16(seed, 8, 3) % 5);   // tilt amplitude
-        for (var k = 0; k < _sp[2]; k++) {                 // per-lobe amp %
-            _lamp[k] = 40 + GenArt.hash16(seed, 16 + k, 5) % 131;
-        }
-
         var dz = dominantZone(ACTIVE);
         if (dz < 0) { dz = dominantZone(0); }
         var dzcol = (dz >= 0) ? HR_RAMP[dz] : -1;
@@ -282,6 +275,23 @@ class MossGrove {
         var base = 4 + act / BASE_DIV;
         if (base > 54) { base = 54; }
         base = scl(base);                       // 1.25x overall scale
+
+        // per-day lumpy outline params (hoisted; edge() reads _sp/_lamp).
+        // Amplitudes scale with the overall size AND with the cushion base
+        // (min(1, base/AMPREF)): absolute amps on a small sedentary-day base
+        // turned the patch into an angular starfish (2026-07-10 wrist).
+        var s = (base >= AMPREF) ? 100 : (100 * base) / AMPREF;
+        _sp[0] = GenArt.hash16(seed, 1, 3) % 256;
+        _sp[1] = GenArt.hash16(seed, 2, 3) % 256;
+        _sp[2] = 2 + GenArt.hash16(seed, 3, 3) % 4;        // 2..5 lobes
+        _sp[3] = RIPPLE[GenArt.hash16(seed, 4, 3) % 2];
+        _sp[4] = (scl(7 + GenArt.hash16(seed, 5, 3) % 7) * s) / 100;
+        _sp[5] = (scl(3 + GenArt.hash16(seed, 6, 3) % 4) * s) / 100;
+        _sp[6] = GenArt.hash16(seed, 7, 3) % 256;          // tilt phase
+        _sp[7] = (scl(4 + GenArt.hash16(seed, 8, 3) % 5) * s) / 100;
+        for (var k = 0; k < _sp[2]; k++) {                 // per-lobe amp %
+            _lamp[k] = 40 + GenArt.hash16(seed, 16 + k, 5) % 131;
+        }
         var ntuft = act / TUFT_DIV;
         if (ntuft > 7) { ntuft = 7; }
         var tsize = 10 + act / 240;            // larger activity clusters
