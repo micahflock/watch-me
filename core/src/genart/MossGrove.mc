@@ -20,8 +20,9 @@ using Toybox.Graphics as Gfx;
 //   episodes       elevated-HR events as bright peak-zone fruiting beads.
 //
 // All integer math (the watchdog is the binding constraint). A per-frame INK
-// budget caps draw work so a maximal day stays bounded; render measures ~12k VM
-// instructions/frame in the sandbox (half the ~25k budget), state ~245 B.
+// budget caps draw work so a maximal day stays bounded; render measures ~14k VM
+// instructions/frame in the sandbox (just over half the ~25k budget), state
+// ~245 B.
 class MossGrove {
 
     const CX = 107;
@@ -33,10 +34,12 @@ class MossGrove {
     const SCN = 5;             // overall size scale = SCN/SCD (= 1.25x), applied
     const SCD = 4;             // to every radial extent
 
-    // PRIME lobe counts only: 4 lobes reads as a rigid cross once the lump
-    // amplitude dominates the base (small cushion early in the day). 7 is the
-    // ripple ceiling -- higher primes alias against the NA=30 rim samples.
-    const LOBES  = [2, 3, 5];  // cushion outline: broad asymmetry
+    // Tip lengths must NOT be uniform (owner call, 2026-07): each lobe's
+    // amplitude is hashed to 40..170% (switched at the sine zero-crossings so
+    // the outline stays continuous) and a frequency-1 "tilt" sinusoid
+    // stretches one side of the patch. Together these de-rigidify the 4-lobe
+    // cross, so the lobe range is 2..5. The finer ripple stays in {5,7}: 4/6
+    // beat against the lobe count, higher primes alias against NA=30 samples.
     const RIPPLE = [5, 7];     // cushion outline: finer ripple
 
     const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute
@@ -79,7 +82,8 @@ class MossGrove {
     var _lastMin;              // minute-of-day last accreted (dup-call guard)
     var _epiOn; var _epiIdx;
     // render scratch (allocated once)
-    var _sp;                   // per-day shape params [p1,p2,f1,f2,am1,am2]
+    var _sp;                   // per-day shape params [p1,p2,f1,f2,am1,am2,p3,am3]
+    var _lamp;                 // per-lobe amplitude percents (40..170), f1 used
     var _tri;                  // reusable triangle for fillPolygon
     var _ink;
 
@@ -87,7 +91,8 @@ class MossGrove {
         _zoneMin = new [9];
         _epz = new [EMAX];
         _emag = new [EMAX];
-        _sp = new [6];
+        _sp = new [8];
+        _lamp = new [5];
         _tri = [[0, 0], [0, 0], [0, 0]];
         _night = 0; _sleepSeed = 0;          // survive reset(); init once
         _wakes = 0; _wakeSeed = 0; _awake = false;
@@ -220,10 +225,15 @@ class MossGrove {
     function coordX(a, r) { return CX + (r * GenArt.isin(a + 64)) / 127; }
     function coordY(a, r) { return CY + (r * GenArt.isin(a)) / 127; }
 
-    // lumpy cushion radius at angle a (uses per-day _sp set in render)
+    // lumpy cushion radius at angle a (uses per-day _sp/_lamp set in render):
+    // per-lobe amplitude + two undulations + the frequency-1 tilt. a is 0..255
+    // at every call site, so ph1 is non-negative and / and % behave.
     function edge(base, a) {
-        return base + (_sp[4] * GenArt.isin((a * _sp[2] + _sp[0]) & 255)) / 127
-                    + (_sp[5] * GenArt.isin((a * _sp[3] + _sp[1]) & 255)) / 127;
+        var ph1 = a * _sp[2] + _sp[0];
+        var am1 = (_sp[4] * _lamp[(ph1 / 256) % _sp[2]]) / 100;
+        return base + (am1 * GenArt.isin(ph1 & 255)) / 127
+                    + (_sp[5] * GenArt.isin((a * _sp[3] + _sp[1]) & 255)) / 127
+                    + (_sp[7] * GenArt.isin((a + _sp[6]) & 255)) / 127;
     }
 
     // fill a lumpy disc out to edge(base,a)*scalepct/100 as a fan of NA triangles
@@ -251,13 +261,18 @@ class MossGrove {
         _ink = INK_MAX;
         var seed = _seed;
 
-        // per-day lumpy outline params (hoisted; edge() reads _sp)
+        // per-day lumpy outline params (hoisted; edge() reads _sp/_lamp)
         _sp[0] = GenArt.hash16(seed, 1, 3) % 256;
         _sp[1] = GenArt.hash16(seed, 2, 3) % 256;
-        _sp[2] = LOBES[GenArt.hash16(seed, 3, 3) % 3];
+        _sp[2] = 2 + GenArt.hash16(seed, 3, 3) % 4;        // 2..5 lobes
         _sp[3] = RIPPLE[GenArt.hash16(seed, 4, 3) % 2];
         _sp[4] = scl(7 + GenArt.hash16(seed, 5, 3) % 7);   // amplitudes scale too
         _sp[5] = scl(3 + GenArt.hash16(seed, 6, 3) % 4);
+        _sp[6] = GenArt.hash16(seed, 7, 3) % 256;          // tilt phase
+        _sp[7] = scl(4 + GenArt.hash16(seed, 8, 3) % 5);   // tilt amplitude
+        for (var k = 0; k < _sp[2]; k++) {                 // per-lobe amp %
+            _lamp[k] = 40 + GenArt.hash16(seed, 16 + k, 5) % 131;
+        }
 
         var dz = dominantZone(ACTIVE);
         if (dz < 0) { dz = dominantZone(0); }
