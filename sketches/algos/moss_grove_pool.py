@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """moss_grove_pool -- sleep-nucleus PROPOSAL A for two-worlds V2: the tarn.
 
+NOT CHOSEN (2026-07: the owner picked B, the root star, now folded into
+moss_grove itself); kept as a reference alternative for sleep_compare.py.
+
 Same organism as moss_grove (loaded from it; only the sleep drawing differs).
-The shipped clump renders short/restless nights as warm red/orange filled dots
--- the exact vocabulary of the effort beads (warm filled circles out on the
-rim), so at a glance last night reads as a workout (owner, 2026-07). Fix by
-giving sleep its own shape grammar AND its own palette region: effort keeps the
-warm hues; sleep speaks night-water blues, grays and white.
+The original spore clump rendered short/restless nights as warm red/orange
+filled dots -- the exact vocabulary of the effort beads (warm filled circles
+out on the rim), so at a glance last night read as a workout. Fix by giving
+sleep its own shape grammar AND its own palette region: effort keeps the warm
+hues; sleep speaks night-water blues, grays and white.
 
 Last night is a still POOL at the heart of the moss:
 
@@ -55,16 +58,16 @@ def pool_hours(mins):
 class MossGrovePool(mg.MossGrove):
 
     # episode keep-out: beads stay clear of the pool and its rim specks. The
-    # rings are COUNTED, so unlike the ship clump an overlapping bead is data
-    # loss. A bead's centre sits up to tsize/2+2 (<=16) inside its tuft radius
-    # and reaches bead_r (<=18) further in; the render adds scl(6) back, so
-    # +27 here means even the worst-case bead only kisses the outer ring.
-    def spore_reach(self, mins, wakes):
+    # rings are COUNTED, so unlike a clump an overlapping bead is data loss.
+    # A bead's centre sits up to tsize/2+2 (<=16) inside its tuft radius and
+    # reaches bead_r (<=18) further in; the render adds scl(6) back, so +27
+    # here means even the worst-case bead only kisses the outer ring.
+    def sleep_reach(self, mins, wakes):
         if mins <= 0:
             return 0
         return CORE_R + RING_W * pool_hours(mins) + 27
 
-    def draw_spore(self, dc, mins, wakes, ink):
+    def draw_sleep(self, dc, mins, wakes, ink):
         if mins <= 0:
             return ink
         hours = pool_hours(mins)
