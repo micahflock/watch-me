@@ -2,7 +2,8 @@
 """moss_grove -- the LOCKED two-worlds V2 biometric visualization.
 
 Configuration chosen across the exploration: tuft colour = dominant ELEVATED
-zone ("tint"), sleep = spore nucleus drawn ON TOP ("coretop"). Centred 2/5 up
+zone ("tint"), sleep = root star drawn ON TOP ("coretop", 2026-07: the roots
+treatment replaced the original spore clump -- see below). Centred 2/5 up
 from the bottom (CY=108), like BioBloom, so the artificial overlay (clock, etc.)
 rides above the organism.
 
@@ -10,9 +11,15 @@ This file is the PARITY REFERENCE for core/src/genart/MossGrove.mc (the
 strataflock.py role): it mirrors the record (daysoma) + render so the .mc ports
 mechanically. The day organism, from the heart out:
 
-  sleep nucleus  last night's inferred sleep -- a spore clump at the centre,
-                 size = hours, colour = quality (cool rested / warm short),
-                 drawn last so it stays visible all day
+  root star      last night's inferred sleep -- the silver ROOT SYSTEM the
+                 day's growth stands on, drawn last so it stays visible all
+                 day. Hours slept = root count and length; each wake event
+                 SNAPS one root at a white speck and kinks the rest, so a
+                 rough night is a gnarled, broken star. Sleep speaks only the
+                 night palette (silver/blue/gray/white); the warm hues belong
+                 to the effort beads exclusively -- the shipped spore clump
+                 rendered short nights in the beads' red/orange vocabulary
+                 and read as effort at a glance (owner, 2026-07).
   cushion        a solid two-tone lumpy mound; radius grows with the day's total
                  movement; per-day shape from the date seed (shape_params)
   tufts          satellite colony clumps straddling the rim, popping in as
@@ -20,26 +27,36 @@ mechanically. The day organism, from the heart out:
   texture        granular green stipple + fuzzy rim fringe
   episodes       elevated-HR events as bright peak-zone fruiting beads on tufts
 
-Time-of-day is intentionally not encoded. Self-bounded by INK; ~12k VM-instr/
-frame (half the ~25k watchdog), ~245 B state.
+Time-of-day is intentionally not encoded. Self-bounded by INK (the root star
+rides OUTSIDE the budget so the night survives a saturated day -- see
+draw_sleep); the outline is sampled once per frame into er/vx/vy instead of
+calling edge() per element (the pre-LUT render tripped the sim watchdog at
+saturation, 2026-07). Proxy ~10k VM-instr/frame peak, ~245 B state; the
+saturated RELEASE frame is verified silent in the sim, which is the ground
+truth the proxy is not (docs/watchdog-debugging.md).
 """
 
 import daysoma as DS
-from daysoma import (zone_color, zone_lut, place, dominant_zone, sleep_slot,
-                     SLEEP_RAMP, ZLUT, ACTIVE)
+from daysoma import zone_color, zone_lut, place, dominant_zone, ZLUT, ACTIVE
 from daybuckets import px, py
-from mossutil import edge, fan, shape_params
-from device import (idiv, imod, hash16, isin, COLOR_TRANSPARENT, COLOR_BLACK,
-                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE)
+from mossutil import edge, shape_params
+from device import (idiv, imod, hash16, isin, account,
+                    COLOR_TRANSPARENT, COLOR_BLACK,
+                    COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW, COLOR_WHITE,
+                    COLOR_LT_GRAY, COLOR_DK_GRAY, COLOR_BLUE, COLOR_DK_BLUE)
 
 CX = 107
 CY = 108               # 2/5 of the 180px height up from the bottom (BioBloom centre)
-INK = 340
+INK = 260              # was 340 pre-LUT: rebalanced with the grain/texture caps
+                       # below so a saturated day draws every layer (incl. the
+                       # beads, which the old budget starved) and the release
+                       # frame clears the sim watchdog with margin
 NA = 30                # rim samples for the cushion fans
 BASE_DIV = 60          # act_units -> cushion radius
 TUFT_DIV = 600         # act_units -> one more satellite tuft
 SCN = 5                # overall size scale = SCN/SCD (= 1.25x), applied to every
-SCD = 4                # radial extent: cushion, lumpiness, tufts, spore, beads
+SCD = 4                # radial extent: cushion, lumpiness, tufts, beads (the
+                       # root star works in final px directly, like the beads)
 AMPREF = 40            # base radius (px, scaled) at which outline amps reach 100%
 
 
@@ -47,9 +64,30 @@ def scl(v):
     return idiv(v * SCN, SCD)
 
 
+ROOT_MAX_H = 10        # SLEEP_CAP is 600 min
+
+
+def root_hours(mins):
+    h = idiv(mins, 60)
+    if h < 1:
+        h = 1
+    if h > ROOT_MAX_H:
+        h = ROOT_MAX_H
+    return h
+
+
+def root_len(mins):
+    return 8 + 3 * root_hours(mins)
+
+
 class MossGrove:
     def __init__(self):
         self.rec = DS.DayRecord()
+        # per-frame outline LUT (render scratch, allocated once): edge radius
+        # and outer-fan vertex offsets at the NA rim angles. See render().
+        self.er = [0] * NA
+        self.vx = [0] * NA
+        self.vy = [0] * NA
 
     def advance(self, snap):
         self.rec.advance(snap)
@@ -57,92 +95,115 @@ class MossGrove:
     def state_bytes(self):
         return self.rec.state_bytes()
 
-    # scaled footprint radius of the sleep nucleus (shared by draw_spore and the
-    # episode keep-out). -25% overall vs the clump's node spread so it takes up
-    # less room while the node dots keep their size.
-    def spore_reach(self, mins, wakes):
+    # episode keep-out radius around the root star. A bead's centre can sit up
+    # to tsize/2+2 (<=16) inside its tuft radius and reach bead_r (<=18)
+    # further in; +20 here (plus the scl(6) the render adds) keeps the tips --
+    # the hours signal -- legible without pushing small beads to the horizon.
+    def sleep_reach(self, mins, wakes):
         if mins <= 0:
             return 0
-        hours = idiv(mins, 60)
-        reach = 6 + 2 * hours
-        if reach > 28:
-            reach = 28
-        reach += 3 * wakes                     # restless -> wider, looser scatter
-        if reach > 40:
-            reach = 40
-        return idiv(scl(reach) * 3, 4)         # -25% overall footprint
+        return root_len(mins) + 20
 
-    # last night's sleep: a spore clump at the centre (BioBloom-style scatter).
-    # wakes = wake-up events 12-6am: each one warms the clump a step, loosens its
-    # scatter, and adds one white blight speck orbiting outside (a literal count).
-    def draw_spore(self, dc, mins, wakes, ink):
+    # last night's sleep: the silver root star under the heart of the moss.
+    # wakes = wake-up events 12-6am: each one snaps a root at a white speck
+    # (the literal count), kinks every root harder, and grays the tips.
+    # Lengths/radii are FINAL px (already scaled), like the episode beads.
+    #
+    # The star does NOT compete for the shared ink budget: a saturated day
+    # spends all 340 ink on tufts/texture/beads and the clump this replaced
+    # silently vanished by mid-afternoon -- but the night must stay readable
+    # on the heaviest day (it is the layer drawn last precisely to stay on
+    # top). Its cost is hard-capped instead: nroots <= 16 and wakes clamped
+    # to nroots bound it at ~80 primitives.
+    def draw_sleep(self, dc, mins, wakes, ink):
         if mins <= 0:
             return ink
-        hours = idiv(mins, 60)
-        slot = sleep_slot(mins) - wakes        # restless -> warmer
-        if slot < 0:
-            slot = 0
-        reach = self.spore_reach(mins, wakes)
-        rim = idiv(reach * 2, 3)
-        dc.setColor(SLEEP_RAMP[slot], COLOR_TRANSPARENT)
-        dc.fillCircle(CX, CY, scl(3))
-        nodes = 7 + hours * 2
-        for k in range(nodes):
-            if ink <= 0:
-                break
-            h = hash16(91, k, 6)
-            a = imod(idiv(k * 256, nodes) + (h % 36), 256)
-            r1 = imod(hash16(73, k, 2), reach)
-            r2 = imod(hash16(29, k, 4), reach)
-            # more wakes -> less centre-bias (looser): blend min toward the mean
-            inner = r1 if r1 < r2 else r2
-            rr = 2 + (inner if wakes == 0 else idiv(inner + r1 + r2, 3))
-            ci = slot
-            if rr >= rim and slot >= 1:
-                ci = slot - 1
-            dc.setColor(SLEEP_RAMP[ci], COLOR_TRANSPARENT)
-            dc.fillCircle(px(CX, rr, a), py(CY, rr, a), 1 + (h % 3))
-            ink -= 1
-        # one "blighted" speck per wake-up, orbiting just outside the clump: a
-        # white dot inside a THICK black border. Drawn last (with the spore, on
-        # top of everything), the black ring carves a permanent gap so the moss
-        # never visually touches the blight, however much it spreads.
-        if wakes > 0:
-            wr = scl(2)                        # white core radius
-            br = wr + scl(3)                   # thick black border (as before)
-            for w in range(wakes):
-                if ink <= 0:
-                    break
-                hw = hash16(53, w, 7)
-                a = imod(idiv(w * 256, wakes) + (hw % 24), 256)
-                rr = reach + scl(4) + (hw % 4)
-                x = px(CX, rr, a)
-                y = py(CY, rr, a)
+        hours = root_hours(mins)
+        ln = root_len(mins)
+        nroots = 6 + hours
+        if wakes > nroots:             # can't snap more roots than exist
+            wakes = nroots
+        kink = 3 + wakes * 6           # angle jitter at the joints (1/256ths)
+
+        # each wake snaps one root (evenly spread, distinct while wakes <=
+        # nroots); precomputed as a bitmask -- the per-root scan was
+        # O(nroots*wakes) divisions for a value that never changes in-frame
+        snapmask = 0
+        for w in range(wakes):
+            snapmask |= 1 << idiv(w * nroots, wakes)
+
+        # taproot crown grounding the star
+        dc.setColor(COLOR_DK_BLUE, COLOR_TRANSPARENT)
+        dc.fillCircle(CX, CY, 3)
+
+        for i in range(nroots):
+            h = hash16(87, i, 6)
+            a = imod(idiv(i * 256, nroots) + (h % 15), 256)
+            li = ln - imod(h >> 8, idiv(ln, 3) + 1)    # per-root length variety
+            # joint angles wander +-kink; negatives are fine (isin masks & 255,
+            # identically in Monkey C)
+            a1 = a + imod(hash16(87, i, 7), 2 * kink + 1) - kink
+            a2 = a1 + imod(hash16(87, i, 8), 2 * kink + 1) - kink
+            rm = idiv(li * 3, 5)
+            x0 = px(CX, 2, a)
+            y0 = py(CY, 2, a)
+            xm = px(CX, rm, a1)
+            ym = py(CY, rm, a1)
+            # a snapped root ends at its joint under the white speck
+            snapped = ((snapmask >> i) & 1) != 0
+            dc.setColor(COLOR_DK_GRAY if snapped else COLOR_LT_GRAY,
+                        COLOR_TRANSPARENT)
+            dc.drawLine(x0, y0, xm, ym)
+            if snapped:
+                # ship-style blight speck at the break: white core in a thick
+                # black ring, a couple of ragged blobs on its edge
                 dc.setColor(COLOR_BLACK, COLOR_TRANSPARENT)
-                dc.fillCircle(x, y, br)
-                # ragged border: 1-5 small blobs sitting tangent ON the thick
-                # border's outer edge (inner side touching br, body protruding)
-                # so they read as bumps disrupting the rim, not buried under it
-                nb = 1 + (hash16(w, 5, 9) % 5)
-                bd = br + scl(1)                # tangent: center one blob-radius out
-                for k in range(nb):
-                    hb = hash16(w + 41, k, 8)
-                    ba = imod(idiv(k * 256, nb) + (hb % 40), 256)
-                    dc.fillCircle(x + idiv(bd * isin(ba + 64), 127),
-                                  y + idiv(bd * isin(ba), 127), scl(1))
+                dc.fillCircle(xm, ym, 5)
+                for k in range(2):
+                    hb = hash16(i + 41, k, 8)
+                    ba = idiv(k * 256, 2) + (hb % 40)
+                    dc.fillCircle(xm + idiv(6 * isin(ba + 64), 127),
+                                  ym + idiv(6 * isin(ba), 127), 1)
                 dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
-                dc.fillCircle(x, y, wr)
-                ink -= (nb + 2)
+                dc.fillCircle(xm, ym, 2)
+            else:
+                xt = px(CX, li, a2)
+                yt = py(CY, li, a2)
+                dc.drawLine(xm, ym, xt, yt)
+                # nodule tip: deep blue when rested, gray on a rough night
+                dc.setColor(COLOR_BLUE if wakes == 0 else COLOR_DK_GRAY,
+                            COLOR_TRANSPARENT)
+                dc.fillCircle(xt, yt, 1)
         return ink
+
+    # fill the lumpy disc as a fan of NA triangles from the cached outline
+    # offsets, scaled scalepct/100 (100 = the dark mound, 60 = the crown) --
+    # no edge()/isin per vertex; see the LUT note in render()
+    def fan_lut(self, dc, scalepct):
+        tri = [(CX, CY), (0, 0), (0, 0)]   # apex is loop-invariant (mc: _tri)
+        x0 = CX + idiv(self.vx[0] * scalepct, 100)
+        y0 = CY + idiv(self.vy[0] * scalepct, 100)
+        for i in range(1, NA + 1):
+            j = imod(i, NA)
+            x1 = CX + idiv(self.vx[j] * scalepct, 100)
+            y1 = CY + idiv(self.vy[j] * scalepct, 100)
+            tri[1] = (x0, y0)
+            tri[2] = (x1, y1)
+            dc.fillPolygon(tri)
+            x0 = x1
+            y0 = y1
 
     # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
     def draw_tuft(self, dc, seed, j, tx, ty, tsize, accent, ink):
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
         dc.fillCircle(tx, ty, idiv(tsize, 2))
         ink -= 1
+        # grain cap 26 -> 16 (watchdog): 7 tufts x 26 grains was the single
+        # heaviest layer at saturation (each grain = hash16 + 2 isin + 2 Dc
+        # calls); 16 keeps the stipple read at ~2/3 the op count
         grains = 8 + idiv(tsize, 2)
-        if grains > 26:
-            grains = 26
+        if grains > 16:
+            grains = 16
         for i in range(grains):
             if ink <= 0:
                 break
@@ -191,11 +252,31 @@ class MossGrove:
             tsize = 23
         tsize = scl(tsize)
 
+        # --- per-frame outline LUT + outer-fan vertex offsets ---
+        # edge() costs ~3 isin + per-lobe arithmetic PER CALL and used to be
+        # re-evaluated ~240x a frame (both fan passes, every texture dot, the
+        # fringe, tufts, beads) -- exactly the per-element method cost the
+        # sandbox proxy under-counts (docs/watchdog-debugging.md); the
+        # saturated release frame tripped the sim watchdog. Sample the
+        # outline ONCE at the NA rim angles; every other consumer reads the
+        # LUT (nearest sample -- the outline is smooth, so off-grid consumers
+        # only see px-level shifts). vx/vy are the 100% fan vertex offsets,
+        # making both fan passes isin-free (the crown is the same offsets
+        # scaled 60%).
+        for i in range(NA):
+            ai = imod(idiv(i * 256, NA), 256)
+            e = edge(base, ai, sp)
+            self.er[i] = e
+            self.vx[i] = idiv(e * isin(ai + 64), 127)
+            self.vy[i] = idiv(e * isin(ai), 127)
+        account(NA * 2)                    # LUT stores (the isin/edge work is
+                                           # already counted per call)
+
         # --- central cushion: dark mound + bright green crown ---
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
-        fan(dc, CX, CY, base, 100, NA, sp)
+        self.fan_lut(dc, 100)
         dc.setColor(COLOR_GREEN, COLOR_TRANSPARENT)
-        fan(dc, CX, CY, base, 60, NA, sp)
+        self.fan_lut(dc, 60)
 
         # --- satellite tufts straddling the rim ---
         for j in range(ntuft):
@@ -203,20 +284,22 @@ class MossGrove:
                 break
             hj = hash16(seed, j, 31)
             a = imod(idiv(j * 256, ntuft if ntuft else 1) + (hj & 31), 256)
-            rr = idiv(edge(base, a, sp) * (85 + (hj >> 8) % 30), 100)
+            rr = idiv(self.er[idiv(a * NA, 256)] * (85 + (hj >> 8) % 30), 100)
             tx = px(CX, rr, a)
             ty = py(CY, rr, a)
             ink = self.draw_tuft(dc, seed, j, tx, ty, tsize, dzcol, ink)
 
         # --- granular texture over the cushion ---
+        # cap 130 -> 90 (watchdog): with the bigger late-day crown the extra
+        # 40 dots added op count, not visible density
         n = 50 + idiv(act, 12)
-        if n > 130:
-            n = 130
+        if n > 90:
+            n = 90
         for i in range(n):
             if ink <= 0:
                 break
             a, rr0, h = place(seed, i, 1, base)
-            lim = edge(base, a, sp)
+            lim = self.er[idiv(a * NA, 256)]
             rr = idiv(rr0 * lim, base) if base > 0 else 0
             if (h & 1) == 0:
                 col = COLOR_DK_GREEN
@@ -232,15 +315,15 @@ class MossGrove:
             if ink <= 0:
                 break
             a = imod(idiv(i * 256, NA), 256)
-            e = edge(base, a, sp)
+            e = self.er[i]
             le = 2 + (hash16(seed, i, 9) & 1)
-            dc.drawLine(px(CX, e, a), py(CY, e, a),
+            dc.drawLine(CX + self.vx[i], CY + self.vy[i],
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
         # --- episodes: bright fruiting beads on tufts (else crown) ---
-        # keep beads out of the centre so they don't overlap the sleep nucleus
-        keepout = self.spore_reach(rec.sleep_seed, rec.wake_seed) + scl(6)
+        # keep beads out of the centre so they don't overlap the root star
+        keepout = self.sleep_reach(rec.sleep_seed, rec.wake_seed) + scl(6)
         for e in range(rec.nepi):
             if ink <= 0:
                 break
@@ -255,7 +338,8 @@ class MossGrove:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
                 ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
-                trr = idiv(edge(base, ta, sp) * (85 + (hj >> 8) % 30), 100)
+                trr = idiv(self.er[idiv(ta * NA, 256)] * (85 + (hj >> 8) % 30),
+                           100)
                 if trr < keepout:
                     trr = keepout              # push out past the nucleus
                 tx = px(CX, trr, ta)
@@ -267,7 +351,7 @@ class MossGrove:
                 y = ty + idiv(off * isin(a), 127)
             else:
                 a = imod(hash16(seed, e, 42), 256)
-                rr = idiv(edge(base, a, sp) * 3, 5)
+                rr = idiv(self.er[idiv(a * NA, 256)] * 3, 5)
                 if rr < keepout:
                     rr = keepout
                 x = px(CX, rr, a)
@@ -278,8 +362,8 @@ class MossGrove:
             dc.fillCircle(x, y, bead)
             ink -= 2
 
-        # --- sleep nucleus drawn LAST: stays on top of the colony all day ---
-        self.draw_spore(dc, rec.sleep_seed, rec.wake_seed, ink)
+        # --- root star drawn LAST: stays on top of the colony all day ---
+        self.draw_sleep(dc, rec.sleep_seed, rec.wake_seed, ink)
 
 
 def build():

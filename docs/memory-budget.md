@@ -80,6 +80,27 @@ Two findings worth keeping:
   data, not Numbers — the cheapest place to claw back RAM if ever needed is the
   font strips, not the generative art.
 
+## Measured release runtime (two-worlds-v2, July 2026)
+
+**`usedMemory` 38,760 B of `totalMemory` 61,256 B** (sim status bar 37.7/59.8 kB)
+under a **pinned saturated record** — max cushion/tufts/texture, 16 max-magnitude
+beads, 10 h root star with a fully-broken night — i.e. ~22 KB free at the
+worst case. PRG on disk 31,436 B.
+
+It did not start that way. The face as first shipped read **59.4 KB used** —
+~1.5 KB from the hard limit — and OOM'd in `DataSource.refresh` the moment
+anything else was added. The cause: `monkey.jungle` pulled in **all of
+`core/src`**, and monkeyc does no dead-code elimination for unreferenced
+classes, so V1's entire BioBloom/StrataField/Flock (~21 KB of PRG) shipped
+inside V2, dead. The fix is the narrowed per-file `sourcePath` in
+`faces/two-worlds-v2/monkey.jungle`. **When adding a face, list the core files
+it actually uses — and re-run this measurement** (release `Instrument.tickStart`
+print, recipe above).
+
+> Note: `faces/two-worlds/monkey.jungle` (V1) still pulls all of core and so now
+> carries MossGrove dead; its June figure above (55.2 KB, ~6 KB free) predates
+> MossGrove.mc. Unmeasured since; the same narrowing would recover it.
+
 ## How the watchdog budget was measured
 
 The simulator (and device) abort an `onUpdate` that executes too long —
