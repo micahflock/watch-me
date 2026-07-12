@@ -5,8 +5,14 @@
 
 project.manifest = manifest.xml
 
-# Face source + shared core. Paths are relative to this jungle file.
-base.sourcePath = source;../../core/src
+# Face source + ONLY the core files this face references. monkeyc has no
+# dead-code elimination for unreferenced classes, and the whole PRG loads into
+# the 64 KB app RAM on this device: pulling in all of core/src (as before)
+# shipped V1's entire BioBloom/StrataField/Flock dead, which left the release
+# face ~1.5 KB from Out Of Memory at the first per-tick allocation (2026-07
+# sim probe, docs/memory-budget.md re-measure recipe).
+# Paths are relative to this jungle file.
+base.sourcePath = source;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
 
 # Reuse the two-worlds resources (fonts, launcher icon, settings).
 base.resourcePath = ../two-worlds/resources
