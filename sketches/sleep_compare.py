@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""sleep_compare.py -- decision sheets for the sleep-nucleus proposals.
+"""sleep_compare.py -- comparison sheets for the sleep-nucleus treatments.
 
-The shipped moss_grove sleep clump renders short/restless nights in the effort
-beads' vocabulary (warm filled circles), so a bad night reads as a workout.
-This renders the shipped treatment against the proposal algos
-(moss_grove_pool / _roots / _lunar) two ways:
+The original moss_grove sleep clump rendered short/restless nights in the
+effort beads' vocabulary (warm filled circles), so a bad night read as a
+workout. Of the three proposals, the owner picked B (the silver root star,
+2026-07), which now IS moss_grove's sleep treatment; the pool and lunar
+alternatives are kept as reference algos. This renders the shipped treatment
+against them two ways:
 
   out/sleep-compare-nights.png   rows = treatments, cols = four nights
                                  (rested/ok/short/broken), all at 18:20 of the
@@ -37,9 +39,8 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 SCALE = 2
 
 TREATMENTS = [
-    ("current (ship)", "moss_grove"),
+    ("ship (B roots)", "moss_grove"),
     ("A  pool: 1 ring/hour", "moss_grove_pool"),
-    ("B  roots: silver star", "moss_grove_roots"),
     ("C  lunar clump", "moss_grove_lunar"),
 ]
 

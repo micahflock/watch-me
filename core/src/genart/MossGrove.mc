@@ -8,10 +8,15 @@ using Toybox.Graphics as Gfx;
 // only WHAT happened, accreted in RAM and persisted across a reload (MossState),
 // since the device gives only the current HR sample and cumulative steps per
 // tick. From the heart outward:
-//   sleep nucleus  last night's inferred sleep (overnight quiescence, as in
-//                  BioBloom): a spore clump at the centre, size = hours,
-//                  colour = quality (cool rested / warm short). Drawn LAST so it
-//                  stays on top of the day's growth all day.
+//   root star      last night's inferred sleep (overnight quiescence, as in
+//                  BioBloom): the silver root system the day's growth stands
+//                  on. Hours = root count/length; each wake event snaps one
+//                  root at a white speck and kinks the rest. Sleep speaks only
+//                  the night palette (silver/blue/gray/white) -- the warm hues
+//                  belong to the effort beads exclusively (the original spore
+//                  clump rendered short nights in the beads' red/orange
+//                  vocabulary and read as effort at a glance; owner, 2026-07).
+//                  Drawn LAST so it stays on top of the day's growth all day.
 //   cushion        a solid two-tone lumpy mound; radius grows with total
 //                  movement; the lumpy OUTLINE varies per day from the date seed.
 //   tufts          satellite colony clumps straddling the rim, popping in as
@@ -20,14 +25,20 @@ using Toybox.Graphics as Gfx;
 //   episodes       elevated-HR events as bright peak-zone fruiting beads.
 //
 // All integer math (the watchdog is the binding constraint). A per-frame INK
-// budget caps draw work so a maximal day stays bounded; render measures ~14k VM
-// instructions/frame in the sandbox (just over half the ~25k budget), state
-// ~245 B.
+// budget caps draw work so a maximal day stays bounded (the root star rides
+// OUTSIDE the budget -- see drawSleep); the outline is sampled once per frame
+// into _er/_evx/_evy instead of calling edge() per element (the pre-LUT render
+// tripped the sim watchdog at saturation, 2026-07). Sandbox proxy ~10k
+// VM-instr/frame peak; the saturated release frame is verified silent in the
+// sim (docs/watchdog-debugging.md probe). State ~245 B.
 class MossGrove {
 
     const CX = 107;
     const CY = 108;            // centre 2/5 of the screen height up from bottom
-    const INK_MAX = 340;
+    const INK_MAX = 260;       // was 340 pre-LUT: rebalanced with the grain/
+                               // texture caps so a saturated day draws every
+                               // layer (incl. the beads, which the old budget
+                               // starved) and clears the sim watchdog
     const NA = 30;             // rim samples for the cushion fans
     const BASE_DIV = 60;       // act units -> cushion radius
     const TUFT_DIV = 600;      // act units -> one more satellite tuft
@@ -67,11 +78,7 @@ class MossGrove {
         Gfx.COLOR_YELLOW, Gfx.COLOR_ORANGE, Gfx.COLOR_RED, Gfx.COLOR_PINK,
         Gfx.COLOR_PURPLE
     ];
-    // hours-slept ramp: cool = well rested, warm = short night (index hours-3).
-    const SLEEP_RAMP = [
-        Gfx.COLOR_DK_RED, Gfx.COLOR_RED, Gfx.COLOR_ORANGE, Gfx.COLOR_YELLOW,
-        Gfx.COLOR_DK_GREEN, Gfx.COLOR_GREEN, Gfx.COLOR_BLUE, Gfx.COLOR_DK_BLUE
-    ];
+    const ROOT_MAX_H = 10;     // root star hour cap (SLEEP_CAP is 600 min)
 
     // ---- day record (port of daysoma.DayRecord) ------------------------------
     var _zoneMin;              // minutes per HR zone (9)
@@ -87,6 +94,8 @@ class MossGrove {
     var _sp;                   // per-day shape params [p1,p2,f1,f2,am1,am2,p3,am3]
     var _lamp;                 // per-lobe amplitude percents (40..170), f1 used
     var _tri;                  // reusable triangle for fillPolygon
+    var _er;                   // per-frame outline LUT: edge radius at NA angles
+    var _evx; var _evy;        // ... and the 100% fan vertex offsets
     var _ink;
 
     function initialize() {
@@ -96,6 +105,9 @@ class MossGrove {
         _sp = new [8];
         _lamp = new [5];
         _tri = [[0, 0], [0, 0], [0, 0]];
+        _er = new [NA];
+        _evx = new [NA];
+        _evy = new [NA];
         _night = 0; _sleepSeed = 0;          // survive reset(); init once
         _wakes = 0; _wakeSeed = 0; _awake = false;
         _lastDay = -1; _prev = null;
@@ -217,12 +229,14 @@ class MossGrove {
 
     function scl(v) { return v * SCN / SCD; }
 
-    function sleepSlot(mins) {
-        var s = mins / 60 - 3;
-        if (s < 0) { s = 0; }
-        if (s > 7) { s = 7; }
-        return s;
+    function rootHours(mins) {
+        var h = mins / 60;
+        if (h < 1) { h = 1; }
+        if (h > ROOT_MAX_H) { h = ROOT_MAX_H; }
+        return h;
     }
+
+    function rootLen(mins) { return 8 + 3 * rootHours(mins); }
 
     function coordX(a, r) { return CX + (r * GenArt.isin(a + 64)) / 127; }
     function coordY(a, r) { return CY + (r * GenArt.isin(a)) / 127; }
@@ -242,17 +256,17 @@ class MossGrove {
         return base + d;
     }
 
-    // fill a lumpy disc out to edge(base,a)*scalepct/100 as a fan of NA triangles
-    function fan(dc, base, scalepct) {
-        var e0 = (edge(base, 0) * scalepct) / 100;
-        var x0 = coordX(0, e0);
-        var y0 = coordY(0, e0);
+    // fill the lumpy disc as a fan of NA triangles from the cached outline
+    // offsets, scaled scalepct/100 (100 = the dark mound, 60 = the crown) --
+    // no edge()/isin per vertex; see the LUT note in render()
+    function fanLut(dc, scalepct) {
+        _tri[0][0] = CX;  _tri[0][1] = CY;     // apex is loop-invariant
+        var x0 = CX + (_evx[0] * scalepct) / 100;
+        var y0 = CY + (_evy[0] * scalepct) / 100;
         for (var i = 1; i <= NA; i++) {
-            var a = ((i * 256) / NA) & 255;
-            var e = (edge(base, a) * scalepct) / 100;
-            var x1 = coordX(a, e);
-            var y1 = coordY(a, e);
-            _tri[0][0] = CX;  _tri[0][1] = CY;
+            var j = i % NA;
+            var x1 = CX + (_evx[j] * scalepct) / 100;
+            var y1 = CY + (_evy[j] * scalepct) / 100;
             _tri[1][0] = x0;  _tri[1][1] = y0;
             _tri[2][0] = x1;  _tri[2][1] = y1;
             dc.fillPolygon(_tri);
@@ -298,11 +312,27 @@ class MossGrove {
         if (tsize > 23) { tsize = 23; }
         tsize = scl(tsize);
 
+        // per-frame outline LUT + outer-fan vertex offsets: edge() costs ~3
+        // isin + per-lobe arithmetic per call and used to be re-evaluated
+        // ~240x a frame (both fans, every texture dot, the fringe, tufts,
+        // beads) -- the per-element method cost the sandbox proxy
+        // under-counts (docs/watchdog-debugging.md); the saturated release
+        // frame tripped the sim watchdog. Sample the outline ONCE at the NA
+        // rim angles; everything else reads the LUT (nearest sample -- the
+        // outline is smooth, off-grid consumers only see px-level shifts).
+        for (var i = 0; i < NA; i++) {
+            var ai = ((i * 256) / NA) % 256;
+            var er0 = edge(base, ai);
+            _er[i] = er0;
+            _evx[i] = (er0 * GenArt.isin(ai + 64)) / 127;
+            _evy[i] = (er0 * GenArt.isin(ai)) / 127;
+        }
+
         // central cushion: dark mound + bright green crown
         dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
-        fan(dc, base, 100);
+        fanLut(dc, 100);
         dc.setColor(Gfx.COLOR_GREEN, Gfx.COLOR_TRANSPARENT);
-        fan(dc, base, 60);
+        fanLut(dc, 60);
 
         // satellite tufts straddling the rim
         var nt = (ntuft > 0) ? ntuft : 1;
@@ -310,20 +340,22 @@ class MossGrove {
             if (_ink <= 0) { break; }
             var hj = GenArt.hash16(seed, j, 31);
             var a = ((j * 256) / nt + (hj & 31)) % 256;
-            var rr = (edge(base, a) * (85 + (hj >> 8) % 30)) / 100;
+            var rr = (_er[(a * NA) / 256] * (85 + (hj >> 8) % 30)) / 100;
             drawTuft(dc, seed, j, coordX(a, rr), coordY(a, rr), tsize, dzcol);
         }
 
         // granular texture over the cushion
+        // cap 130 -> 90 (watchdog): with the bigger late-day crown the extra
+        // 40 dots added op count, not visible density
         var n = 50 + act / 12;
-        if (n > 130) { n = 130; }
+        if (n > 90) { n = 90; }
         for (var i = 0; i < n; i++) {
             if (_ink <= 0) { break; }
             var h = GenArt.hash16(seed, i, 1);
             var aa = h & 0xFF;
             var r0 = (base > 0) ? ((h >> 8) % base) : 0;
             r0 = (base > 0) ? (r0 * r0) / base : 0;
-            var lim = edge(base, aa);
+            var lim = _er[(aa * NA) / 256];
             var rt = (base > 0) ? (r0 * lim) / base : 0;
             var col;
             if ((h & 1) == 0) { col = Gfx.COLOR_DK_GREEN; }
@@ -338,16 +370,16 @@ class MossGrove {
         for (var i = 0; i < NA; i += 2) {
             if (_ink <= 0) { break; }
             var a = ((i * 256) / NA) & 255;
-            var e = edge(base, a);
+            var e = _er[i];
             var le = 2 + (GenArt.hash16(seed, i, 9) & 1);
-            dc.drawLine(coordX(a, e), coordY(a, e),
+            dc.drawLine(CX + _evx[i], CY + _evy[i],
                         coordX(a, e + le), coordY(a, e + le));
             _ink -= 1;
         }
 
         // episodes: bright fruiting beads on tufts (else crown), kept out of the
-        // centre so they don't overlap the sleep nucleus.
-        var keepout = sporeReach(_sleepSeed, _wakeSeed) + scl(6);
+        // centre so they don't overlap the root star.
+        var keepout = sleepReach(_sleepSeed, _wakeSeed) + scl(6);
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
@@ -360,7 +392,7 @@ class MossGrove {
                 var t = GenArt.hash16(seed, e, 41) % ntuft;
                 var hj = GenArt.hash16(seed, t, 31);
                 var ta = ((t * 256) / ntuft + (hj & 31)) % 256;
-                var trr = (edge(base, ta) * (85 + (hj >> 8) % 30)) / 100;
+                var trr = (_er[(ta * NA) / 256] * (85 + (hj >> 8) % 30)) / 100;
                 if (trr < keepout) { trr = keepout; }
                 var tx = coordX(ta, trr);
                 var ty = coordY(ta, trr);
@@ -371,7 +403,7 @@ class MossGrove {
                 y = ty + (off * GenArt.isin(a)) / 127;
             } else {
                 var a = GenArt.hash16(seed, e, 42) % 256;
-                var rr = (edge(base, a) * 3) / 5;
+                var rr = (_er[(a * NA) / 256] * 3) / 5;
                 if (rr < keepout) { rr = keepout; }
                 x = coordX(a, rr);
                 y = coordY(a, rr);
@@ -383,16 +415,19 @@ class MossGrove {
             _ink -= 2;
         }
 
-        // sleep nucleus drawn LAST: stays on top of the colony all day
-        drawSpore(dc, _sleepSeed, _wakeSeed);
+        // root star drawn LAST: stays on top of the colony all day
+        drawSleep(dc, _sleepSeed, _wakeSeed);
     }
 
     function drawTuft(dc, seed, j, tx, ty, tsize, accent) {
         dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
         dc.fillCircle(tx, ty, tsize / 2);
         _ink -= 1;
+        // grain cap 26 -> 16 (watchdog): 7 tufts x 26 grains was the single
+        // heaviest layer at saturation (each grain = hash16 + 2 isin + 2 Dc
+        // calls); 16 keeps the stipple read at ~2/3 the op count
         var grains = 8 + tsize / 2;
-        if (grains > 26) { grains = 26; }
+        if (grains > 16) { grains = 16; }
         for (var i = 0; i < grains; i++) {
             if (_ink <= 0) { break; }
             var h = GenArt.hash16(seed, j * 64 + i, 3);
@@ -409,73 +444,84 @@ class MossGrove {
         }
     }
 
-    // scaled footprint radius of the sleep nucleus (shared by drawSpore and the
-    // episode keep-out). -25% overall vs the node spread so it takes up less room
-    // while the node dots keep their size.
-    function sporeReach(mins, wakes) {
+    // episode keep-out radius around the root star. A bead's centre can sit up
+    // to tsize/2+2 (<=16) inside its tuft radius and reach bead_r (<=18)
+    // further in; +20 here (plus the scl(6) the render adds) keeps the tips --
+    // the hours signal -- legible without pushing small beads to the horizon.
+    function sleepReach(mins, wakes) {
         if (mins <= 0) { return 0; }
-        var hours = mins / 60;
-        var reach = 6 + 2 * hours;
-        if (reach > 28) { reach = 28; }
-        reach += 3 * wakes;                           // restless -> wider, looser
-        if (reach > 40) { reach = 40; }
-        return (scl(reach) * 3) / 4;                  // -25% overall footprint
+        return rootLen(mins) + 20;
     }
 
-    // last night's sleep: a spore clump at the centre. wakes = wake-ups 12-6am:
-    // each warms the clump a step, loosens its scatter, and adds one white
-    // "blight" speck (thick black border, ragged outer edge) orbiting outside.
-    function drawSpore(dc, mins, wakes) {
+    // last night's sleep: the silver root star under the heart of the moss.
+    // wakes = wake-up events 12-6am: each one snaps a root at a white speck
+    // (the literal count), kinks every root harder, and grays the tips.
+    // Lengths/radii are FINAL px (already scaled), like the episode beads.
+    //
+    // The star does NOT compete for the shared ink budget: a saturated day
+    // spends all 340 ink on tufts/texture/beads and the clump this replaced
+    // silently vanished by mid-afternoon -- but the night must stay readable
+    // on the heaviest day (it is the layer drawn last precisely to stay on
+    // top). Its cost is hard-capped instead: nroots <= 16 and wakes clamped
+    // to nroots bound it at ~80 primitives.
+    function drawSleep(dc, mins, wakes) {
         if (mins <= 0) { return; }
-        var hours = mins / 60;
-        var slot = sleepSlot(mins) - wakes;          // restless -> warmer
-        if (slot < 0) { slot = 0; }
-        var reach = sporeReach(mins, wakes);
-        var rim = (reach * 2) / 3;
-        dc.setColor(SLEEP_RAMP[slot], Gfx.COLOR_TRANSPARENT);
-        dc.fillCircle(CX, CY, scl(3));
-        var nodes = 7 + hours * 2;
-        for (var k = 0; k < nodes; k++) {
-            if (_ink <= 0) { break; }
-            var h = GenArt.hash16(91, k, 6);
-            var a = ((k * 256) / nodes + (h % 36)) % 256;
-            var r1 = GenArt.hash16(73, k, 2) % reach;
-            var r2 = GenArt.hash16(29, k, 4) % reach;
-            var inner = (r1 < r2) ? r1 : r2;
-            // more wakes -> less centre-bias (looser): blend min toward the mean
-            var rr = 2 + ((wakes == 0) ? inner : (inner + r1 + r2) / 3);
-            var ci = slot;
-            if (rr >= rim && slot >= 1) { ci = slot - 1; }
-            dc.setColor(SLEEP_RAMP[ci], Gfx.COLOR_TRANSPARENT);
-            dc.fillCircle(coordX(a, rr), coordY(a, rr), 1 + (h % 3));
-            _ink -= 1;
+        var hours = rootHours(mins);
+        var ln = rootLen(mins);
+        var nroots = 6 + hours;
+        if (wakes > nroots) { wakes = nroots; }  // can't snap more than exist
+        var kink = 3 + wakes * 6;      // angle jitter at the joints (1/256ths)
+
+        // each wake snaps one root (evenly spread, distinct while wakes <=
+        // nroots); precomputed as a bitmask -- the per-root scan was
+        // O(nroots*wakes) divisions for a value that never changes in-frame
+        var snapmask = 0;
+        for (var w = 0; w < wakes; w++) {
+            snapmask = snapmask | (1 << ((w * nroots) / wakes));
         }
-        // one "blight" speck per wake-up, orbiting just outside the clump: a
-        // white dot in a THICK black border whose outer edge is roughened by
-        // 1-5 half-size blobs sitting tangent on it (disrupted growth).
-        if (wakes > 0) {
-            var wr = scl(2);
-            var br = wr + scl(3);
-            var bd = br + scl(1);
-            for (var w = 0; w < wakes; w++) {
-                if (_ink <= 0) { break; }
-                var hw = GenArt.hash16(53, w, 7);
-                var wa = ((w * 256) / wakes + (hw % 24)) % 256;
-                var wrr = reach + scl(4) + (hw % 4);
-                var x = coordX(wa, wrr);
-                var y = coordY(wa, wrr);
+
+        // taproot crown grounding the star
+        dc.setColor(Gfx.COLOR_DK_BLUE, Gfx.COLOR_TRANSPARENT);
+        dc.fillCircle(CX, CY, 3);
+
+        for (var i = 0; i < nroots; i++) {
+            var h = GenArt.hash16(87, i, 6);
+            var a = ((i * 256) / nroots + (h % 15)) % 256;
+            var li = ln - (h >> 8) % (ln / 3 + 1);     // per-root length variety
+            // joint angles wander +-kink; negatives are fine (isin masks & 255)
+            var a1 = a + GenArt.hash16(87, i, 7) % (2 * kink + 1) - kink;
+            var a2 = a1 + GenArt.hash16(87, i, 8) % (2 * kink + 1) - kink;
+            var rm = (li * 3) / 5;
+            var x0 = coordX(a, 2);
+            var y0 = coordY(a, 2);
+            var xm = coordX(a1, rm);
+            var ym = coordY(a1, rm);
+            // a snapped root ends at its joint under the white speck
+            var snapped = ((snapmask >> i) & 1) != 0;
+            dc.setColor(snapped ? Gfx.COLOR_DK_GRAY : Gfx.COLOR_LT_GRAY,
+                        Gfx.COLOR_TRANSPARENT);
+            dc.drawLine(x0, y0, xm, ym);
+            if (snapped) {
+                // ship-style blight speck at the break: white core in a thick
+                // black ring, a couple of ragged blobs on its edge
                 dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
-                dc.fillCircle(x, y, br);
-                var nb = 1 + (GenArt.hash16(w, 5, 9) % 5);
-                for (var k2 = 0; k2 < nb; k2++) {
-                    var hb = GenArt.hash16(w + 41, k2, 8);
-                    var ba = ((k2 * 256) / nb + (hb % 40)) % 256;
-                    dc.fillCircle(x + (bd * GenArt.isin(ba + 64)) / 127,
-                                  y + (bd * GenArt.isin(ba)) / 127, scl(1));
+                dc.fillCircle(xm, ym, 5);
+                for (var k = 0; k < 2; k++) {
+                    var hb = GenArt.hash16(i + 41, k, 8);
+                    var ba = (k * 256) / 2 + (hb % 40);
+                    dc.fillCircle(xm + (6 * GenArt.isin(ba + 64)) / 127,
+                                  ym + (6 * GenArt.isin(ba)) / 127, 1);
                 }
                 dc.setColor(Gfx.COLOR_WHITE, Gfx.COLOR_TRANSPARENT);
-                dc.fillCircle(x, y, wr);
-                _ink -= (nb + 2);
+                dc.fillCircle(xm, ym, 2);
+            } else {
+                var xt = coordX(a2, li);
+                var yt = coordY(a2, li);
+                dc.drawLine(xm, ym, xt, yt);
+                // nodule tip: deep blue when rested, gray on a rough night
+                dc.setColor((wakes == 0) ? Gfx.COLOR_BLUE : Gfx.COLOR_DK_GRAY,
+                            Gfx.COLOR_TRANSPARENT);
+                dc.fillCircle(xt, yt, 1);
             }
         }
     }

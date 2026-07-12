@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """moss_grove_lunar -- sleep-nucleus PROPOSAL C for two-worlds V2: moon spores.
 
-The MINIMAL fix: geometry identical to the shipped spore clump (same scatter,
+NOT CHOSEN (2026-07: the owner picked B, the root star, now folded into
+moss_grove itself); kept as a reference alternative for sleep_compare.py.
+This file freezes the ORIGINAL clump geometry (including its reach), since
+the base class no longer carries it.
+
+The MINIMAL fix: geometry identical to the original spore clump (same scatter,
 same sizes, same wake specks), but the quality ramp never leaves the night
-palette. The shipped SLEEP_RAMP walks DK_RED->RED->ORANGE for short nights --
-the effort beads' exact hues in the same filled-dot shape, so a bad night reads
-as a workout (owner, 2026-07). Effort keeps the warm hues exclusively; sleep
-quality becomes moonlight:
+palette. The original SLEEP_RAMP walked DK_RED->RED->ORANGE for short nights
+-- the effort beads' exact hues in the same filled-dot shape, so a bad night
+read as a workout. Effort keeps the warm hues exclusively; sleep quality
+becomes moonlight:
 
   rested       ->  deep blue clump     (DK_BLUE / BLUE)
   ok           ->  pale blue
@@ -41,16 +46,29 @@ MOON_RAMP = [COLOR_DK_GRAY, COLOR_LT_GRAY, COLOR_LT_GRAY, COLOR_BLUE,
 
 class MossGroveLunar(mg.MossGrove):
 
-    # line-for-line the shipped draw_spore with SLEEP_RAMP -> MOON_RAMP;
-    # spore_reach (and so the episode keep-out) is inherited unchanged
-    def draw_spore(self, dc, mins, wakes, ink):
+    # the original clump's footprint (was MossGrove.spore_reach before the
+    # root star landed): -25% vs the node spread, wakes widen the scatter
+    def sleep_reach(self, mins, wakes):
+        if mins <= 0:
+            return 0
+        hours = idiv(mins, 60)
+        reach = 6 + 2 * hours
+        if reach > 28:
+            reach = 28
+        reach += 3 * wakes
+        if reach > 40:
+            reach = 40
+        return idiv(scl(reach) * 3, 4)
+
+    # line-for-line the original draw_spore with SLEEP_RAMP -> MOON_RAMP
+    def draw_sleep(self, dc, mins, wakes, ink):
         if mins <= 0:
             return ink
         hours = idiv(mins, 60)
         slot = sleep_slot(mins) - wakes        # restless -> dimmer
         if slot < 0:
             slot = 0
-        reach = self.spore_reach(mins, wakes)
+        reach = self.sleep_reach(mins, wakes)
         rim = idiv(reach * 2, 3)
         dc.setColor(MOON_RAMP[slot], COLOR_TRANSPARENT)
         dc.fillCircle(CX, CY, scl(3))
