@@ -29,6 +29,12 @@ TREATMENT (episodes layer only; everything else inherited from moss_grove):
                    (owner, 2026-07-14: no kink, thicker, thick at each
                    end). The bead's dark ring caps the tip; the tuft blob /
                    rim fringe covers the base.
+  spread           bead angles walk a golden sequence (index * 97 & 255 +
+                   a per-day phase + small jitter) and tufts are dealt
+                   round-robin instead of hashed, so beads stop piling up
+                   on one another (owner, 2026-07-14: less overlap).
+                   Cheaper than ship -- one hash16 per bead dropped, no
+                   new state, no collision pass.
 
 Contiguity self-heals as the day accretes: once the rim overtakes the
 keep-out the clamps never fire, no stalks, and the geometry is identical to
@@ -151,9 +157,21 @@ class MossGroveStalks(mg.MossGrove):
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
-        # >>> episodes: EXACT per-bead keep-out, rim embed, stalks ------------
+        # >>> episodes: EXACT per-bead keep-out, rim embed, stalks, spread ----
         # rl = the root star's true reach (outermost tip radius). The ship
         # blanket (rl + 20 + scl(6)) priced every bead at the worst case.
+        #
+        # Bead ANGLES walk a golden sequence (97 ~ 256/phi^2, the golden
+        # angle) from a per-day phase instead of independent hashes: any
+        # first k beads are near-uniformly spread, so beads stop piling up
+        # (owner, 2026-07-14: less overlap). Index-based, so an existing
+        # bead never moves when a new episode opens; +-10 hash jitter keeps
+        # it from reading mechanical. Tufts are dealt round-robin for the
+        # same reason -- and both TOGETHER stay spread: episodes e, e+ntuft
+        # share a tuft and their golden offsets differ by ntuft*97 & 255,
+        # which is a wide angle for every ntuft in 1..7. Costs LESS than
+        # ship (drops the hash16 tuft pick).
+        ph = seed & 255
         rl = root_len(rec.sleep_seed) if rec.sleep_seed > 0 else 0
         for e in range(rec.nepi):
             if ink <= 0:
@@ -167,14 +185,14 @@ class MossGroveStalks(mg.MossGrove):
             sx = None                       # stalk anchor when displaced
             sy = 0
             if ntuft > 0:
-                t = imod(hash16(seed, e, 41), ntuft)
+                t = imod(e, ntuft)          # round-robin, not hash: even load
                 hj = hash16(seed, t, 31)
                 ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
                 rim = self.er[idiv(ta * NA, 256)]
                 trr0 = idiv(rim * (85 + (hj >> 8) % 30), 100)  # REAL tuft
                 he = hash16(seed, e, 42)
                 off = idiv(tsize, 2) + (he >> 8) % 3
-                a = he & 0xFF
+                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
                 # polar estimate of the bead centre: the tuft offset split
                 # into a radial part (folded onto the radius) and a
                 # tangential part (folded onto the ANGLE, 41 ~ 256/2pi) --
@@ -213,7 +231,8 @@ class MossGroveStalks(mg.MossGrove):
                 x = tx + idiv(off * isin(a + 64), 127)
                 y = ty + idiv(off * isin(a), 127)
             else:
-                a = imod(hash16(seed, e, 42), 256)
+                he = hash16(seed, e, 42)
+                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
                 lim = self.er[idiv(a * NA, 256)]
                 rr = idiv(lim * 3, 5)
                 if rr < need:
