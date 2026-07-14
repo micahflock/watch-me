@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """bead_compare.py -- comparison sheet for the effort-bead CONTIGUITY fix.
 
-2026-07-13 wrist: on a low-movement morning the effort beads float in black
-space, detached from the moss. Cause: the root-star keep-out (root_len + 20
-+ scl(6), sized for the worst-case bead) exceeds the morning rim, so the
-clamp pushes every bead off the cushion -- and, in the tuft branch, off its
-own tuft. Two proposals against ship:
+2026-07-13 wrist: on a low-movement morning the effort beads floated in
+black space, detached from the moss (the root-star keep-out, sized for the
+worst-case bead, exceeded the morning rim). The owner picked A -- exact
+per-bead keep-out + rim embed + straight tapered podetium stalks +
+golden-angle spread -- which is now moss_grove's own episode treatment
+(2026-07-14); the rim-hug alternative is kept as a reference algo. This
+renders the shipped treatment against it:
 
-  A  moss_grove_stalks   exact per-bead keep-out + kinked DK_GREEN stalks
-                         connecting any still-displaced bead back to the
-                         moss (lichen podetia, the root star's segmented
-                         language). Star legibility preserved.
-  B  moss_grove_rimhug   delete the keep-out; beads sit on the crown / their
-                         real tuft and the root star (drawn last) rides on
-                         top. Smallest diff, but warm beads under the tips.
+  ship  moss_grove         the chosen contiguity treatment
+  B     moss_grove_rimhug  delete the keep-out; beads sit on the crown /
+                           their real tuft and the root star (drawn last)
+                           rides on top. Smallest diff, but warm beads
+                           under the tips -- the reason it lost.
 
 Columns: the wrist-photo situation (active day at 6:45 with two small zone-4
 episodes injected, the way a stairs-climb morning produces them before any
@@ -38,8 +38,7 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 SCALE = 2
 
 TREATMENTS = [
-    ("ship", "moss_grove"),
-    ("A  stalks", "moss_grove_stalks"),
+    ("ship (stalks)", "moss_grove"),
     ("B  rim-hug", "moss_grove_rimhug"),
 ]
 
@@ -150,8 +149,8 @@ def main():
     sheet(rows,
           ["6:45 +2 z4 (photo)"] + ACTIVE_SAMPLES + ["HEAVY 23:30"],
           os.path.join(OUT, "bead-contiguity-compare.png"),
-          "effort-bead contiguity: ship vs A (stalks) vs B (no keep-out)  --  "
-          "active day + heavy saturation")
+          "effort-bead contiguity: ship (chosen: stalks+spread) vs B (no "
+          "keep-out)  --  active day + heavy saturation")
 
 
 if __name__ == "__main__":

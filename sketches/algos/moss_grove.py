@@ -25,7 +25,14 @@ mechanically. The day organism, from the heart out:
   tufts          satellite colony clumps straddling the rim, popping in as
                  activity accrues; grains glow the dominant ELEVATED HR zone
   texture        granular green stipple + fuzzy rim fringe
-  episodes       elevated-HR events as bright peak-zone fruiting beads on tufts
+  episodes       elevated-HR events as bright peak-zone fruiting beads, kept
+                 CONTIGUOUS with the moss (owner, 2026-07-13 wrist: beads used
+                 to float free on low-movement mornings): exact per-bead
+                 root-star keep-out, embed-into-the-rim pull-in, and a straight
+                 tapered podetium stalk (flared holdfast / waist / cup at the
+                 bead's edge) for anything the star still forces out. Angles
+                 walk a golden sequence (+ per-day phase + jitter) and tufts
+                 are dealt round-robin so beads don't pile up.
 
 Time-of-day is intentionally not encoded. Self-bounded by INK (the root star
 rides OUTSIDE the budget so the night survives a saturated day -- see
@@ -64,6 +71,15 @@ def scl(v):
     return idiv(v * SCN, SCD)
 
 
+# rounded division, symmetric in sign: plain truncation shaves ~30% off the
+# stalk flare on diagonal runs (both perpendicular components round toward
+# zero). Ports as (abs + d/2) / d with the sign re-applied.
+def rdiv(v, d):
+    av = v if v >= 0 else -v
+    q = idiv(av + idiv(d, 2), d)
+    return q if v >= 0 else -q
+
+
 ROOT_MAX_H = 10        # SLEEP_CAP is 600 min
 
 
@@ -94,15 +110,6 @@ class MossGrove:
 
     def state_bytes(self):
         return self.rec.state_bytes()
-
-    # episode keep-out radius around the root star. A bead's centre can sit up
-    # to tsize/2+2 (<=16) inside its tuft radius and reach bead_r (<=18)
-    # further in; +20 here (plus the scl(6) the render adds) keeps the tips --
-    # the hours signal -- legible without pushing small beads to the horizon.
-    def sleep_reach(self, mins, wakes):
-        if mins <= 0:
-            return 0
-        return root_len(mins) + 20
 
     # last night's sleep: the silver root star under the heart of the moss.
     # wakes = wake-up events 12-6am: each one snaps a root at a white speck
@@ -321,9 +328,25 @@ class MossGrove:
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
-        # --- episodes: bright fruiting beads on tufts (else crown) ---
-        # keep beads out of the centre so they don't overlap the root star
-        keepout = self.sleep_reach(rec.sleep_seed, rec.wake_seed) + scl(6)
+        # --- episodes: contiguous fruiting beads (owner, 2026-07) ---
+        # Three rules keep every bead ON the moss without covering the root
+        # star (the old blanket keep-out, root_len + 20 + scl(6), floated
+        # beads into black space all morning):
+        #   keep-out  exact per bead -- inner edge clears the outermost root
+        #             tip by 3, measured on the bead's own polar estimate;
+        #   embed     an offset that overshoots the rim is pulled back until
+        #             a third of the bead is buried (a tangent kiss on a fat
+        #             bead reads detached);
+        #   stalk     anything the star still forces out grows a straight
+        #             tapered podetium from the moss (rim / its REAL tuft):
+        #             flared holdfast, waist 40% up, cup at the bead's edge.
+        # Angles walk a golden sequence (97 ~ 256/phi^2) from a per-day
+        # phase, +-10 jitter, and tufts are dealt round-robin: any first k
+        # beads stay near-uniformly spread (less overlap, owner 2026-07-14),
+        # and a bead never moves when a new episode opens. Cheaper than the
+        # hashed placement it replaced (one hash16 per bead dropped).
+        ph = seed & 255
+        rl = root_len(rec.sleep_seed) if rec.sleep_seed > 0 else 0
         for e in range(rec.nepi):
             if ink <= 0:
                 break
@@ -334,28 +357,116 @@ class MossGrove:
             bead = 4 + idiv(mag, 30)
             if bead > 18:
                 bead = 18
+            # the bead's inner edge must clear the outermost root tip by 3
+            need = (rl + bead + 3) if rl > 0 else 0
+            sx = None                       # stalk anchor when displaced
+            sy = 0
             if ntuft > 0:
-                t = imod(hash16(seed, e, 41), ntuft)
+                t = imod(e, ntuft)          # round-robin, not hash: even load
                 hj = hash16(seed, t, 31)
                 ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
-                trr = idiv(self.er[idiv(ta * NA, 256)] * (85 + (hj >> 8) % 30),
-                           100)
-                if trr < keepout:
-                    trr = keepout              # push out past the nucleus
-                tx = px(CX, trr, ta)
-                ty = py(CY, trr, ta)
+                rim = self.er[idiv(ta * NA, 256)]
+                trr0 = idiv(rim * (85 + (hj >> 8) % 30), 100)  # REAL tuft
                 he = hash16(seed, e, 42)
                 off = idiv(tsize, 2) + (he >> 8) % 3
-                a = he & 0xFF
+                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
+                # polar estimate of the bead centre: the tuft offset split
+                # into a radial part (folded onto the radius) and a
+                # tangential part (folded onto the ANGLE, 41 ~ 256/2pi) --
+                # the rim the bead must touch is the rim at the bead's own
+                # angle, not the tuft's (isin masks & 255, negatives fine).
+                dr = idiv(off * isin(a - ta + 64), 127)
+                tg = idiv(off * isin(a - ta), 127)
+                trr = trr0
+                rad = trr + dr
+                if rad < need:              # star pushes it out
+                    trr = need - dr
+                    rad = need
+                da = idiv(tg * 41, rad) if rad > 0 else 0
+                if da > 64:                 # tiny-rad guard: keep the angle
+                    da = 64                 # correction (and the LUT index
+                if da < -64:                # below) in range
+                    da = -64
+                ab = imod(ta + da + 256, 256)
+                rimb = self.er[idiv(ab * NA, 256)]
+                # required embed depth grows with the bead: a tangent kiss
+                # on a fat bead reads detached (black shoulders around a
+                # 1 px contact), so bury a third of it
+                emb = 3 + idiv(bead, 3)
+                if rad - bead > rimb - emb:
+                    dt = (rad - bead) - (rimb - emb)  # overshot: pull in as
+                    if dt > rad - need:               # far as the star
+                        dt = rad - need               # allows
+                    if dt > 0:
+                        trr -= dt
+                        rad -= dt
+                    if trr < 2:             # tiny-rim corner: stay put
+                        rad += 2 - trr
+                        trr = 2
+                if rad - bead > rimb - 2:   # not solidly embedded: stalk
+                    sx = px(CX, trr0, ta)   # from the REAL tuft it rides
+                    sy = py(CY, trr0, ta)   # (the mound occludes the
+                                            # stalk's inner run)
+                tx = px(CX, trr, ta)
+                ty = py(CY, trr, ta)
                 x = tx + idiv(off * isin(a + 64), 127)
                 y = ty + idiv(off * isin(a), 127)
             else:
-                a = imod(hash16(seed, e, 42), 256)
-                rr = idiv(self.er[idiv(a * NA, 256)] * 3, 5)
-                if rr < keepout:
-                    rr = keepout
+                he = hash16(seed, e, 42)
+                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
+                lim = self.er[idiv(a * NA, 256)]
+                rr = idiv(lim * 3, 5)
+                if rr < need:
+                    rr = need
+                if rr - bead > lim - 2:     # not solidly on the crown:
+                    sx = px(CX, lim - 2, a) # stalk anchored just inside the
+                    sy = py(CY, lim - 2, a) # rim, under the fringe
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
+            if sx is not None:
+                # STRAIGHT tapered stalk (owner, 2026-07-14: no kink, and
+                # push the flare): a podetium with a visible cup. Wide
+                # holdfast where it leaves the moss, waist 40% up, then a
+                # flare that ends at the bead's EDGE -- ending at the bead
+                # centre hid the tip flare under the dark ring. Two CONVEX
+                # trapezoids (the on-device fillPolygon is only trusted
+                # convex); perpendicular half-widths 5/1/4 from the true
+                # stalk direction; ln is the octagonal length approximation
+                # (max + min/2, ~12%), all integer.
+                dx = x - sx
+                dy = y - sy
+                adx = dx if dx >= 0 else -dx
+                ady = dy if dy >= 0 else -dy
+                ln = (adx if adx > ady else ady) \
+                    + idiv((adx if adx < ady else ady), 2)
+                if ln < 1:
+                    ln = 1
+                pb = bead - 2               # tuck the cup 2 px under the disc
+                if pb > ln - 3:
+                    pb = ln - 3
+                if pb < 0:
+                    pb = 0
+                ex = x - idiv(dx * pb, ln)  # cup lip, at the bead's edge
+                ey = y - idiv(dy * pb, ln)
+                wx = sx + idiv((ex - sx) * 2, 5)   # waist 40% up the stalk
+                wy = sy + idiv((ey - sy) * 2, 5)
+                bxw = rdiv(-dy * 5, ln)     # holdfast (half-width 5)
+                byw = rdiv(dx * 5, ln)
+                wxw = rdiv(-dy, ln)         # waist (half-width 1) --
+                wyw = rdiv(dx, ln)          # never let it pinch to zero
+                if wxw == 0 and wyw == 0:
+                    if adx >= ady:
+                        wyw = 1
+                    else:
+                        wxw = 1
+                txw = rdiv(-dy * 4, ln)     # cup (half-width 4)
+                tyw = rdiv(dx * 4, ln)
+                dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
+                dc.fillPolygon([(sx - bxw, sy - byw), (sx + bxw, sy + byw),
+                                (wx + wxw, wy + wyw), (wx - wxw, wy - wyw)])
+                dc.fillPolygon([(wx - wxw, wy - wyw), (wx + wxw, wy + wyw),
+                                (ex + txw, ey + tyw), (ex - txw, ey - tyw)])
+                ink -= 2
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead + 1)
             dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
