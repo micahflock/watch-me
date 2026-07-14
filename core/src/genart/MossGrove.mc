@@ -22,7 +22,13 @@ using Toybox.Graphics as Gfx;
 //   tufts          satellite colony clumps straddling the rim, popping in as
 //                  activity accrues; grains glow the dominant ELEVATED HR zone.
 //   texture        granular green stipple + a fuzzy rim fringe.
-//   episodes       elevated-HR events as bright peak-zone fruiting beads.
+//   episodes       elevated-HR events as bright peak-zone fruiting beads,
+//                  kept CONTIGUOUS with the moss (owner, 2026-07-13 wrist:
+//                  beads used to float free on low-movement mornings): exact
+//                  per-bead root-star keep-out, embed-into-the-rim pull-in,
+//                  and a straight tapered podetium stalk for anything the
+//                  star still forces out. Angles walk a golden sequence and
+//                  tufts are dealt round-robin so beads don't pile up.
 //
 // All integer math (the watchdog is the binding constraint). A per-frame INK
 // budget caps draw work so a maximal day stays bounded (the root star rides
@@ -94,6 +100,7 @@ class MossGrove {
     var _sp;                   // per-day shape params [p1,p2,f1,f2,am1,am2,p3,am3]
     var _lamp;                 // per-lobe amplitude percents (40..170), f1 used
     var _tri;                  // reusable triangle for fillPolygon
+    var _quad;                 // reusable trapezoid for the bead stalks
     var _er;                   // per-frame outline LUT: edge radius at NA angles
     var _evx; var _evy;        // ... and the 100% fan vertex offsets
     var _ink;
@@ -105,6 +112,7 @@ class MossGrove {
         _sp = new [8];
         _lamp = new [5];
         _tri = [[0, 0], [0, 0], [0, 0]];
+        _quad = [[0, 0], [0, 0], [0, 0], [0, 0]];
         _er = new [NA];
         _evx = new [NA];
         _evy = new [NA];
@@ -228,6 +236,15 @@ class MossGrove {
     }
 
     function scl(v) { return v * SCN / SCD; }
+
+    // rounded division, symmetric in sign: plain truncation shaves ~30% off
+    // the stalk flare on diagonal runs (both perpendicular components round
+    // toward zero)
+    function rdiv(v, d) {
+        var av = (v >= 0) ? v : -v;
+        var q = (av + d / 2) / d;
+        return (v >= 0) ? q : -q;
+    }
 
     function rootHours(mins) {
         var h = mins / 60;
@@ -377,9 +394,25 @@ class MossGrove {
             _ink -= 1;
         }
 
-        // episodes: bright fruiting beads on tufts (else crown), kept out of the
-        // centre so they don't overlap the root star.
-        var keepout = sleepReach(_sleepSeed, _wakeSeed) + scl(6);
+        // episodes: contiguous fruiting beads (owner, 2026-07). Three rules
+        // keep every bead ON the moss without covering the root star (the
+        // old blanket keep-out, rootLen + 20 + scl(6), floated beads into
+        // black space all morning):
+        //   keep-out  exact per bead -- inner edge clears the outermost root
+        //             tip by 3, measured on the bead's own polar estimate;
+        //   embed     an offset that overshoots the rim is pulled back until
+        //             a third of the bead is buried (a tangent kiss on a fat
+        //             bead reads detached);
+        //   stalk     anything the star still forces out grows a straight
+        //             tapered podetium from the moss (rim / its REAL tuft):
+        //             flared holdfast, waist 40% up, cup at the bead's edge.
+        // Angles walk a golden sequence (97 ~ 256/phi^2) from a per-day
+        // phase, +-10 jitter, and tufts are dealt round-robin: any first k
+        // beads stay near-uniformly spread (less overlap, owner 2026-07-14),
+        // and a bead never moves when a new episode opens. Cheaper than the
+        // hashed placement it replaced (one hash16 per bead dropped).
+        var ph = seed & 255;
+        var rl = (_sleepSeed > 0) ? rootLen(_sleepSeed) : 0;
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
@@ -387,26 +420,118 @@ class MossGrove {
             // while the floor stays put. Bead is a final px radius (already scaled).
             var bead = 4 + mag / 30;
             if (bead > 18) { bead = 18; }
+            // the bead's inner edge must clear the outermost root tip by 3
+            var need = (rl > 0) ? (rl + bead + 3) : 0;
+            var stx = null; var sty = 0;    // stalk anchor when displaced
             var x; var y;
             if (ntuft > 0) {
-                var t = GenArt.hash16(seed, e, 41) % ntuft;
+                var t = e % ntuft;          // round-robin, not hash: even load
                 var hj = GenArt.hash16(seed, t, 31);
                 var ta = ((t * 256) / ntuft + (hj & 31)) % 256;
-                var trr = (_er[(ta * NA) / 256] * (85 + (hj >> 8) % 30)) / 100;
-                if (trr < keepout) { trr = keepout; }
-                var tx = coordX(ta, trr);
-                var ty = coordY(ta, trr);
+                var rim = _er[(ta * NA) / 256];
+                var trr0 = (rim * (85 + (hj >> 8) % 30)) / 100;  // REAL tuft
                 var he = GenArt.hash16(seed, e, 42);
                 var off = tsize / 2 + (he >> 8) % 3;
-                var a = he & 0xFF;
+                var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
+                // polar estimate of the bead centre: the tuft offset split
+                // into a radial part (folded onto the radius) and a
+                // tangential part (folded onto the ANGLE, 41 ~ 256/2pi) --
+                // the rim the bead must touch is the rim at the bead's own
+                // angle, not the tuft's (isin masks & 255, negatives fine).
+                var dr = (off * GenArt.isin(a - ta + 64)) / 127;
+                var tg = (off * GenArt.isin(a - ta)) / 127;
+                var trr = trr0;
+                var rad = trr + dr;
+                if (rad < need) {           // star pushes it out
+                    trr = need - dr;
+                    rad = need;
+                }
+                var da = (rad > 0) ? ((tg * 41) / rad) : 0;
+                if (da > 64) { da = 64; }   // tiny-rad guard: keep the angle
+                if (da < -64) { da = -64; } // correction (and the LUT index) in range
+                var ab = (ta + da + 256) % 256;
+                var rimb = _er[(ab * NA) / 256];
+                // required embed depth grows with the bead: a tangent kiss
+                // on a fat bead reads detached (black shoulders around a
+                // 1 px contact), so bury a third of it
+                var emb = 3 + bead / 3;
+                if (rad - bead > rimb - emb) {
+                    var dt = (rad - bead) - (rimb - emb);  // overshot: pull in
+                    if (dt > rad - need) { dt = rad - need; }  // as far as the
+                    if (dt > 0) {                              // star allows
+                        trr -= dt;
+                        rad -= dt;
+                    }
+                    if (trr < 2) {          // tiny-rim corner: stay put
+                        rad += 2 - trr;
+                        trr = 2;
+                    }
+                }
+                if (rad - bead > rimb - 2) {  // not solidly embedded: stalk
+                    stx = coordX(ta, trr0);   // from the REAL tuft it rides
+                    sty = coordY(ta, trr0);   // (the mound occludes the
+                }                             // stalk's inner run)
+                var tx = coordX(ta, trr);
+                var ty = coordY(ta, trr);
                 x = tx + (off * GenArt.isin(a + 64)) / 127;
                 y = ty + (off * GenArt.isin(a)) / 127;
             } else {
-                var a = GenArt.hash16(seed, e, 42) % 256;
-                var rr = (_er[(a * NA) / 256] * 3) / 5;
-                if (rr < keepout) { rr = keepout; }
+                var he = GenArt.hash16(seed, e, 42);
+                var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
+                var lim = _er[(a * NA) / 256];
+                var rr = (lim * 3) / 5;
+                if (rr < need) { rr = need; }
+                if (rr - bead > lim - 2) {    // not solidly on the crown:
+                    stx = coordX(a, lim - 2); // stalk anchored just inside
+                    sty = coordY(a, lim - 2); // the rim, under the fringe
+                }
                 x = coordX(a, rr);
                 y = coordY(a, rr);
+            }
+            if (stx != null) {
+                // STRAIGHT tapered stalk (owner, 2026-07-14: no kink, push
+                // the flare): a podetium with a visible cup. Wide holdfast
+                // where it leaves the moss, waist 40% up, then a flare that
+                // ends at the bead's EDGE -- ending at the bead centre hid
+                // the tip flare under the dark ring. Two CONVEX trapezoids
+                // (fillPolygon is only trusted convex); perpendicular
+                // half-widths 5/1/4 from the true stalk direction; ln is the
+                // octagonal length approximation (max + min/2), all integer.
+                var dx = x - stx;
+                var dy = y - sty;
+                var adx = (dx >= 0) ? dx : -dx;
+                var ady = (dy >= 0) ? dy : -dy;
+                var ln = ((adx > ady) ? adx : ady)
+                       + ((adx < ady) ? adx : ady) / 2;
+                if (ln < 1) { ln = 1; }
+                var pb = bead - 2;          // tuck the cup 2 px under the disc
+                if (pb > ln - 3) { pb = ln - 3; }
+                if (pb < 0) { pb = 0; }
+                var ex = x - (dx * pb) / ln;   // cup lip, at the bead's edge
+                var ey = y - (dy * pb) / ln;
+                var wx = stx + ((ex - stx) * 2) / 5;  // waist 40% up the stalk
+                var wy = sty + ((ey - sty) * 2) / 5;
+                var bxw = rdiv(-dy * 5, ln);   // holdfast (half-width 5)
+                var byw = rdiv(dx * 5, ln);
+                var wxw = rdiv(-dy, ln);       // waist (half-width 1) --
+                var wyw = rdiv(dx, ln);        // never let it pinch to zero
+                if (wxw == 0 && wyw == 0) {
+                    if (adx >= ady) { wyw = 1; } else { wxw = 1; }
+                }
+                var txw = rdiv(-dy * 4, ln);   // cup (half-width 4)
+                var tyw = rdiv(dx * 4, ln);
+                dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
+                _quad[0][0] = stx - bxw;  _quad[0][1] = sty - byw;
+                _quad[1][0] = stx + bxw;  _quad[1][1] = sty + byw;
+                _quad[2][0] = wx + wxw;   _quad[2][1] = wy + wyw;
+                _quad[3][0] = wx - wxw;   _quad[3][1] = wy - wyw;
+                dc.fillPolygon(_quad);
+                _quad[0][0] = wx - wxw;   _quad[0][1] = wy - wyw;
+                _quad[1][0] = wx + wxw;   _quad[1][1] = wy + wyw;
+                _quad[2][0] = ex + txw;   _quad[2][1] = ey + tyw;
+                _quad[3][0] = ex - txw;   _quad[3][1] = ey - tyw;
+                dc.fillPolygon(_quad);
+                _ink -= 2;
             }
             dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
             dc.fillCircle(x, y, bead + 1);
@@ -442,15 +567,6 @@ class MossGrove {
             dc.fillCircle(gx, gy, 1);
             _ink -= 1;
         }
-    }
-
-    // episode keep-out radius around the root star. A bead's centre can sit up
-    // to tsize/2+2 (<=16) inside its tuft radius and reach bead_r (<=18)
-    // further in; +20 here (plus the scl(6) the render adds) keeps the tips --
-    // the hours signal -- legible without pushing small beads to the horizon.
-    function sleepReach(mins, wakes) {
-        if (mins <= 0) { return 0; }
-        return rootLen(mins) + 20;
     }
 
     // last night's sleep: the silver root star under the heart of the moss.

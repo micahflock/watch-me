@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """moss_grove_rimhug -- bead-contiguity PROPOSAL B: drop the keep-out.
 
-Same problem statement as moss_grove_stalks (beads detach from the moss on a
-low-movement morning because the root-star keep-out exceeds the rim). B is
-the minimal fix: DELETE the keep-out. Beads sit where the moss is -- 60% of
+NOT CHOSEN (2026-07-14: the owner picked A -- exact keep-out + embed +
+tapered podetium stalks + golden-angle spread -- now folded into moss_grove
+itself); kept as a reference alternative for bead_compare.py. This file
+freezes the SHIP-era episode placement (hashed angles, hashed tuft pick)
+minus the keep-out, since the base class no longer carries either.
+
+Same problem statement as the chosen treatment (beads detached from the moss
+on a low-movement morning because the root-star keep-out exceeded the rim).
+B was the minimal fix: DELETE the keep-out. Beads sit where the moss is -- 60% of
 the rim (on the crown), or riding their REAL tuft -- and the root star,
 which is drawn LAST precisely so it survives on top of the day's growth,
 rides over them.
