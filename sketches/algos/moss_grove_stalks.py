@@ -55,6 +55,15 @@ BASE_DIV, TUFT_DIV, AMPREF = mg.BASE_DIV, mg.TUFT_DIV, mg.AMPREF
 scl, root_len = mg.scl, mg.root_len
 
 
+# rounded division, symmetric in sign: plain truncation shaves ~30% off the
+# stalk flare on diagonal runs (both perpendicular components round toward
+# zero). Ports as (abs + d/2) / d with the sign re-applied.
+def rdiv(v, d):
+    av = v if v >= 0 else -v
+    q = idiv(av + idiv(d, 2), d)
+    return q if v >= 0 else -q
+
+
 class MossGroveStalks(mg.MossGrove):
 
     # render() is the parent's line for line EXCEPT the episodes block,
@@ -215,13 +224,15 @@ class MossGroveStalks(mg.MossGrove):
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
             if sx is not None:
-                # STRAIGHT tapered stalk (owner, 2026-07-14: no kink): flared
-                # where it leaves the moss, waisted in the middle, flaring
-                # again under the bead -- a podetium. Two CONVEX trapezoids
-                # (base->waist, waist->tip); the on-device fillPolygon is
-                # only trusted convex. Perpendicular half-widths 3/1/2 from
-                # the true stalk direction; ln is the octagonal length
-                # approximation (max + min/2, ~12%), all integer.
+                # STRAIGHT tapered stalk (owner, 2026-07-14: no kink, and
+                # push the flare): a podetium with a visible cup. Wide
+                # holdfast where it leaves the moss, waist 40% up, then a
+                # flare that ends at the bead's EDGE -- ending at the bead
+                # centre hid the tip flare under the dark ring. Two CONVEX
+                # trapezoids (the on-device fillPolygon is only trusted
+                # convex); perpendicular half-widths 5/1/4 from the true
+                # stalk direction; ln is the octagonal length approximation
+                # (max + min/2, ~12%), all integer.
                 dx = x - sx
                 dy = y - sy
                 adx = dx if dx >= 0 else -dx
@@ -230,24 +241,31 @@ class MossGroveStalks(mg.MossGrove):
                     + idiv((adx if adx < ady else ady), 2)
                 if ln < 1:
                     ln = 1
-                bxw = idiv(-dy * 3, ln)     # base flare (half-width 3)
-                byw = idiv(dx * 3, ln)
-                wxw = idiv(-dy, ln)         # waist (half-width 1) --
-                wyw = idiv(dx, ln)          # never let it pinch to zero
+                pb = bead - 2               # tuck the cup 2 px under the disc
+                if pb > ln - 3:
+                    pb = ln - 3
+                if pb < 0:
+                    pb = 0
+                ex = x - idiv(dx * pb, ln)  # cup lip, at the bead's edge
+                ey = y - idiv(dy * pb, ln)
+                wx = sx + idiv((ex - sx) * 2, 5)   # waist 40% up the stalk
+                wy = sy + idiv((ey - sy) * 2, 5)
+                bxw = rdiv(-dy * 5, ln)     # holdfast (half-width 5)
+                byw = rdiv(dx * 5, ln)
+                wxw = rdiv(-dy, ln)         # waist (half-width 1) --
+                wyw = rdiv(dx, ln)          # never let it pinch to zero
                 if wxw == 0 and wyw == 0:
                     if adx >= ady:
                         wyw = 1
                     else:
                         wxw = 1
-                txw = idiv(-dy * 2, ln)     # tip flare under the bead
-                tyw = idiv(dx * 2, ln)
-                mx = idiv(sx + x, 2)
-                my = idiv(sy + y, 2)
+                txw = rdiv(-dy * 4, ln)     # cup (half-width 4)
+                tyw = rdiv(dx * 4, ln)
                 dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
                 dc.fillPolygon([(sx - bxw, sy - byw), (sx + bxw, sy + byw),
-                                (mx + wxw, my + wyw), (mx - wxw, my - wyw)])
-                dc.fillPolygon([(mx - wxw, my - wyw), (mx + wxw, my + wyw),
-                                (x + txw, y + tyw), (x - txw, y - tyw)])
+                                (wx + wxw, wy + wyw), (wx - wxw, wy - wyw)])
+                dc.fillPolygon([(wx - wxw, wy - wyw), (wx + wxw, wy + wyw),
+                                (ex + txw, ey + tyw), (ex - txw, ey - tyw)])
                 ink -= 2
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead + 1)
