@@ -22,18 +22,18 @@ TREATMENT (episodes layer only; everything else inherited from moss_grove):
                    it overlaps the mound by 2 px -- as far as the star's
                    keep-out allows.
   stalks           a bead the star still forces off the moss grows a
-                   two-segment kinked DK_GREEN stalk from the moss (the rim
+                   STRAIGHT tapered DK_GREEN stalk from the moss (the rim
                    at its angle, or the REAL tuft it was seeded on) out to
-                   the bead -- a lichen podetium: fruiting bodies on stalks,
-                   in the same segmented language as the root star. The
-                   bead's dark ring caps the stalk tip; the tuft blob / rim
-                   fringe covers the base.
+                   the bead -- a lichen podetium: flared where it leaves
+                   the moss, waisted mid-run, flaring again under the bead
+                   (owner, 2026-07-14: no kink, thicker, thick at each
+                   end). The bead's dark ring caps the tip; the tuft blob /
+                   rim fringe covers the base.
 
 Contiguity self-heals as the day accretes: once the rim overtakes the
 keep-out the clamps never fire, no stalks, and the geometry is identical to
-ship. Cost: +1 isin per bead; 2 drawLine + 1 fillCircle (+ ~4 isin
-+ 1 hash16) per DISPLACED bead, beads capped at 16 and mostly attached at
-saturation.
+ship. Cost: +2 isin per bead; 2 fillPolygon per DISPLACED bead, beads
+capped at 16 and mostly attached at saturation.
 """
 import importlib.util
 import os
@@ -157,7 +157,6 @@ class MossGroveStalks(mg.MossGrove):
             need = (rl + bead + 3) if rl > 0 else 0
             sx = None                       # stalk anchor when displaced
             sy = 0
-            pa = 0
             if ntuft > 0:
                 t = imod(hash16(seed, e, 41), ntuft)
                 hj = hash16(seed, t, 31)
@@ -198,8 +197,8 @@ class MossGroveStalks(mg.MossGrove):
                         trr = 2
                 if rad - bead > rimb - 2:   # not solidly embedded: stalk
                     sx = px(CX, trr0, ta)   # from the REAL tuft it rides
-                    sy = py(CY, trr0, ta)   # (the mound occludes the inner
-                    pa = ta                 # run of the line)
+                    sy = py(CY, trr0, ta)   # (the mound occludes the
+                                            # stalk's inner run)
                 tx = px(CX, trr, ta)
                 ty = py(CY, trr, ta)
                 x = tx + idiv(off * isin(a + 64), 127)
@@ -213,27 +212,42 @@ class MossGroveStalks(mg.MossGrove):
                 if rr - bead > lim - 2:     # not solidly on the crown:
                     sx = px(CX, lim - 2, a) # stalk anchored just inside the
                     sy = py(CY, lim - 2, a) # rim, under the fringe
-                    pa = a
                 x = px(CX, rr, a)
                 y = py(CY, rr, a)
             if sx is not None:
-                # two-segment stalk with a jittered mid knuckle -- the root
-                # star's kinked language, in the moss's own dark green.
-                # Drawn twice, offset 1 px perpendicular: a 1 px hair reads
-                # floaty at wrist scale, 2 px reads grown.
-                pxs = isin(pa + 128)
-                pys = isin(pa + 64)
-                j = imod(hash16(seed, e, 43), 7) - 3
-                mx = idiv(sx + x, 2) + idiv(j * pxs, 127)
-                my = idiv(sy + y, 2) + idiv(j * pys, 127)
-                ox = 1 if pxs > 0 else (-1 if pxs < 0 else 0)
-                oy = 1 if pys > 0 else (-1 if pys < 0 else 0)
+                # STRAIGHT tapered stalk (owner, 2026-07-14: no kink): flared
+                # where it leaves the moss, waisted in the middle, flaring
+                # again under the bead -- a podetium. Two CONVEX trapezoids
+                # (base->waist, waist->tip); the on-device fillPolygon is
+                # only trusted convex. Perpendicular half-widths 3/1/2 from
+                # the true stalk direction; ln is the octagonal length
+                # approximation (max + min/2, ~12%), all integer.
+                dx = x - sx
+                dy = y - sy
+                adx = dx if dx >= 0 else -dx
+                ady = dy if dy >= 0 else -dy
+                ln = (adx if adx > ady else ady) \
+                    + idiv((adx if adx < ady else ady), 2)
+                if ln < 1:
+                    ln = 1
+                bxw = idiv(-dy * 3, ln)     # base flare (half-width 3)
+                byw = idiv(dx * 3, ln)
+                wxw = idiv(-dy, ln)         # waist (half-width 1) --
+                wyw = idiv(dx, ln)          # never let it pinch to zero
+                if wxw == 0 and wyw == 0:
+                    if adx >= ady:
+                        wyw = 1
+                    else:
+                        wxw = 1
+                txw = idiv(-dy * 2, ln)     # tip flare under the bead
+                tyw = idiv(dx * 2, ln)
+                mx = idiv(sx + x, 2)
+                my = idiv(sy + y, 2)
                 dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
-                dc.drawLine(sx, sy, mx, my)
-                dc.drawLine(mx, my, x, y)
-                dc.drawLine(sx + ox, sy + oy, mx + ox, my + oy)
-                dc.drawLine(mx + ox, my + oy, x + ox, y + oy)
-                dc.fillCircle(mx, my, 1)
+                dc.fillPolygon([(sx - bxw, sy - byw), (sx + bxw, sy + byw),
+                                (mx + wxw, my + wyw), (mx - wxw, my - wyw)])
+                dc.fillPolygon([(mx - wxw, my - wyw), (mx + wxw, my + wyw),
+                                (x + txw, y + tyw), (x - txw, y - tyw)])
                 ink -= 2
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead + 1)
