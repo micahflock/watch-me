@@ -22,13 +22,16 @@ using Toybox.Graphics as Gfx;
 //   tufts          satellite colony clumps straddling the rim, popping in as
 //                  activity accrues; grains glow the dominant ELEVATED HR zone.
 //   texture        granular green stipple + a fuzzy rim fringe.
-//   episodes       elevated-HR events as bright peak-zone fruiting beads,
-//                  kept CONTIGUOUS with the moss (owner, 2026-07-13 wrist:
-//                  beads used to float free on low-movement mornings): exact
-//                  per-bead root-star keep-out, embed-into-the-rim pull-in,
+//   episodes       elevated-HR events as bright peak-zone fruiting beads on
+//                  ONE golden fruit ring, kept CONTIGUOUS with the moss
+//                  (owner, 2026-07-13 wrist: beads used to float free on
+//                  low-movement mornings): exact per-bead root-star keep-out
 //                  and a straight tapered podetium stalk for anything the
-//                  star still forces out. Angles walk a golden sequence and
-//                  tufts are dealt round-robin so beads don't pile up.
+//                  star forces off the moss. Beads NEVER ride tufts (owner,
+//                  2026-07-17 wrist: the ~8-14 px tuft offset huddled
+//                  same-tuft beads no matter their angles) -- one shared
+//                  golden-sequence angle + a parity-staggered radius per
+//                  bead; a bead whose angle meets a tuft draws in front.
 //
 // All integer math (the watchdog is the binding constraint). A per-frame INK
 // budget caps draw work so a maximal day stays bounded (the root star rides
@@ -394,23 +397,22 @@ class MossGrove {
             _ink -= 1;
         }
 
-        // episodes: contiguous fruiting beads (owner, 2026-07). Three rules
-        // keep every bead ON the moss without covering the root star (the
-        // old blanket keep-out, rootLen + 20 + scl(6), floated beads into
-        // black space all morning):
-        //   keep-out  exact per bead -- inner edge clears the outermost root
-        //             tip by 3, measured on the bead's own polar estimate;
-        //   embed     an offset that overshoots the rim is pulled back until
-        //             a third of the bead is buried (a tangent kiss on a fat
-        //             bead reads detached);
-        //   stalk     anything the star still forces out grows a straight
-        //             tapered podetium from the moss (rim / its REAL tuft):
-        //             flared holdfast, waist 40% up, cup at the bead's edge.
-        // Angles walk a golden sequence (97 ~ 256/phi^2) from a per-day
-        // phase, +-10 jitter, and tufts are dealt round-robin: any first k
-        // beads stay near-uniformly spread (less overlap, owner 2026-07-14),
-        // and a bead never moves when a new episode opens. Cheaper than the
-        // hashed placement it replaced (one hash16 per bead dropped).
+        // episodes: the golden fruit ring (owner, 2026-07). Every bead sits
+        // on ONE shared ring system; three rules keep it on the moss without
+        // covering the root star and without piling onto other beads:
+        //   angle     a golden sequence (97 ~ 256/phi^2) from a per-day
+        //             phase, +-10 jitter: any first k beads are near-
+        //             uniformly spread, and a bead never moves when a new
+        //             episode opens. Beads NEVER ride tufts -- the tuft
+        //             offset radius (~8-14 px) huddled same-tuft beads no
+        //             matter their angles (owner, 2026-07-17 wrist); a bead
+        //             whose angle meets a tuft draws in front of it.
+        //   radius    parity-staggered 50%/72% of the rim (two interleaved
+        //             rings), floored by the exact per-bead keep-out: the
+        //             bead's inner edge clears the outermost root tip by 3.
+        //   stalk     anything the star forces off the moss grows a straight
+        //             tapered podetium from just inside the rim: flared
+        //             holdfast, waist 40% up, cup at the bead's edge.
         var ph = seed & 255;
         var rl = (_sleepSeed > 0) ? rootLen(_sleepSeed) : 0;
         for (var e = 0; e < _nepi; e++) {
@@ -420,74 +422,19 @@ class MossGrove {
             // while the floor stays put. Bead is a final px radius (already scaled).
             var bead = 4 + mag / 30;
             if (bead > 18) { bead = 18; }
-            // the bead's inner edge must clear the outermost root tip by 3
             var need = (rl > 0) ? (rl + bead + 3) : 0;
             var stx = null; var sty = 0;    // stalk anchor when displaced
-            var x; var y;
-            if (ntuft > 0) {
-                var t = e % ntuft;          // round-robin, not hash: even load
-                var hj = GenArt.hash16(seed, t, 31);
-                var ta = ((t * 256) / ntuft + (hj & 31)) % 256;
-                var rim = _er[(ta * NA) / 256];
-                var trr0 = (rim * (85 + (hj >> 8) % 30)) / 100;  // REAL tuft
-                var he = GenArt.hash16(seed, e, 42);
-                var off = tsize / 2 + (he >> 8) % 3;
-                var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
-                // polar estimate of the bead centre: the tuft offset split
-                // into a radial part (folded onto the radius) and a
-                // tangential part (folded onto the ANGLE, 41 ~ 256/2pi) --
-                // the rim the bead must touch is the rim at the bead's own
-                // angle, not the tuft's (isin masks & 255, negatives fine).
-                var dr = (off * GenArt.isin(a - ta + 64)) / 127;
-                var tg = (off * GenArt.isin(a - ta)) / 127;
-                var trr = trr0;
-                var rad = trr + dr;
-                if (rad < need) {           // star pushes it out
-                    trr = need - dr;
-                    rad = need;
-                }
-                var da = (rad > 0) ? ((tg * 41) / rad) : 0;
-                if (da > 64) { da = 64; }   // tiny-rad guard: keep the angle
-                if (da < -64) { da = -64; } // correction (and the LUT index) in range
-                var ab = (ta + da + 256) % 256;
-                var rimb = _er[(ab * NA) / 256];
-                // required embed depth grows with the bead: a tangent kiss
-                // on a fat bead reads detached (black shoulders around a
-                // 1 px contact), so bury a third of it
-                var emb = 3 + bead / 3;
-                if (rad - bead > rimb - emb) {
-                    var dt = (rad - bead) - (rimb - emb);  // overshot: pull in
-                    if (dt > rad - need) { dt = rad - need; }  // as far as the
-                    if (dt > 0) {                              // star allows
-                        trr -= dt;
-                        rad -= dt;
-                    }
-                    if (trr < 2) {          // tiny-rim corner: stay put
-                        rad += 2 - trr;
-                        trr = 2;
-                    }
-                }
-                if (rad - bead > rimb - 2) {  // not solidly embedded: stalk
-                    stx = coordX(ta, trr0);   // from the REAL tuft it rides
-                    sty = coordY(ta, trr0);   // (the mound occludes the
-                }                             // stalk's inner run)
-                var tx = coordX(ta, trr);
-                var ty = coordY(ta, trr);
-                x = tx + (off * GenArt.isin(a + 64)) / 127;
-                y = ty + (off * GenArt.isin(a)) / 127;
-            } else {
-                var he = GenArt.hash16(seed, e, 42);
-                var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
-                var lim = _er[(a * NA) / 256];
-                var rr = (lim * 3) / 5;
-                if (rr < need) { rr = need; }
-                if (rr - bead > lim - 2) {    // not solidly on the crown:
-                    stx = coordX(a, lim - 2); // stalk anchored just inside
-                    sty = coordY(a, lim - 2); // the rim, under the fringe
-                }
-                x = coordX(a, rr);
-                y = coordY(a, rr);
+            var he = GenArt.hash16(seed, e, 42);
+            var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
+            var lim = _er[(a * NA) / 256];
+            var rr = (lim * (50 + 22 * (e & 1))) / 100;    // interleaved rings
+            if (rr < need) { rr = need; }
+            if (rr - bead > lim - 2) {      // not solidly on the moss:
+                stx = coordX(a, lim - 2);   // stalk anchored just inside the
+                sty = coordY(a, lim - 2);   // rim, under the fringe
             }
+            var x = coordX(a, rr);
+            var y = coordY(a, rr);
             if (stx != null) {
                 // STRAIGHT tapered stalk (owner, 2026-07-14: no kink, push
                 // the flare): a podetium with a visible cup. Wide holdfast
