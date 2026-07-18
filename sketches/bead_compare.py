@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""bead_compare.py -- comparison sheet for the effort-bead CONTIGUITY fix.
+"""bead_compare.py -- comparison sheet for the effort-bead treatments.
 
-2026-07-13 wrist: on a low-movement morning the effort beads floated in
-black space, detached from the moss (the root-star keep-out, sized for the
-worst-case bead, exceeded the morning rim). The owner picked A -- exact
-per-bead keep-out + rim embed + straight tapered podetium stalks +
-golden-angle spread -- which is now moss_grove's own episode treatment
-(2026-07-14); the rim-hug alternative is kept as a reference algo. This
-renders the shipped treatment against it:
+Two wrist regressions drove the shipped episode placement:
+2026-07-13 (contiguity): beads floated in black space on a low-movement
+morning -- the blanket root-star keep-out exceeded the rim. Fixed by the
+exact per-bead keep-out + tapered podetium stalks.
+2026-07-17 (overlap): beads sharing a tuft huddled -- the tuft offset
+radius (~8-14 px) cannot separate two medium beads. Fixed by the golden
+FRUIT RING: beads never ride tufts; one shared golden-sequence angle and a
+parity-staggered radius (50%/72% of rim) per bead.
 
-  ship  moss_grove         the chosen contiguity treatment
-  B     moss_grove_rimhug  delete the keep-out; beads sit on the crown /
-                           their real tuft and the root star (drawn last)
-                           rides on top. Smallest diff, but warm beads
-                           under the tips -- the reason it lost.
+  ship  moss_grove         the shipped fruit-ring treatment
+  B     moss_grove_rimhug  frozen ship-era placement (hashed angles, hashed
+                           tuft pick) minus the keep-out: the not-chosen
+                           2026-07-14 alternative, and a live reference for
+                           both failure modes (its 16:05 column huddles).
 
-Columns: the wrist-photo situation (active day at 6:45 with two small zone-4
-episodes injected, the way a stairs-climb morning produces them before any
-real activity), the natural active-day morning/midday (the detachment window),
-the grown evening (all three should converge -- the fix must self-heal), and
-the HEAVY day at 23:30 (saturation: the budget check).
+Columns: the 6:45 wrist-photo situation (two small zone-4 episodes before
+any real activity -- the contiguity case), 16:05 with six mixed episodes
+injected (the overlap case), the natural active-day morning/midday, the
+grown evening, and the HEAVY day at 23:30 (saturation: the budget check).
 
     python3 sketches/bead_compare.py
 """
@@ -38,7 +38,7 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 SCALE = 2
 
 TREATMENTS = [
-    ("ship (stalks)", "moss_grove"),
+    ("ship (fruit ring)", "moss_grove"),
     ("B  rim-hug", "moss_grove_rimhug"),
 ]
 
@@ -125,6 +125,19 @@ def main():
         rec.emag[1] = 2
         cells.append(cell(*render(spec, snaps[photo_at])))
 
+        # -- overlap repro: mid-afternoon, six mixed episodes on few tufts --
+        spec = mod.build()
+        comp = spec["components"][0]
+        for t in range(mins("16:05") + 1):
+            comp.advance(snaps[t])
+        rec = comp.rec
+        rec.nepi = 6
+        for i, (z, mg_) in enumerate([(7, 600), (4, 90), (4, 40),
+                                      (5, 150), (6, 60), (4, 30)]):
+            rec.epz[i] = z
+            rec.emag[i] = mg_
+        cells.append(cell(*render(spec, snaps[mins("16:05")])))
+
         # -- the natural active day (fresh replay, untouched record) --
         spec = mod.build()
         comp = spec["components"][0]
@@ -147,10 +160,11 @@ def main():
         rows.append((label, cells))
 
     sheet(rows,
-          ["6:45 +2 z4 (photo)"] + ACTIVE_SAMPLES + ["HEAVY 23:30"],
+          ["6:45 +2 z4 (photo)", "16:05 +6ep (photo)"]
+          + ACTIVE_SAMPLES + ["HEAVY 23:30"],
           os.path.join(OUT, "bead-contiguity-compare.png"),
-          "effort-bead contiguity: ship (chosen: stalks+spread) vs B (no "
-          "keep-out)  --  active day + heavy saturation")
+          "effort beads: ship (fruit ring) vs B (ship-era, no keep-out)"
+          "  --  active day + heavy saturation")
 
 
 if __name__ == "__main__":

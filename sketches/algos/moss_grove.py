@@ -25,14 +25,19 @@ mechanically. The day organism, from the heart out:
   tufts          satellite colony clumps straddling the rim, popping in as
                  activity accrues; grains glow the dominant ELEVATED HR zone
   texture        granular green stipple + fuzzy rim fringe
-  episodes       elevated-HR events as bright peak-zone fruiting beads, kept
-                 CONTIGUOUS with the moss (owner, 2026-07-13 wrist: beads used
-                 to float free on low-movement mornings): exact per-bead
-                 root-star keep-out, embed-into-the-rim pull-in, and a straight
+  episodes       elevated-HR events as bright peak-zone fruiting beads on ONE
+                 golden fruit ring, kept CONTIGUOUS with the moss (owner,
+                 2026-07-13 wrist: beads used to float free on low-movement
+                 mornings): exact per-bead root-star keep-out and a straight
                  tapered podetium stalk (flared holdfast / waist / cup at the
-                 bead's edge) for anything the star still forces out. Angles
-                 walk a golden sequence (+ per-day phase + jitter) and tufts
-                 are dealt round-robin so beads don't pile up.
+                 bead's edge) for anything the star forces off the moss.
+                 Beads NEVER ride tufts (owner, 2026-07-17 wrist: the tuft
+                 offset radius, ~8-14 px, huddled same-tuft beads no matter
+                 their angles): every bead takes a shared golden-sequence
+                 angle and a parity-staggered radius (50%/72% of rim), so any
+                 two beads' separation is set by the sequence, and a bead
+                 whose angle meets a tuft draws in front of it -- fruit
+                 before its branch.
 
 Time-of-day is intentionally not encoded. Self-bounded by INK (the root star
 rides OUTSIDE the budget so the night survives a saturated day -- see
@@ -328,23 +333,23 @@ class MossGrove:
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
-        # --- episodes: contiguous fruiting beads (owner, 2026-07) ---
-        # Three rules keep every bead ON the moss without covering the root
-        # star (the old blanket keep-out, root_len + 20 + scl(6), floated
-        # beads into black space all morning):
-        #   keep-out  exact per bead -- inner edge clears the outermost root
-        #             tip by 3, measured on the bead's own polar estimate;
-        #   embed     an offset that overshoots the rim is pulled back until
-        #             a third of the bead is buried (a tangent kiss on a fat
-        #             bead reads detached);
-        #   stalk     anything the star still forces out grows a straight
-        #             tapered podetium from the moss (rim / its REAL tuft):
-        #             flared holdfast, waist 40% up, cup at the bead's edge.
-        # Angles walk a golden sequence (97 ~ 256/phi^2) from a per-day
-        # phase, +-10 jitter, and tufts are dealt round-robin: any first k
-        # beads stay near-uniformly spread (less overlap, owner 2026-07-14),
-        # and a bead never moves when a new episode opens. Cheaper than the
-        # hashed placement it replaced (one hash16 per bead dropped).
+        # --- episodes: the golden fruit ring (owner, 2026-07) ---
+        # Every bead sits on ONE shared ring system; three rules keep it on
+        # the moss without covering the root star and without piling onto
+        # other beads:
+        #   angle     a golden sequence (97 ~ 256/phi^2) from a per-day
+        #             phase, +-10 jitter: any first k beads are near-
+        #             uniformly spread, and a bead never moves when a new
+        #             episode opens. Beads NEVER ride tufts -- the tuft
+        #             offset radius (~8-14 px) huddled same-tuft beads no
+        #             matter their angles (owner, 2026-07-17 wrist); a bead
+        #             whose angle meets a tuft draws in front of it.
+        #   radius    parity-staggered 50%/72% of the rim (two interleaved
+        #             rings), floored by the exact per-bead keep-out: the
+        #             bead's inner edge clears the outermost root tip by 3.
+        #   stalk     anything the star forces off the moss grows a straight
+        #             tapered podetium from just inside the rim: flared
+        #             holdfast, waist 40% up, cup at the bead's edge.
         ph = seed & 255
         rl = root_len(rec.sleep_seed) if rec.sleep_seed > 0 else 0
         for e in range(rec.nepi):
@@ -357,72 +362,20 @@ class MossGrove:
             bead = 4 + idiv(mag, 30)
             if bead > 18:
                 bead = 18
-            # the bead's inner edge must clear the outermost root tip by 3
             need = (rl + bead + 3) if rl > 0 else 0
             sx = None                       # stalk anchor when displaced
             sy = 0
-            if ntuft > 0:
-                t = imod(e, ntuft)          # round-robin, not hash: even load
-                hj = hash16(seed, t, 31)
-                ta = imod(idiv(t * 256, ntuft) + (hj & 31), 256)
-                rim = self.er[idiv(ta * NA, 256)]
-                trr0 = idiv(rim * (85 + (hj >> 8) % 30), 100)  # REAL tuft
-                he = hash16(seed, e, 42)
-                off = idiv(tsize, 2) + (he >> 8) % 3
-                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
-                # polar estimate of the bead centre: the tuft offset split
-                # into a radial part (folded onto the radius) and a
-                # tangential part (folded onto the ANGLE, 41 ~ 256/2pi) --
-                # the rim the bead must touch is the rim at the bead's own
-                # angle, not the tuft's (isin masks & 255, negatives fine).
-                dr = idiv(off * isin(a - ta + 64), 127)
-                tg = idiv(off * isin(a - ta), 127)
-                trr = trr0
-                rad = trr + dr
-                if rad < need:              # star pushes it out
-                    trr = need - dr
-                    rad = need
-                da = idiv(tg * 41, rad) if rad > 0 else 0
-                if da > 64:                 # tiny-rad guard: keep the angle
-                    da = 64                 # correction (and the LUT index
-                if da < -64:                # below) in range
-                    da = -64
-                ab = imod(ta + da + 256, 256)
-                rimb = self.er[idiv(ab * NA, 256)]
-                # required embed depth grows with the bead: a tangent kiss
-                # on a fat bead reads detached (black shoulders around a
-                # 1 px contact), so bury a third of it
-                emb = 3 + idiv(bead, 3)
-                if rad - bead > rimb - emb:
-                    dt = (rad - bead) - (rimb - emb)  # overshot: pull in as
-                    if dt > rad - need:               # far as the star
-                        dt = rad - need               # allows
-                    if dt > 0:
-                        trr -= dt
-                        rad -= dt
-                    if trr < 2:             # tiny-rim corner: stay put
-                        rad += 2 - trr
-                        trr = 2
-                if rad - bead > rimb - 2:   # not solidly embedded: stalk
-                    sx = px(CX, trr0, ta)   # from the REAL tuft it rides
-                    sy = py(CY, trr0, ta)   # (the mound occludes the
-                                            # stalk's inner run)
-                tx = px(CX, trr, ta)
-                ty = py(CY, trr, ta)
-                x = tx + idiv(off * isin(a + 64), 127)
-                y = ty + idiv(off * isin(a), 127)
-            else:
-                he = hash16(seed, e, 42)
-                a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
-                lim = self.er[idiv(a * NA, 256)]
-                rr = idiv(lim * 3, 5)
-                if rr < need:
-                    rr = need
-                if rr - bead > lim - 2:     # not solidly on the crown:
-                    sx = px(CX, lim - 2, a) # stalk anchored just inside the
-                    sy = py(CY, lim - 2, a) # rim, under the fringe
-                x = px(CX, rr, a)
-                y = py(CY, rr, a)
+            he = hash16(seed, e, 42)
+            a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
+            lim = self.er[idiv(a * NA, 256)]
+            rr = idiv(lim * (50 + 22 * (e & 1)), 100)  # interleaved rings
+            if rr < need:
+                rr = need
+            if rr - bead > lim - 2:         # not solidly on the moss:
+                sx = px(CX, lim - 2, a)     # stalk anchored just inside the
+                sy = py(CY, lim - 2, a)     # rim, under the fringe
+            x = px(CX, rr, a)
+            y = py(CY, rr, a)
             if sx is not None:
                 # STRAIGHT tapered stalk (owner, 2026-07-14: no kink, and
                 # push the flare): a podetium with a visible cup. Wide
