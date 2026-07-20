@@ -1,19 +1,20 @@
-"""moss_grove_orbits -- bead-overlap PROPOSAL: more orbits, over the sleep.
+"""moss_grove_orbits -- bead placement PROPOSAL: display-referenced orbits.
 
-2026-07-18 wrist: the golden fruit ring reads better than the huddled
-tufts, but TWO interleaved orbits (50%/72% of rim) is too few -- a busy day
-still lands several beads on each orbit. And the exact keep-out kept every
-bead OUTSIDE the root star, wasting the whole inner disc.
+Owner 2026-07-18: more than two orbits; let beads overlap the sleep root
+star; and BRING BACK the podetium stalks. The insight that satisfies all
+three: reference the orbit radii to a fixed DISPLAY radius (DISP_R) instead
+of the moss rim. Then:
+  * K interleaved orbits at ORBIT_LO..ORBIT_HI % of DISP_R (owner: inner
+    ~28%), OUTER-first so few beads keep the visible outer rings.
+  * NO keep-out floor -- inner orbits ride over the root star (drawn last,
+    stays on top).
+  * On a big grown day the moss rim ~ DISP_R, so orbits land ON the moss.
+    On a small morning the moss is tiny but the orbits stay at display
+    scale, so outer beads land BEYOND the rim -- and the existing podetium
+    stalk reconnects each to the moss. The stalks return exactly when the
+    moss is small, which is when they read best.
 
-TREATMENT (episodes block only; module-level K sweeps the orbit count):
-  * K radius bands spanning ORBIT_LO..ORBIT_HI % of the rim (was the two
-    fixed 50/72 bands). More bands -> fewer beads share a radius -> the
-    golden angles separate them further.
-  * NO keep-out floor: inner orbits are ALLOWED over the root star (owner,
-    2026-07-18). The star is still drawn LAST, so it rides on top of any
-    bead it overlaps -- the sleep read is preserved, the inner disc is used.
-  * The podetium stalk is now unreachable (a bead at <= ORBIT_HI% of the
-    rim can never float past it) and drops out.
+Module consts K / DISP_R / ORBIT_LO / ORBIT_HI are the sweep knobs.
 """
 
 import daysoma as DS
@@ -40,8 +41,11 @@ SCD = 4                # radial extent: cushion, lumpiness, tufts, beads (the
 AMPREF = 40            # base radius (px, scaled) at which outline amps reach 100%
 
 K = 4                  # number of interleaved bead orbits (SWEEP knob)
-ORBIT_LO = 34          # innermost orbit, % of rim (over the root star)
-ORBIT_HI = 86          # outermost orbit, % of rim (on the dark mound)
+DISP_R = 90            # display reference radius (px) the orbits scale to,
+                       # NOT the moss rim: a small moss lets outer orbits fall
+                       # past the rim so the podetium stalks reconnect them
+ORBIT_LO = 28          # innermost orbit, % of DISP_R (over the root star)
+ORBIT_HI = 86          # outermost orbit, % of DISP_R (toward the display edge)
 
 
 def scl(v):
@@ -333,21 +337,68 @@ class MossGroveOrbits:
             bead = 4 + idiv(mag, 30)
             if bead > 18:
                 bead = 18
+            sx = None                       # stalk anchor when displaced
+            sy = 0
             he = hash16(seed, e, 42)
             a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
             lim = self.er[idiv(a * NA, 256)]
-            # K interleaved orbits; NO keep-out -- inner orbits ride over the
-            # root star (drawn last, so it stays on top). ORBIT_HI < 100 keeps
-            # every bead on the mound, so it can never float (no stalk).
+            # K display-referenced orbits, OUTER-first (bead 0 -> outermost).
+            # No keep-out: inner orbits ride over the root star. Radius is a
+            # fraction of DISP_R, NOT the rim -- a small moss lets outer
+            # orbits fall past the rim, and the stalk below reconnects them.
             kk = K if K > 1 else 1
-            # OUTER-first: bead 0 rides the outermost ring, later beads fill
-            # inward. Few beads stay on the visible rim; a busy day fills in
-            # over the root star.
             frac = ORBIT_HI - (idiv((ORBIT_HI - ORBIT_LO) * (e % kk), kk - 1)
                                if kk > 1 else 0)
-            rr = idiv(lim * frac, 100)
+            rr = idiv(DISP_R * frac, 100)
+            if rr - bead > lim - 2:         # fell past the rim: stalk it
+                sx = px(CX, lim - 2, a)     # anchored just inside the rim,
+                sy = py(CY, lim - 2, a)     # under the fringe
             x = px(CX, rr, a)
             y = py(CY, rr, a)
+            if sx is not None:
+                # STRAIGHT tapered stalk (owner, 2026-07-14: no kink, and
+                # push the flare): a podetium with a visible cup. Wide
+                # holdfast where it leaves the moss, waist 40% up, then a
+                # flare that ends at the bead's EDGE -- ending at the bead
+                # centre hid the tip flare under the dark ring. Two CONVEX
+                # trapezoids (the on-device fillPolygon is only trusted
+                # convex); perpendicular half-widths 5/1/4 from the true
+                # stalk direction; ln is the octagonal length approximation
+                # (max + min/2, ~12%), all integer.
+                dx = x - sx
+                dy = y - sy
+                adx = dx if dx >= 0 else -dx
+                ady = dy if dy >= 0 else -dy
+                ln = (adx if adx > ady else ady) \
+                    + idiv((adx if adx < ady else ady), 2)
+                if ln < 1:
+                    ln = 1
+                pb = bead - 2               # tuck the cup 2 px under the disc
+                if pb > ln - 3:
+                    pb = ln - 3
+                if pb < 0:
+                    pb = 0
+                ex = x - idiv(dx * pb, ln)  # cup lip, at the bead's edge
+                ey = y - idiv(dy * pb, ln)
+                wx = sx + idiv((ex - sx) * 2, 5)   # waist 40% up the stalk
+                wy = sy + idiv((ey - sy) * 2, 5)
+                bxw = rdiv(-dy * 5, ln)     # holdfast (half-width 5)
+                byw = rdiv(dx * 5, ln)
+                wxw = rdiv(-dy, ln)         # waist (half-width 1) --
+                wyw = rdiv(dx, ln)          # never let it pinch to zero
+                if wxw == 0 and wyw == 0:
+                    if adx >= ady:
+                        wyw = 1
+                    else:
+                        wxw = 1
+                txw = rdiv(-dy * 4, ln)     # cup (half-width 4)
+                tyw = rdiv(dx * 4, ln)
+                dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
+                dc.fillPolygon([(sx - bxw, sy - byw), (sx + bxw, sy + byw),
+                                (wx + wxw, wy + wyw), (wx - wxw, wy - wyw)])
+                dc.fillPolygon([(wx - wxw, wy - wyw), (wx + wxw, wy + wyw),
+                                (ex + txw, ey + tyw), (ex - txw, ey - tyw)])
+                ink -= 2
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead + 1)
             dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
