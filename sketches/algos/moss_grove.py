@@ -25,19 +25,16 @@ mechanically. The day organism, from the heart out:
   tufts          satellite colony clumps straddling the rim, popping in as
                  activity accrues; grains glow the dominant ELEVATED HR zone
   texture        granular green stipple + fuzzy rim fringe
-  episodes       elevated-HR events as bright peak-zone fruiting beads on ONE
-                 golden fruit ring, kept CONTIGUOUS with the moss (owner,
-                 2026-07-13 wrist: beads used to float free on low-movement
-                 mornings): exact per-bead root-star keep-out and a straight
-                 tapered podetium stalk (flared holdfast / waist / cup at the
-                 bead's edge) for anything the star forces off the moss.
-                 Beads NEVER ride tufts (owner, 2026-07-17 wrist: the tuft
-                 offset radius, ~8-14 px, huddled same-tuft beads no matter
-                 their angles): every bead takes a shared golden-sequence
-                 angle and a parity-staggered radius (50%/72% of rim), so any
-                 two beads' separation is set by the sequence, and a bead
-                 whose angle meets a tuft draws in front of it -- fruit
-                 before its branch.
+  episodes       elevated-HR events as bright peak-zone fruiting beads on K
+                 interleaved orbits (owner, 2026-07). Beads never ride tufts
+                 (the ~8-14 px tuft offset huddled same-tuft beads, 2026-07-17)
+                 -- each takes a shared golden-sequence angle and one of K
+                 ring radii. The rings are DISPLAY-referenced and grow with the
+                 cushion (REACH_MIN -> DISP_R), fill OUTER-first, and carry no
+                 keep-out, so inner rings ride OVER the sleep root star while a
+                 small morning moss lets outer beads fall past the rim onto a
+                 podetium stalk (2026-07-18). On a grown day the reach ~ the
+                 rim, so beads land on the moss and the stalks retract.
 
 Time-of-day is intentionally not encoded. Self-bounded by INK (the root star
 rides OUTSIDE the budget so the night survives a saturated day -- see
@@ -70,6 +67,19 @@ SCN = 5                # overall size scale = SCN/SCD (= 1.25x), applied to ever
 SCD = 4                # radial extent: cushion, lumpiness, tufts, beads (the
                        # root star works in final px directly, like the beads)
 AMPREF = 40            # base radius (px, scaled) at which outline amps reach 100%
+
+# effort-bead orbits (owner, 2026-07-18). Beads ride K interleaved rings at
+# ORBIT_LO..ORBIT_HI % of a REACH that is DISPLAY-referenced, not rim-relative:
+# the reach grows with the cushion from REACH_MIN (smallest morning moss) to
+# DISP_R (fully grown), so a lone morning bead sits just off the small moss on
+# a podetium stalk instead of at the display edge, and a grown day lands beads
+# on the moss. Rings fill OUTER-first; no keep-out, so inner rings ride over
+# the sleep root star (drawn last, stays on top).
+K = 4                  # number of interleaved bead orbits
+DISP_R = 90            # bead reach (px) on a fully grown moss
+REACH_MIN = 36         # bead reach (px) on the smallest morning moss
+ORBIT_LO = 28          # innermost orbit, % of the reach (over the root star)
+ORBIT_HI = 86          # outermost orbit, % of the reach
 
 
 def scl(v):
@@ -246,6 +256,8 @@ class MossGrove:
         if base > 54:
             base = 54
         base = scl(base)                       # 1.25x overall scale
+        B0 = scl(4)                            # cushion base floor / cap: the
+        B1 = scl(54)                           # growth span for the bead reach
 
         sp = shape_params(seed)                # per-day lumpy outline
         # scale the lumpiness amplitudes with the overall size AND with the
@@ -333,25 +345,27 @@ class MossGrove:
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
 
-        # --- episodes: the golden fruit ring (owner, 2026-07) ---
-        # Every bead sits on ONE shared ring system; three rules keep it on
-        # the moss without covering the root star and without piling onto
-        # other beads:
+        # --- episodes: the display-referenced orbits (owner, 2026-07) ---
+        # Every bead rides one of K interleaved rings; three rules keep them
+        # spread, contiguous, and over the sleep:
         #   angle     a golden sequence (97 ~ 256/phi^2) from a per-day
-        #             phase, +-10 jitter: any first k beads are near-
-        #             uniformly spread, and a bead never moves when a new
-        #             episode opens. Beads NEVER ride tufts -- the tuft
-        #             offset radius (~8-14 px) huddled same-tuft beads no
-        #             matter their angles (owner, 2026-07-17 wrist); a bead
-        #             whose angle meets a tuft draws in front of it.
-        #   radius    parity-staggered 50%/72% of the rim (two interleaved
-        #             rings), floored by the exact per-bead keep-out: the
-        #             bead's inner edge clears the outermost root tip by 3.
-        #   stalk     anything the star forces off the moss grows a straight
-        #             tapered podetium from just inside the rim: flared
-        #             holdfast, waist 40% up, cup at the bead's edge.
+        #             phase, +-10 jitter: any first k beads are near-uniformly
+        #             spread, and a bead never moves when a new episode opens.
+        #             Beads never ride tufts (the ~8-14 px tuft offset huddled
+        #             same-tuft beads, 2026-07-17); a bead whose angle meets a
+        #             tuft draws in front of it.
+        #   radius    K orbits at ORBIT_LO..ORBIT_HI % of a REACH, OUTER-first
+        #             (bead 0 -> outermost). The reach is DISPLAY-referenced
+        #             and grows with the cushion (REACH_MIN -> DISP_R), NOT the
+        #             rim, so beads aren't flung to the edge on a small moss
+        #             (2026-07-18). No keep-out: inner rings ride over the root
+        #             star (drawn last, stays on top).
+        #   stalk     an outer ring that falls past a small moss's rim grows a
+        #             straight tapered podetium from just inside the rim:
+        #             flared holdfast, waist 40% up, cup at the bead's edge.
+        #             On a grown day the reach ~ the rim, so beads land on the
+        #             moss and the stalk never fires.
         ph = seed & 255
-        rl = root_len(rec.sleep_seed) if rec.sleep_seed > 0 else 0
         for e in range(rec.nepi):
             if ink <= 0:
                 break
@@ -362,18 +376,24 @@ class MossGrove:
             bead = 4 + idiv(mag, 30)
             if bead > 18:
                 bead = 18
-            need = (rl + bead + 3) if rl > 0 else 0
             sx = None                       # stalk anchor when displaced
             sy = 0
             he = hash16(seed, e, 42)
             a = (ph + e * 97 + (he % 21) - 10) & 255   # golden + jitter
             lim = self.er[idiv(a * NA, 256)]
-            rr = idiv(lim * (50 + 22 * (e & 1)), 100)  # interleaved rings
-            if rr < need:
-                rr = need
-            if rr - bead > lim - 2:         # not solidly on the moss:
-                sx = px(CX, lim - 2, a)     # stalk anchored just inside the
-                sy = py(CY, lim - 2, a)     # rim, under the fringe
+            kk = K if K > 1 else 1
+            frac = ORBIT_HI - (idiv((ORBIT_HI - ORBIT_LO) * (e % kk), kk - 1)
+                               if kk > 1 else 0)
+            # reach grows with the cushion: REACH_MIN (base at its scl(4)
+            # floor) -> DISP_R (base at its scl(54) cap)
+            g = base - B0
+            if g < 0:
+                g = 0
+            reach = REACH_MIN + idiv((DISP_R - REACH_MIN) * g, B1 - B0)
+            rr = idiv(reach * frac, 100)
+            if rr - bead > lim - 2:         # fell past the rim: stalk it
+                sx = px(CX, lim - 2, a)     # anchored just inside the rim,
+                sy = py(CY, lim - 2, a)     # under the fringe
             x = px(CX, rr, a)
             y = py(CY, rr, a)
             if sx is not None:
