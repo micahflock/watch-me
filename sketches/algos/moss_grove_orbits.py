@@ -41,11 +41,14 @@ SCD = 4                # radial extent: cushion, lumpiness, tufts, beads (the
 AMPREF = 40            # base radius (px, scaled) at which outline amps reach 100%
 
 K = 4                  # number of interleaved bead orbits (SWEEP knob)
-DISP_R = 90            # display reference radius (px) the orbits scale to,
-                       # NOT the moss rim: a small moss lets outer orbits fall
-                       # past the rim so the podetium stalks reconnect them
-ORBIT_LO = 28          # innermost orbit, % of DISP_R (over the root star)
-ORBIT_HI = 86          # outermost orbit, % of DISP_R (toward the display edge)
+DISP_R = 90            # reach (px) of the orbit ring on a FULLY GROWN moss
+REACH_MIN = 36         # reach (px) on the smallest morning moss: the ring
+                       # GROWS with the cushion from REACH_MIN up to DISP_R,
+                       # so beads aren't flung to the display edge when the
+                       # moss is a dot (owner, 2026-07-18) -- stalks still
+                       # appear (REACH_MIN sits past the tiny morning rim)
+ORBIT_LO = 28          # innermost orbit, % of the reach (over the root star)
+ORBIT_HI = 86          # outermost orbit, % of the reach
 
 
 def scl(v):
@@ -222,6 +225,8 @@ class MossGroveOrbits:
         if base > 54:
             base = 54
         base = scl(base)                       # 1.25x overall scale
+        B0 = scl(4)                            # cushion base floor / cap, the
+        B1 = scl(54)                           # growth span for the bead reach
 
         sp = shape_params(seed)                # per-day lumpy outline
         # scale the lumpiness amplitudes with the overall size AND with the
@@ -349,7 +354,14 @@ class MossGroveOrbits:
             kk = K if K > 1 else 1
             frac = ORBIT_HI - (idiv((ORBIT_HI - ORBIT_LO) * (e % kk), kk - 1)
                                if kk > 1 else 0)
-            rr = idiv(DISP_R * frac, 100)
+            # reach grows with the cushion: REACH_MIN (base at its scl(4)
+            # floor) -> DISP_R (base at its scl(54) cap). Keeps morning beads
+            # near the small moss instead of at the display edge.
+            g = base - B0
+            if g < 0:
+                g = 0
+            reach = REACH_MIN + idiv((DISP_R - REACH_MIN) * g, B1 - B0)
+            rr = idiv(reach * frac, 100)
             if rr - bead > lim - 2:         # fell past the rim: stalk it
                 sx = px(CX, lim - 2, a)     # anchored just inside the rim,
                 sy = py(CY, lim - 2, a)     # under the fringe
