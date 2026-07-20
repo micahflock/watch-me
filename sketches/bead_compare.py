@@ -38,7 +38,7 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 SCALE = 2
 
 TREATMENTS = [
-    ("ship (fruit ring)", "moss_grove"),
+    ("ship (orbits)", "moss_grove"),
     ("B  rim-hug", "moss_grove_rimhug"),
 ]
 
@@ -163,7 +163,7 @@ def main():
           ["6:45 +2 z4 (photo)", "16:05 +6ep (photo)"]
           + ACTIVE_SAMPLES + ["HEAVY 23:30"],
           os.path.join(OUT, "bead-contiguity-compare.png"),
-          "effort beads: ship (fruit ring) vs B (ship-era, no keep-out)"
+          "effort beads: ship (orbits) vs B (ship-era, no keep-out)"
           "  --  active day + heavy saturation")
 
 
