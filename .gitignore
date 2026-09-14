@@ -8,6 +8,7 @@
 !/bin/devface.prg
 !/bin/two-worlds.prg
 !/bin/two-worlds-v2.prg
+!/bin/gpsprobe.prg
 
 # Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
 *.der

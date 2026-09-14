@@ -65,8 +65,14 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
 - Object store (`getProperty/setProperty`) values must stay small (KB-scale)
   and writes are flash-slow: write only in `onStop`, read only at startup /
   `onSettingsChanged`. Never read properties per tick.
-- Watch faces cannot access GPS/sensors/network at this API level. Location
-  comes from user-entered `lat`/`lng` app properties.
+- Watch faces cannot access sensors or the network at this API level, and
+  cannot turn the GPS on (`Position.enableLocationEvents`). They CAN *read*
+  what the system already holds: `Position.getInfo()` is API 1.0.0, fr735xt is
+  in its supported-device list, and a watch face declaring
+  `<iq:uses-permission id="Positioning"/>` builds and runs (verified 2026-09,
+  `faces/gpsprobe`). Whether the device actually hands a face a cached fix is a
+  hardware question the simulator cannot answer — **docs/gps-notes.md**.
+  Location otherwise comes from user-entered `lat`/`lng` app properties.
 - The SDK device id is **`fr735xt`** (not "forerunner735xt") — in
   manifest products, `monkeyc -d`, monkeydo, and the device-files directory.
 - Old-style Monkey C discipline: untyped `var`s, no `as Number` annotations,

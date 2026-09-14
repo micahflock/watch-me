@@ -1,0 +1,8 @@
+# Release jungle for gpsprobe. Standalone on purpose (like flashtest): no
+# ../../core/src in the sourcePath, so what the probe reports is Toybox's answer
+# and nothing of this framework's can colour it.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source
+base.resourcePath = resources

@@ -1,0 +1,8 @@
+# Debug jungle for gpsprobe (scripts/build.sh gpsprobe --debug).
+# Identical to release — this face has no (:debug) code and no tests; the file
+# exists so both build modes work.
+
+project.manifest = manifest.xml
+
+base.sourcePath = source
+base.resourcePath = resources
