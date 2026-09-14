@@ -31,9 +31,17 @@ class Snapshot {
     var batteryPct;    // 0..100 Float
     var phoneConnected; // Boolean
 
-    // Location (user-entered; no GPS at this API level for watch faces)
+    // Location. A watch face cannot turn the GPS on, but it can read the fix
+    // the system already holds, so lat/lon is the BEST available position: the
+    // fix when there is one, the user-entered lat/lng properties otherwise.
+    // Renderers that only need a position (the sun/north marker) read lat/lon
+    // and ignore the rest; the GPS indicator reads the rest. docs/gps-notes.md.
     var lat;           // Float degrees or null
     var lon;           // Float degrees or null
+    var locFromGps;    // Boolean: lat/lon came from a fix, not the properties
+    var gpsQuality;    // Position.QUALITY_* (Number), or null if unreadable
+    var gpsFixAgeSec;  // seconds since the fix; null when there is no fix, or
+                       // when the fix carries no timestamp
 
     function initialize() {
         clear();
@@ -49,5 +57,6 @@ class Snapshot {
         heartRate = null;
         batteryPct = null; phoneConnected = null;
         lat = null; lon = null;
+        locFromGps = null; gpsQuality = null; gpsFixAgeSec = null;
     }
 }

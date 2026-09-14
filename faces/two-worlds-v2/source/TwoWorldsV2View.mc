@@ -11,7 +11,7 @@ using Toybox.Math as Math;
 // so the V1 "containment breach" warning is gone.
 //
 // Render order (back -> front): grove, field mask, border, uplink, battery,
-// north, readout, time, debug.
+// gps, north, readout, time, debug.
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -45,9 +45,10 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new BorderComponent(), null);    // 3 white border
         _compositor.add(new UplinkComponent(), null);    // 4 phone bars
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
-        _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
-        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
-        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
+        _compositor.add(new GpsComponent(), null);       // 6 position-fix light
+        _compositor.add(new NorthComponent(), null);     // 7 sun/north marker
+        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 8 day/date
+        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 9 time
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
 
@@ -233,6 +234,56 @@ class UplinkComponent {
             var w = 29.0 + (4.0 - 29.0) * i / 4.0;
             dc.fillRectangle(x, 12 + i * 9, (w + 0.5).toNumber(), 4);
         }
+    }
+}
+
+// GpsComponent — position-fix indicator (owner, 2026-09).
+//
+// NOT a satellite-lock light. The GPS receiver is off whenever a watch face is
+// on screen (it powers up for an activity, and during an activity the activity
+// screens are showing, not the face), so a live-lock light would be dark
+// forever. What this reports is whether the watch HOLDS a position and how
+// stale it is — which is also exactly what the sun/north marker depends on, so
+// one glyph explains that marker's state as a side effect:
+//   dark gray  no fix. If the north marker is drawn at all it is running on the
+//              hand-entered lat/lng properties.
+//   amber      fix present, but older than DataSource.GPS_FRESH_SEC.
+//   green      fix present and current.
+// The properties deliberately do NOT light it: this reports the GPS, not
+// whether a location is known from some other source.
+//
+// A reticle rather than a satellite — at 13 px only a crosshair in a ring reads
+// as "position". Shape is constant and colour carries the state, the same way
+// the uplink bars work. Six Dc calls, all integer, no allocation.
+//
+// Placed left of the day/date readout and above the clock. The display is
+// semiround: at y=15 it starts at x≈37, so a glyph spanning x 49..67 clears the
+// bezel at every row it touches.
+class GpsComponent {
+    const GX = 58;
+    const GY = 15;
+    const GR = 5;
+    const TICK = 3;      // how far the cross ticks reach beyond the ring
+
+    function render(dc, state) {
+        dc.setColor(color(state), Gfx.COLOR_TRANSPARENT);
+        dc.drawCircle(GX, GY, GR);
+        dc.fillCircle(GX, GY, 1);
+        dc.drawLine(GX - GR - TICK, GY, GX - GR + 1, GY);
+        dc.drawLine(GX + GR - 1, GY, GX + GR + TICK, GY);
+        dc.drawLine(GX, GY - GR - TICK, GX, GY - GR + 1);
+        dc.drawLine(GX, GY + GR - 1, GX, GY + GR + TICK);
+    }
+
+    function color(state) {
+        if (state.locFromGps != true) { return Gfx.COLOR_DK_GRAY; }
+        var age = state.gpsFixAgeSec;
+        // A fix with no usable timestamp is reported as stale, not current:
+        // amber says "there is a position, its age is not vouched for".
+        if (age == null || age > DataSource.GPS_FRESH_SEC) {
+            return Gfx.COLOR_YELLOW;     // amber 0xFFAA00 in this palette
+        }
+        return Gfx.COLOR_GREEN;
     }
 }
 

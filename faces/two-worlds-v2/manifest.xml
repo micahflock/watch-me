@@ -17,7 +17,14 @@
         <iq:products>
             <iq:product id="fr735xt"/>
         </iq:products>
-        <iq:permissions/>
+        <!-- Positioning: read-only access to the fix the system already
+             holds (Position.getInfo). The face never turns the receiver on
+             (a watch face cannot), so this costs no battery; it feeds the
+             sun/north marker's location and the position-fix indicator.
+             See docs/gps-notes.md. -->
+        <iq:permissions>
+            <iq:uses-permission id="Positioning"/>
+        </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>
         </iq:languages>

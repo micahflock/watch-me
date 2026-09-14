@@ -43,6 +43,29 @@ Two details worth carrying forward from that reading:
 - `Activity.getActivityInfo().currentLocation` is `null` in a watch face, so
   there is no second source to fall back on.
 
+## The permission is not optional, and its absence is not catchable
+
+Calling `Position.getInfo()` from a face whose manifest does not request
+Positioning does **not** return null and does **not** throw a catchable
+exception. It raises
+
+```
+Error: Permission Required
+Details: Permission for module 'Toybox.Position' required
+```
+
+which is a hard app error: a `try { ... } catch (e) { }` wrapped directly around
+the call does not stop it. Verified the expensive way — it took down the whole
+devface unit-test run, from inside a try block (`faces/devface/tests/TestDataSource.mc`).
+
+`DataSource` compiles into **every** face via `core/src`, so a bare call there
+would kill every face that has not asked for the permission. Hence
+`DataSource._gpsEnabled`: the GPS read is OFF by default and a face opts in from
+its app startup (`DataSource.enableGps(true)`) **only** if its own manifest
+requests Positioning. Today that is `two-worlds-v2` alone. `testGpsDisabledByDefault`
+and `testLocationFallsBackToProperties` exist to keep it that way — the latter
+passes only if `refresh()` never touches Position on a face that has not opted in.
+
 ## The probe (`faces/gpsprobe`, `bin/gpsprobe.prg`)
 
 A standalone sideloadable face — no core library, no properties — that draws
@@ -76,3 +99,27 @@ So a live satellite-lock indicator would be dark permanently — true, and usele
 What an indicator can honestly report is **whether the watch holds a position
 fix, and how stale it is** — which is also exactly the thing the sun/north
 marker depends on, so one glyph explains the marker's state as a side effect.
+
+That is what shipped in `two-worlds-v2` (owner call, 2026-09): a reticle left of
+the day/date readout, dark gray with no fix, amber with a fix older than
+`DataSource.GPS_FRESH_SEC`, green with a current one. The `lat`/`lng` properties
+deliberately do NOT light it — it reports the GPS, not whether a location is
+known from some other source.
+
+## Verifying it without a receiver
+
+The simulator can only ever show the no-fix state, so the states and the
+GPS-to-marker path were verified by temporarily planting a fix inside
+`readPosition()` (the same temp-probe discipline as docs/watchdog-debugging.md)
+and running the release build:
+
+- green reticle, and `SunCompass` fed by the planted coordinates;
+- the north marker drawn from a GPS-sourced position — with the caveat that the
+  marker rides a circle of radius 101.7 about (107.5, 90) on a 215x180 screen,
+  so a dial angle near 6 o'clock puts it off the bottom edge entirely. Pick test
+  coordinates whose sun is both UP and not due-south at the simulator's UTC
+  clock, or the render looks like a regression when nothing is wrong.
+- the simulator's clock is UTC while the face renders 12-hour time: "7:51" on
+  screen was 19:51 UTC, which is why a Greenwich fix correctly showed no marker
+  (`elev = -15.15`). Read the hour from the console, not the face, when
+  reasoning about the sun.

@@ -12,6 +12,10 @@ class TwoWorldsV2App extends App.AppBase {
     }
 
     function getInitialView() {
+        // This face's manifest requests Positioning, so it -- and only it --
+        // may read the system's position cache. See DataSource._gpsEnabled:
+        // calling Position without the permission is an uncatchable app error.
+        DataSource.enableGps(true);
         DataSource.reloadProperties(self);
         _view = new TwoWorldsV2View();
         return [ _view ];

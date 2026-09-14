@@ -4,10 +4,13 @@
   AppBase.getProperty/setProperty. Do NOT migrate to Application.Properties
   (CIQ 3.0+, unavailable on fr735xt).
 
-  lat/lng : user-entered location for the sun-derived true-north marker (no GPS
-            on a watch face at this API level). Unset (0,0) -> marker hidden.
-            Defaults seeded to Portland OR for the sideloaded build (editable in
-            Garmin Express, which can configure sideloaded apps).
+  lat/lng : FALLBACK location for the sun-derived true-north marker. As of
+            2026-09 two-worlds-v2 prefers the GPS fix the system already holds
+            (docs/gps-notes.md) and falls back to these only when there is no
+            fix; two-worlds (V1) still uses them exclusively. Unset (0,0) ->
+            marker hidden. Defaults seeded to Portland OR for the sideloaded
+            build (editable in Garmin Express, which can configure sideloaded
+            apps).
 -->
 <properties>
     <property id="lat" type="float">45.512575</property>

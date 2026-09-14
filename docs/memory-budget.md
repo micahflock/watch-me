@@ -100,6 +100,17 @@ print, recipe above).
 > Note: `faces/two-worlds/monkey.jungle` (V1) still pulls all of core and so now
 > carries MossGrove dead; its June figure above (55.2 KB, ~6 KB free) predates
 > MossGrove.mc. Unmeasured since; the same narrowing would recover it.
+>
+> **Measured 2026-09: V1 no longer runs.** Rebuilt from unmodified HEAD with
+> SDK 9.2.0 it loads and immediately dies with `Error: Out Of Memory Error /
+> Details: Failed invoking <symbol>` in the simulator. The PRG is 54.3 KB
+> against the 43.3 KB binary committed in June — the difference is MossGrove +
+> MossState carried dead. `devface` shows the same growth (17.2 KB committed ->
+> 45.3 KB rebuilt) but still runs. The fix is the one already prescribed above:
+> narrow V1's `sourcePath` to the files it references, the way
+> `two-worlds-v2/monkey.jungle` does. Until then the committed `bin/two-worlds.prg`
+> and `bin/devface.prg` are deliberately left at their June builds rather than
+> refreshed with a binary that crashes.
 
 ## How the watchdog budget was measured
 
