@@ -85,8 +85,13 @@ ORBIT_HI = 86          # outermost orbit, % of the reach
 # px, already scaled). BEAD_MIN is the floor every episode starts from, so it
 # sets how much of the size range short efforts give away; BEAD_DIV is the slope
 # that separates a 15-min effort from a 90-min one.
-BEAD_MIN = 4           # radius of the smallest possible effort bead
-BEAD_DIV = 30          # magnitude per extra px of radius
+# Owner call 2026-09 (option B of sketches/bead_size_compare.py): a day of
+# efforts read as all-one-size because nearly every episode banks mag < 30 and
+# so pinned to the old 4 px floor. Halving the floor separates the small ones;
+# steepening the slope uncompresses the middle, which is where a 20-min walk and
+# a 45-min run used to land 2 px apart. Was 4 + m/30.
+BEAD_MIN = 2           # radius of the smallest possible effort bead
+BEAD_DIV = 20          # magnitude per extra px of radius
 BEAD_MAX = 18          # cap: a very long/hard effort stops growing here
 
 
@@ -440,8 +445,14 @@ class MossGrove:
                         wyw = 1
                     else:
                         wxw = 1
-                txw = rdiv(-dy * 4, ln)     # cup (half-width 4)
-                tyw = rdiv(dx * 4, ln)
+                # cup half-width 4, but never wider than the fruit it
+                # holds: below the old 4 px floor a fixed flare made the stem
+                # broader than the bead (a spade, not a podetium). No-op for
+                # bead >= 4, i.e. for every bead that could exist before
+                # BEAD_MIN dropped to 2.
+                cw = bead if bead < 4 else 4
+                txw = rdiv(-dy * cw, ln)
+                tyw = rdiv(dx * cw, ln)
                 dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
                 dc.fillPolygon([(sx - bxw, sy - byw), (sx + bxw, sy + byw),
                                 (wx + wxw, wy + wyw), (wx - wxw, wy - wyw)])

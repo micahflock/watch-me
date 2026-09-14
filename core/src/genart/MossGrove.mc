@@ -64,6 +64,17 @@ class MossGrove {
     const ORBIT_LO = 28;       // innermost orbit, % of the reach (over sleep)
     const ORBIT_HI = 86;       // outermost orbit, % of the reach
 
+    // effort-bead SIZE: radius = BEAD_MIN + mag/BEAD_DIV, clamped to BEAD_MAX
+    // (final px, already scaled). Owner call 2026-09 (option B of
+    // sketches/bead_size_compare.py): a day of efforts read as all-one-size
+    // because nearly every episode banks mag < 30 and so pinned to the old 4 px
+    // floor -- on the heavy day 11 of 16 beads were 4 or 5 px. Halving the floor
+    // separates the small ones; steepening the slope uncompresses the middle,
+    // where a 20-min walk and a 45-min run used to land 2 px apart. Was 4 + m/30.
+    const BEAD_MIN = 2;        // radius of the smallest possible effort bead
+    const BEAD_DIV = 20;       // magnitude per extra px of radius
+    const BEAD_MAX = 18;       // cap: a very long/hard effort stops growing here
+
     // Tip lengths must NOT be uniform (owner call, 2026-07): each lobe's
     // amplitude is hashed to 40..170% (switched at the sine zero-crossings so
     // the outline stays continuous) and a frequency-1 "tilt" sinusoid
@@ -430,10 +441,8 @@ class MossGrove {
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
-            // gentle slope + high cap so long/hard efforts spread out in size
-            // while the floor stays put. Bead is a final px radius (already scaled).
-            var bead = 4 + mag / 30;
-            if (bead > 18) { bead = 18; }
+            var bead = BEAD_MIN + mag / BEAD_DIV;
+            if (bead > BEAD_MAX) { bead = BEAD_MAX; }
             var stx = null; var sty = 0;    // stalk anchor when displaced
             var he = GenArt.hash16(seed, e, 42);
             var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter
@@ -483,8 +492,13 @@ class MossGrove {
                 if (wxw == 0 && wyw == 0) {
                     if (adx >= ady) { wyw = 1; } else { wxw = 1; }
                 }
-                var txw = rdiv(-dy * 4, ln);   // cup (half-width 4)
-                var tyw = rdiv(dx * 4, ln);
+                // cup half-width 4, but never wider than the fruit it holds:
+                // below the old 4 px floor a fixed flare made the stem broader
+                // than the bead (a spade, not a podetium). No-op for bead >= 4,
+                // i.e. for every bead that could exist before BEAD_MIN dropped.
+                var cw = (bead < 4) ? bead : 4;
+                var txw = rdiv(-dy * cw, ln);
+                var tyw = rdiv(dx * cw, ln);
                 dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
                 _quad[0][0] = stx - bxw;  _quad[0][1] = sty - byw;
                 _quad[1][0] = stx + bxw;  _quad[1][1] = sty + byw;
