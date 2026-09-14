@@ -81,6 +81,14 @@ REACH_MIN = 36         # bead reach (px) on the smallest morning moss
 ORBIT_LO = 28          # innermost orbit, % of the reach (over the root star)
 ORBIT_HI = 86          # outermost orbit, % of the reach
 
+# effort-bead SIZE: radius = BEAD_MIN + mag/BEAD_DIV, clamped to BEAD_MAX (final
+# px, already scaled). BEAD_MIN is the floor every episode starts from, so it
+# sets how much of the size range short efforts give away; BEAD_DIV is the slope
+# that separates a 15-min effort from a 90-min one.
+BEAD_MIN = 4           # radius of the smallest possible effort bead
+BEAD_DIV = 30          # magnitude per extra px of radius
+BEAD_MAX = 18          # cap: a very long/hard effort stops growing here
+
 
 def scl(v):
     return idiv(v * SCN, SCD)
@@ -373,9 +381,9 @@ class MossGrove:
             # gentle slope + high cap so long/hard efforts spread out in size
             # (a 90-min session reads clearly bigger than a 15-min one) while the
             # floor stays put. Bead is a final px radius here (already scaled).
-            bead = 4 + idiv(mag, 30)
-            if bead > 18:
-                bead = 18
+            bead = BEAD_MIN + idiv(mag, BEAD_DIV)
+            if bead > BEAD_MAX:
+                bead = BEAD_MAX
             sx = None                       # stalk anchor when displaced
             sy = 0
             he = hash16(seed, e, 42)
