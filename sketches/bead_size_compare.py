@@ -20,7 +20,7 @@ from day import synthetic_day
 from device import idiv
 
 
-def ship(mag):                      # today: 4 + mag/30, cap 18
+def old(mag):                       # pre-2026-10: 4 + mag/30, cap 18
     b = 4 + idiv(mag, 30)
     return 18 if b > 18 else b
 
@@ -36,8 +36,8 @@ def linear_steep(mag):              # 2 + mag/20, cap 24
 
 
 CURVES = [
-    ("ship 4+m/30 cap18", ship),
-    ("A 1+sqrt(m) cap24", sqrt_curve),
+    ("old 4+m/30 cap18", old),
+    ("A (ship) 1+sqrt(m) cap24", sqrt_curve),
     ("B 2+m/20 cap24", linear_steep),
 ]
 
