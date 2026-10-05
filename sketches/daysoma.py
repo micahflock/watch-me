@@ -19,6 +19,23 @@ every organic composition:
                   composition is stable frame-to-frame (no jitter) and unique per
                   day (the fxhash principle).
 
+Gap catch-up (2026-10): the face does NOT run while an activity app records
+a workout, so on return advance() sees one call with a long minute gap. It
+replays the missed minutes oldest-first -- at most CHUNK per call, so a long
+gap catches up over a few minutes -- taking each minute's HR from the
+device's HR history (`hist(minute)`, ActivityMonitor.getHeartRateHistory on
+the watch) and spreading the gap's steps evenly. Without history
+(hist None) the gap collapses into one minute, the pre-2026-10 behaviour.
+
+Episode bands (2026-10): each episode also keeps its duration (edur) and a
+chronological HR record, eband = NSLOT 4-bit slots (bits 0..23, slot 0 = the
+start) of the MEAN zone over 2^L minutes each, L in bits 24..27. A slot holds
+the mean in THIRDS of a zone above ACTIVE ((zone - ACTIVE) * 3, 0..12: every
+episode minute is zone >= ACTIVE). When the slots fill, adjacent pairs merge
+(equal-weight mean, round-half-to-even so repeated merges don't drift up) and
+L doubles, so any duration fits in NSLOT slots. The renderer draws them as
+growth rings.
+
 All integer math -> ports to Monkey C verbatim. On-device this is a handful of
 scalars + zone_min[9] + EMAX*2 episode Numbers => a few hundred bytes, persisted
 like the BioBloom dish. The watchdog, not RAM, is the budget; every renderer
@@ -34,6 +51,9 @@ ZLUT = 32              # size of the per-frame zone-colour lookup table
 
 ACTIVE = 4             # zone idx >= this is an elevated-HR minute (HR >= 105)
 EMAX = 16             # cap on stored episodes (bright foci)
+CHUNK = 12            # max minutes accreted per advance() call (gap catch-up)
+NSLOT = 6             # chronological HR-zone slots per episode (bands)
+BAND_PEAK = False     # slots hold the PEAK (not mean) zone -- comparison only
 KACT = 6              # steps/min -> one growth unit (matches BioBloom)
 MOM_DIV = 16          # steps/min -> banked-magnitude units during an episode
 
@@ -75,7 +95,11 @@ class DayRecord:
         self.idle_min = 0           # minutes essentially still
         self.epz = [0] * EMAX       # episode peak zone
         self.emag = [0] * EMAX      # episode magnitude (duration + movement)
+        self.edur = [0] * EMAX      # episode duration (minutes)
+        self.eband = [0] * EMAX     # packed chronological zone slots (see top)
         self.nepi = 0
+        self._bsum = 0              # zone sum of the open episode's live slot
+        self._pool = 0              # steps not yet credited to a minute
         self.seed = 1
         self._prev = None
         self._lastmin = -1          # minute-of-day last accreted (dup-call guard)
@@ -98,13 +122,17 @@ class DayRecord:
         for i in range(EMAX):
             self.epz[i] = 0
             self.emag[i] = 0
+            self.edur[i] = 0
+            self.eband[i] = 0
         self.nepi = 0
+        self._bsum = 0
+        self._pool = 0
         self._prev = None
         self._lastmin = -1
         self._epi_on = False
         self._epi_idx = -1
 
-    def advance(self, snap):
+    def advance(self, snap, hist=None):
         if snap.hour is None or snap.minute is None:
             return
         day = snap.day if snap.day is not None else 0
@@ -129,12 +157,26 @@ class DayRecord:
                 self._prev = snap.steps
             return
 
-        spm = 0
         st = snap.steps
         if st is not None:
             if self._prev is not None and st > self._prev:
-                spm = st - self._prev
+                self._pool += st - self._prev
             self._prev = st
+        if now - self._lastmin > 1 and hist is None:
+            self._lastmin = now - 1            # no HR history: collapse the gap
+        # replay the missed minutes oldest-first (CHUNK per call), then `now`
+        n = now - self._lastmin
+        if n > CHUNK:
+            n = CHUNK
+        for _ in range(n):
+            m = self._lastmin + 1
+            spm = idiv(self._pool, now - self._lastmin)   # even step spread
+            self._pool -= spm
+            hr = snap.heartRate if m == now else hist(m)
+            self._minute(idiv(m, 60), spm, hr)
+            self._lastmin = m
+
+    def _minute(self, hh, spm, hr):
         move = idiv(spm, KACT)
         if move > 0:
             self.act_units += move
@@ -142,13 +184,11 @@ class DayRecord:
         else:
             self.idle_min += 1
 
-        hr = snap.heartRate
         zi = hr_zi(hr)
         if zi >= 0:
             self.zone_min[zi] += 1
 
         # --- overnight quiescence -> last night's sleep ---
-        hh = snap.hour
         quiescent = (spm <= IDLE_SPM) and (hr is None or hr <= REST_HR)
         is_night = (hh >= NIGHT_START or hh <= NIGHT_END)
         if is_night and quiescent and self._night < SLEEP_CAP:
@@ -180,16 +220,54 @@ class DayRecord:
                 if self._epi_idx >= 0:
                     self.epz[self._epi_idx] = zi
                     self.emag[self._epi_idx] = 0
+                    self.edur[self._epi_idx] = 0
+                    self.eband[self._epi_idx] = 0
                     self.nepi += 1
             if self._epi_idx >= 0:
                 i = self._epi_idx
                 if zi > self.epz[i]:
                     self.epz[i] = zi
                 self.emag[i] += 1 + idiv(spm, MOM_DIV)
+                self._band(i, zi)
         else:
             self._epi_on = False
             self._epi_idx = -1
-        self._lastmin = now
+
+    # Fold this minute's zone into episode i's chronological slots (see top).
+    def _band(self, i, zi):
+        d = self.edur[i]                   # minutes already in the episode
+        b = self.eband[i]
+        lv = (b >> 24) & 15
+        s = d >> lv
+        if s >= NSLOT:                     # full: merge pairs, halve resolution
+            nb = 0
+            for k in range(NSLOT // 2):
+                t = ((b >> (8 * k)) & 15) + ((b >> (8 * k + 4)) & 15)
+                v = t >> 1
+                if (t & 1) == 1 and (v & 1) == 1:
+                    v += 1                 # half -> even: no upward drift
+                if BAND_PEAK:
+                    a = (b >> (8 * k)) & 15
+                    c = (b >> (8 * k + 4)) & 15
+                    v = a if a > c else c
+                nb |= v << (4 * k)
+            lv += 1
+            b = nb | (lv << 24)
+            s = d >> lv
+        mask = (1 << lv) - 1
+        if (d & mask) == 0:
+            self._bsum = 0                 # first minute of a fresh slot
+        self._bsum += (zi - ACTIVE) * 3   # thirds of a zone above ACTIVE
+        cnt = (d & mask) + 1
+        mean = idiv(self._bsum * 2 + cnt, cnt * 2)   # rounded
+        sh = 4 * s
+        if BAND_PEAK:
+            u = (zi - ACTIVE) * 3
+            cur = (b >> sh) & 15 if cnt > 1 else 0
+            mean = u if u > cur else cur
+        b = (b & ~(15 << sh)) | (mean << sh)
+        self.eband[i] = b
+        self.edur[i] = d + 1
 
     def hr_total(self):
         t = 0
@@ -198,8 +276,8 @@ class DayRecord:
         return t
 
     def state_bytes(self):
-        # zone_min[9] + EMAX*2 episode Numbers + ~8 scalars, ~5 B each.
-        return (9 + EMAX * 2 + 8) * 5
+        # zone_min[9] + EMAX*4 episode Numbers + ~10 scalars, ~5 B each.
+        return (9 + EMAX * 4 + 10) * 5
 
 
 def zone_color(z):
