@@ -29,12 +29,11 @@ the watch) and spreading the gap's steps evenly. Without history
 
 Episode bands (2026-10): each episode also keeps its duration (edur) and a
 chronological HR record, eband = NSLOT 4-bit slots (bits 0..23, slot 0 = the
-start) of the MEAN zone over 2^L minutes each, L in bits 24..27. A slot holds
-the mean in THIRDS of a zone above ACTIVE ((zone - ACTIVE) * 3, 0..12: every
-episode minute is zone >= ACTIVE). When the slots fill, adjacent pairs merge
-(equal-weight mean, round-half-to-even so repeated merges don't drift up) and
-L doubles, so any duration fits in NSLOT slots. The renderer draws them as
-growth rings.
+start) of the PEAK zone over 2^L minutes each, L in bits 24..27 (owner chose
+peak over mean: intervals read as their true purple, not an averaged pink
+never actually run). When the slots fill, adjacent pairs merge to their max
+and L grows by one, so any duration fits in NSLOT slots. The renderer draws
+them as growth rings.
 
 All integer math -> ports to Monkey C verbatim. On-device this is a handful of
 scalars + zone_min[9] + EMAX*2 episode Numbers => a few hundred bytes, persisted
@@ -53,7 +52,6 @@ ACTIVE = 4             # zone idx >= this is an elevated-HR minute (HR >= 105)
 EMAX = 16             # cap on stored episodes (bright foci)
 CHUNK = 12            # max minutes accreted per advance() call (gap catch-up)
 NSLOT = 6             # chronological HR-zone slots per episode (bands)
-BAND_PEAK = False     # slots hold the PEAK (not mean) zone -- comparison only
 KACT = 6              # steps/min -> one growth unit (matches BioBloom)
 MOM_DIV = 16          # steps/min -> banked-magnitude units during an episode
 
@@ -98,7 +96,6 @@ class DayRecord:
         self.edur = [0] * EMAX      # episode duration (minutes)
         self.eband = [0] * EMAX     # packed chronological zone slots (see top)
         self.nepi = 0
-        self._bsum = 0              # zone sum of the open episode's live slot
         self._pool = 0              # steps not yet credited to a minute
         self.seed = 1
         self._prev = None
@@ -125,7 +122,6 @@ class DayRecord:
             self.edur[i] = 0
             self.eband[i] = 0
         self.nepi = 0
-        self._bsum = 0
         self._pool = 0
         self._prev = None
         self._lastmin = -1
@@ -233,7 +229,9 @@ class DayRecord:
             self._epi_on = False
             self._epi_idx = -1
 
-    # Fold this minute's zone into episode i's chronological slots (see top).
+    # Fold this minute's zone into episode i's chronological slots (see top):
+    # a slot holds the PEAK zone of its 2^L minutes; when all NSLOT fill,
+    # adjacent pairs merge to their max and L grows by one.
     def _band(self, i, zi):
         d = self.edur[i]                   # minutes already in the episode
         b = self.eband[i]
@@ -242,30 +240,15 @@ class DayRecord:
         if s >= NSLOT:                     # full: merge pairs, halve resolution
             nb = 0
             for k in range(NSLOT // 2):
-                t = ((b >> (8 * k)) & 15) + ((b >> (8 * k + 4)) & 15)
-                v = t >> 1
-                if (t & 1) == 1 and (v & 1) == 1:
-                    v += 1                 # half -> even: no upward drift
-                if BAND_PEAK:
-                    a = (b >> (8 * k)) & 15
-                    c = (b >> (8 * k + 4)) & 15
-                    v = a if a > c else c
-                nb |= v << (4 * k)
+                a = (b >> (8 * k)) & 15
+                c = (b >> (8 * k + 4)) & 15
+                nb |= (a if a > c else c) << (4 * k)
             lv += 1
             b = nb | (lv << 24)
             s = d >> lv
-        mask = (1 << lv) - 1
-        if (d & mask) == 0:
-            self._bsum = 0                 # first minute of a fresh slot
-        self._bsum += (zi - ACTIVE) * 3   # thirds of a zone above ACTIVE
-        cnt = (d & mask) + 1
-        mean = idiv(self._bsum * 2 + cnt, cnt * 2)   # rounded
         sh = 4 * s
-        if BAND_PEAK:
-            u = (zi - ACTIVE) * 3
-            cur = (b >> sh) & 15 if cnt > 1 else 0
-            mean = u if u > cur else cur
-        b = (b & ~(15 << sh)) | (mean << sh)
+        if (d & ((1 << lv) - 1)) == 0 or zi > ((b >> sh) & 15):
+            b = (b & ~(15 << sh)) | (zi << sh)   # fresh slot, or a new peak
         self.eband[i] = b
         self.edur[i] = d + 1
 
