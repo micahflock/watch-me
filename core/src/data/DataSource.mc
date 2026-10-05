@@ -2,6 +2,8 @@ using Toybox.System as Sys;
 using Toybox.Time as Time;
 using Toybox.Time.Gregorian as Greg;
 using Toybox.ActivityMonitor as Act;
+using Toybox.Activity as Activity;
+using Toybox.Application as App;
 using Toybox.Lang as Lang;
 
 // DataSource — assembles a Snapshot from Toybox APIs available at CIQ 2.4.
@@ -12,16 +14,118 @@ using Toybox.Lang as Lang;
 //
 // Defensive throughout: every API touch is guarded so a missing capability or a
 // null leaves the corresponding Snapshot field null.
+//
+// Location: GPS ALWAYS wins, the user-entered lat/lng properties are the
+// fallback (owner, 2026-10). A watch face cannot use Toybox.Position (needs the
+// Positioning permission, which watch faces can't hold), but
+// Activity.getActivityInfo().currentLocation (API 1.0, no permission) reports
+// the device's LAST KNOWN position -- in practice the fix from the most recent
+// GPS activity. It carries no timestamp, so the face remembers the last fix it
+// saw (micro-degrees) and WHEN it first saw it change, persisted in the object
+// store; recency (Snapshot.gpsFix) derives from that stamp. The remembered fix
+// also covers a device that forgets its position (e.g. after a reboot).
 module DataSource {
 
     // Cached property values (refreshed on settings change / startup).
     var _lat = null;
     var _lon = null;
 
+    // Remembered GPS fix (see header). _gStamp 0 = age unknown (first fix the
+    // face ever saw, e.g. right after install) -> reads stale, never fresh.
+    const GPS_KEY = "gpsFix";
+    const GPS_FRESH_SEC = 86400;   // fresh = fix changed within the last 24 h
+    const GPS_SAVE_GAP = 600;      // min seconds between object-store writes
+    var _gLat = null;              // Number micro-degrees, or null (no fix yet)
+    var _gLon = null;
+    var _gStamp = 0;               // epoch sec the current fix was first seen
+    var _gDirty = false;           // fix changed since the last write
+    var _gSaved = 0;               // epoch sec of the last write
+
     // Read app properties into the cache. `app` is the AppBase instance.
     function reloadProperties(app) {
         _lat = readFloatProp(app, "lat");
         _lon = readFloatProp(app, "lng");
+        if (_gLat == null) { loadGps(app); }   // RAM fix is newer than the store
+    }
+
+    // Restore the remembered fix [latE6, lonE6, stampSec]; a malformed record
+    // is ignored (the next fix the device reports re-seeds it).
+    function loadGps(app) {
+        try {
+            var a = app.getProperty(GPS_KEY);
+            if (a instanceof Lang.Array && a.size() == 3
+                    && a[0] instanceof Lang.Number && a[1] instanceof Lang.Number
+                    && a[2] instanceof Lang.Number) {
+                _gLat = a[0]; _gLon = a[1]; _gStamp = a[2];
+            }
+        } catch (e) {
+        }
+    }
+
+    // Pick up the device's last known position; a CHANGED fix is stamped with
+    // `nowSec` (the first fix ever seen gets stamp 0: its age is unknown).
+    // Persists the change, but at most once per GPS_SAVE_GAP: a fix arrives
+    // ~once per GPS activity, the gap only bounds flash writes should a device
+    // ever report a jittering position outside an activity.
+    function readGps(nowSec) {
+        try {
+            var info = Activity.getActivityInfo();
+            if (info != null && info has :currentLocation
+                    && info.currentLocation != null) {
+                var d = info.currentLocation.toDegrees();
+                noteFix((d[0] * 1000000.0).toNumber(),
+                        (d[1] * 1000000.0).toNumber(), nowSec);
+            }
+        } catch (e) {
+        }
+        if (_gDirty && (nowSec - _gSaved >= GPS_SAVE_GAP || nowSec < _gSaved)) {
+            try {
+                App.getApp().setProperty(GPS_KEY, [_gLat, _gLon, _gStamp]);
+            } catch (e) {
+            }
+            _gDirty = false;
+            _gSaved = nowSec;
+        }
+    }
+
+    // Remember a reported fix (micro-degrees); a CHANGED valid fix is stamped
+    // `nowSec`, except the first fix ever seen, whose age is unknown (stamp 0).
+    function noteFix(la, lo, nowSec) {
+        if (validFix(la, lo) && (la != _gLat || lo != _gLon)) {
+            _gStamp = (_gLat == null) ? 0 : nowSec;
+            _gLat = la; _gLon = lo;
+            _gDirty = true;
+        }
+    }
+
+    // Snapshot location: the remembered GPS fix wins, the lat/lng properties
+    // are the fallback; gpsFix reports the fix's recency either way.
+    function fillLocation(snap, nowSec) {
+        snap.gpsFix = gpsState(nowSec);
+        if (_gLat != null) {
+            snap.lat = _gLat / 1000000.0;
+            snap.lon = _gLon / 1000000.0;
+        } else {
+            snap.lat = _lat;
+            snap.lon = _lon;
+        }
+    }
+
+    // In range and not a "no fix" sentinel ((0,0), or the 180/180 some
+    // firmwares report): micro-degrees.
+    function validFix(la, lo) {
+        if (la > 90000000 || la < -90000000) { return false; }
+        if (lo > 180000000 || lo < -180000000) { return false; }
+        return !(la == 0 && lo == 0);
+    }
+
+    // 0 = no fix ever seen, 1 = stale (older than 24 h or age unknown),
+    // 2 = fresh. A clock that moved back before the stamp reads stale.
+    function gpsState(nowSec) {
+        if (_gLat == null) { return 0; }
+        if (_gStamp <= 0) { return 1; }
+        var age = nowSec - _gStamp;
+        return (age >= 0 && age < GPS_FRESH_SEC) ? 2 : 1;
     }
 
     function readFloatProp(app, key) {
@@ -82,9 +186,10 @@ module DataSource {
             if (ds has :is24Hour)       { snap.is24Hour = ds.is24Hour; }
         }
 
-        // --- location (cached property) ---
-        snap.lat = _lat;
-        snap.lon = _lon;
+        // --- location: remembered GPS fix wins, property is the fallback ---
+        var nowSec = now.value();
+        readGps(nowSec);
+        fillLocation(snap, nowSec);
     }
 
     // Most recent heart-rate sample, or null. getHeartRateHistory is API 1.2.1

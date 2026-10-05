@@ -92,8 +92,10 @@ wrist. When a trip happens, the simulator is ground truth: **docs/watchdog-debug
   ends (the sandbox proxy's blind spot, `INK_MAX` shuffling, the midnight-reset
   red herring) — four rounds of lessons so the next trip takes one.
 - Display 215×180 semiround, fixed 14-color palette (COLOR_YELLOW is amber
-  0xFFAA00). No GPS/sensors in watch faces — location comes from `lat`/`lng`
-  app properties.
+  0xFFAA00). No live GPS/sensors in watch faces (`Toybox.Position` needs a
+  permission faces can't hold), but `Activity.getActivityInfo().currentLocation`
+  gives the device's last known fix: `DataSource` prefers it, falls back to the
+  `lat`/`lng` app properties, and infers fix recency (docs/api-2.4-notes.md).
 
 ## Architecture (details: docs/architecture.md)
 
@@ -125,6 +127,8 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
 (docs/sideload.md). `bin/flashtest.prg`, `bin/devface.prg`,
 `bin/two-worlds.prg`, and `bin/two-worlds-v2.prg` are tracked in the repo for
-direct download. `devface` needs `lat`/`lng` set in the app settings on the
-watch, else it shows the "?" compass rose; `two-worlds` and `two-worlds-v2`
-(shared settings) likewise need `lat`/`lng` for their sun/north marker.
+direct download. `devface` needs a location (a GPS fix from any GPS activity,
+or `lat`/`lng` set in the app settings on the watch), else it shows the "?"
+compass rose; `two-worlds` and `two-worlds-v2` (shared settings) likewise need
+one for their sun/north marker. The tracked `devface`/`two-worlds` PRGs predate
+the GPS fix (2026-10) and read only `lat`/`lng` until rebuilt.
