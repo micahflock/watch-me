@@ -1,4 +1,5 @@
 using Toybox.Graphics as Gfx;
+using Toybox.Math as Math;
 
 // MossGrove -- the two-worlds V2 biometric organism. Line-for-line port of
 // sketches/algos/moss_grove.py (the parity reference); the day record is the
@@ -430,10 +431,14 @@ class MossGrove {
         for (var e = 0; e < _nepi; e++) {
             if (_ink <= 0) { break; }
             var mag = _emag[e];
-            // gentle slope + high cap so long/hard efforts spread out in size
-            // while the floor stays put. Bead is a final px radius (already scaled).
-            var bead = 4 + mag / 30;
-            if (bead > 18) { bead = 18; }
+            // 1 + isqrt(mag), cap 24 (owner, 2026-10: steeper on both ends --
+            // under the old 4 + mag/30 every everyday effort sat on the 4 px
+            // floor). sqrt spreads the small efforts (stairs 2, a hurry 3, a
+            // walk ~8-11) while a ~50-min run still reaches the cap. One
+            // native sqrt per bead (an integer loop would cost ~400 VM instr
+            // per frame at 16 beads). Final px radius (already scaled).
+            var bead = 24;
+            if (mag < 529) { bead = 1 + Math.sqrt(mag).toNumber(); }
             var stx = null; var sty = 0;    // stalk anchor when displaced
             var he = GenArt.hash16(seed, e, 42);
             var a = (ph + e * 97 + (he % 21) - 10) & 255;  // golden + jitter

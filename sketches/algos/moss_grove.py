@@ -45,6 +45,8 @@ saturated RELEASE frame is verified silent in the sim, which is the ground
 truth the proxy is not (docs/watchdog-debugging.md).
 """
 
+import math
+
 import daysoma as DS
 from daysoma import zone_color, zone_lut, place, dominant_zone, ZLUT, ACTIVE
 from daybuckets import px, py
@@ -89,6 +91,19 @@ def scl(v):
 # rounded division, symmetric in sign: plain truncation shaves ~30% off the
 # stalk flare on diagonal runs (both perpendicular components round toward
 # zero). Ports as (abs + d/2) / d with the sign re-applied.
+def bead_radius(mag):
+    """Effort-bead radius (final px, already scaled) from banked magnitude:
+    1 + isqrt(mag), cap 24 (owner, 2026-10: steeper on both ends -- under the
+    old 4 + mag/30 cap 18 every everyday effort sat on the 4 px floor). sqrt
+    spreads the small efforts (stairs 2, a hurry 3, a walk ~8-11) while a
+    ~50-min run still reaches the cap. The .mc takes Math.sqrt(mag).toNumber()
+    for mag < 529 (= 23^2; exact-squares are exact in float, so it truncates
+    the same as isqrt) -- see sketches/bead_size_compare.py."""
+    if mag >= 529:
+        return 24
+    return 1 + math.isqrt(mag)
+
+
 def rdiv(v, d):
     av = v if v >= 0 else -v
     q = idiv(av + idiv(d, 2), d)
@@ -370,12 +385,7 @@ class MossGrove:
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            # gentle slope + high cap so long/hard efforts spread out in size
-            # (a 90-min session reads clearly bigger than a 15-min one) while the
-            # floor stays put. Bead is a final px radius here (already scaled).
-            bead = 4 + idiv(mag, 30)
-            if bead > 18:
-                bead = 18
+            bead = bead_radius(mag)
             sx = None                       # stalk anchor when displaced
             sy = 0
             he = hash16(seed, e, 42)

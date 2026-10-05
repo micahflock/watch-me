@@ -11,7 +11,7 @@ using Toybox.Math as Math;
 // so the V1 "containment breach" warning is gone.
 //
 // Render order (back -> front): grove, field mask, border, uplink, battery,
-// north, readout, time, debug.
+// north, readout, gps pip, time, debug.
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -47,6 +47,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
         _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
         _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
+        _compositor.add(new GpsComponent(), null);       // 7b GPS fix recency pip
         _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
@@ -320,6 +321,23 @@ class ReadoutComponent {
             }
             _date.draw(dc, d % 10, x, y);
         }
+    }
+}
+
+// GPS fix recency pip, left of the day-of-week (owner, 2026-10): a small
+// target in the chrome's state colours -- blue = a fix within 24 h (like the
+// connected uplink), amber = an older fix (or one whose age the face doesn't
+// know yet), dark gray hollow ring = no GPS fix ever seen (the north marker is
+// then on the lat/lng settings). See DataSource for how recency is inferred.
+class GpsComponent {
+    function render(dc, state) {
+        var g = state.gpsFix;
+        var c = Gfx.COLOR_DK_GRAY;
+        if (g == 2) { c = Gfx.COLOR_BLUE; }
+        else if (g == 1) { c = Gfx.COLOR_YELLOW; }
+        dc.setColor(c, Gfx.COLOR_TRANSPARENT);
+        dc.drawCircle(75, 16, 4);
+        if (g == 1 || g == 2) { dc.fillCircle(75, 16, 1); }
     }
 }
 
