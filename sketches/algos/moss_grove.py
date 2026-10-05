@@ -89,6 +89,16 @@ def scl(v):
 # rounded division, symmetric in sign: plain truncation shaves ~30% off the
 # stalk flare on diagonal runs (both perpendicular components round toward
 # zero). Ports as (abs + d/2) / d with the sign re-applied.
+def bead_radius(mag):
+    """Effort-bead radius (final px, already scaled) from banked magnitude.
+    Gentle slope + high cap so long/hard efforts spread out in size (a 90-min
+    session reads clearly bigger than a 15-min one) while the floor stays put."""
+    bead = 4 + idiv(mag, 30)
+    if bead > 18:
+        bead = 18
+    return bead
+
+
 def rdiv(v, d):
     av = v if v >= 0 else -v
     q = idiv(av + idiv(d, 2), d)
@@ -370,12 +380,7 @@ class MossGrove:
             if ink <= 0:
                 break
             mag = rec.emag[e]
-            # gentle slope + high cap so long/hard efforts spread out in size
-            # (a 90-min session reads clearly bigger than a 15-min one) while the
-            # floor stays put. Bead is a final px radius here (already scaled).
-            bead = 4 + idiv(mag, 30)
-            if bead > 18:
-                bead = 18
+            bead = bead_radius(mag)
             sx = None                       # stalk anchor when displaced
             sy = 0
             he = hash16(seed, e, 42)
