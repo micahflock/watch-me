@@ -192,6 +192,57 @@ module DataSource {
         fillLocation(snap, nowSec);
     }
 
+    // Per-minute HR for n minutes of TODAY starting at minute-of-day fromMin,
+    // into buf[0..n-1], from the device HR history: each minute takes the
+    // latest valid sample at or before its end, carried forward (null before
+    // the first one). Feeds MossGrove's gap replay -- the face does not run
+    // while an activity app records, so a workout arrives as a minute gap.
+    // History is read OLDEST-first over a Duration window ending now and the
+    // walk stops once the n minutes are filled, so the cost is ~n/(sample
+    // spacing) iterator steps. False when there is no history API or no
+    // sample in the window at all: the caller then collapses the gap as
+    // before. A chunk older than the history reaches (a long ride) is still
+    // true, its minutes null (no HR -> no episode).
+    function hrMinutes(buf, fromMin, n, state) {
+        var any = false;
+        try {
+            if (Act has :getHeartRateHistory && state.hour != null
+                    && state.minute != null) {
+                var nowSec = Time.now().value();
+                var sec = (state.second != null) ? state.second : 0;
+                var t0 = nowSec - (state.hour * 3600 + state.minute * 60 + sec)
+                         + fromMin * 60;
+                var span = nowSec - t0 + 60;
+                if (span < 60) { span = 60; }
+                var it = Act.getHeartRateHistory(new Time.Duration(span), false);
+                var bad = (Act has :INVALID_HR_SAMPLE) ? Act.INVALID_HR_SAMPLE : 255;
+                var cur = null;
+                var k = 0;
+                var smp = (it != null) ? it.next() : null;
+                while (k < n) {
+                    if (smp != null && smp.when != null
+                            && smp.when.value() < t0 + (k + 1) * 60) {
+                        var hr = smp.heartRate;
+                        if (hr != null && hr != bad && hr > 0) {
+                            cur = hr; any = true;
+                        }
+                        smp = it.next();
+                    } else {
+                        buf[k] = cur;
+                        k++;
+                    }
+                }
+                if (smp != null) { any = true; }   // history goes on past it
+            }
+        } catch (e) {
+            any = false;
+        }
+        if (!any) {
+            for (var k = 0; k < n; k++) { buf[k] = null; }
+        }
+        return any;
+    }
+
     // Most recent heart-rate sample, or null. getHeartRateHistory is API 1.2.1
     // and the canonical watch-face HR path for this device generation.
     function readHeartRate() {

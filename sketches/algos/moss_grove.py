@@ -147,7 +147,7 @@ class MossGrove:
 
     # Growth rings (owner, 2026-10): a bead of radius >= BAND_MIN shows its
     # episode's HR course as concentric EQUAL-AREA bands, start at the centre,
-    # end at the rim, each band the mean zone of its share of the episode's
+    # end at the rim, each band the PEAK zone of its share of the episode's
     # chronological slots (daysoma: eband/edur). Equal area gives every time
     # slice the same ink; the outermost band is the thinnest, so the band
     # count is bead/4 (keeps it >= ~2 px), capped at the slots recorded.
@@ -166,17 +166,11 @@ class MossGrove:
         for j in range(nb - 1, -1, -1):
             s0 = idiv(j * ns, nb)
             s1 = idiv((j + 1) * ns, nb)
-            t = 0
-            pk = 0
+            z = 0
             for k in range(s0, s1):
-                v = (b >> (4 * k)) & 15                   # thirds above ACTIVE
-                t += v
-                if v > pk:
-                    pk = v
-            c3 = (s1 - s0) * 3
-            z = ACTIVE + idiv(t * 2 + c3, c3 * 2)        # rounded mean zone
-            if DS.BAND_PEAK:
-                z = ACTIVE + idiv(pk, 3)
+                v = (b >> (4 * k)) & 15
+                if v > z:
+                    z = v
             if z != prev:
                 r = bead if j == nb - 1 else idiv(bead * BAND_SQ[nb][j] + 50, 100)
                 dc.setColor(zone_color(z), COLOR_TRANSPARENT)

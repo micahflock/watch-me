@@ -12,12 +12,13 @@ HR history (ActivityMonitor.getHeartRateHistory on the watch) is modelled as
 a 2-minute sample log, carried forward between samples.
 
 Rows:
-  shipped       gap collapses into one minute at 8:05 (HR then 84: zone 2),
+  pre-2026-10   gap collapses into one minute at 8:05 (HR then 84: zone 2),
                 so the run makes NO bead -- only moss growth
   backfill      gap replayed from HR history (CHUNK min per update), solid
                 peak-zone bead
   backfill+rings  ... and the bead drawn as chronological growth rings, each
-                band the MEAN zone of its span (or its PEAK, comparison row)
+                band the PEAK zone of its span (owner chose peak over mean,
+                2026-10: mean smeared the purple/red intervals into pink)
   face-on+rings reference: the face on screen the whole run (no gap)
 
     python3 sketches/bead_band_compare.py
@@ -75,11 +76,10 @@ def run_day(mod, snaps, at, away, hist):
 
 
 ROWS = [
-    ("shipped", True, False, False, False),
-    ("backfill", True, True, False, False),
-    ("backfill+rings (mean)", True, True, True, False),
-    ("backfill+rings (peak)", True, True, True, True),
-    ("face-on+rings (mean)", False, False, True, False),
+    ("pre-2026-10", True, False, False),
+    ("backfill", True, True, False),
+    ("backfill+rings", True, True, True),
+    ("face-on+rings", False, False, True),
 ]
 
 
@@ -89,10 +89,9 @@ def main():
     heavy = synthetic_day(profile="heavy")
     hist = history(snaps)
     rows = []
-    for label, away, use_hist, bands, peak in ROWS:
+    for label, away, use_hist, bands in ROWS:
         mod = load_algo("moss_grove")
         mod.BANDS = bands
-        mod.DS.BAND_PEAK = peak
         h = hist if use_hist else None
         cells = []
         for at in ["8:06", "8:20", "21:00"]:
