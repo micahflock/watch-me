@@ -31,9 +31,11 @@ class Snapshot {
     var batteryPct;    // 0..100 Float
     var phoneConnected; // Boolean
 
-    // Location (user-entered; no GPS at this API level for watch faces)
+    // Location: the device's last GPS fix when it has one, else the
+    // user-entered lat/lng properties (DataSource header)
     var lat;           // Float degrees or null
     var lon;           // Float degrees or null
+    var gpsFix;        // 0 no GPS fix ever seen, 1 stale (>24 h), 2 fresh
 
     function initialize() {
         clear();
@@ -48,6 +50,6 @@ class Snapshot {
         steps = null; stepGoal = null; distanceCm = null; calories = null;
         heartRate = null;
         batteryPct = null; phoneConnected = null;
-        lat = null; lon = null;
+        lat = null; lon = null; gpsFix = null;
     }
 }
