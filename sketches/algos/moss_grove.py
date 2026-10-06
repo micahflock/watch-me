@@ -91,6 +91,13 @@ def scl(v):
 # rounded division, symmetric in sign: plain truncation shaves ~30% off the
 # stalk flare on diagonal runs (both perpendicular components round toward
 # zero). Ports as (abs + d/2) / d with the sign re-applied.
+BANDS = True           # growth-ring beads (owner, 2026-10); False = solid peak
+BAND_MIN = 8           # bead radius (px) from which a bead shows its HR bands
+# BAND_SQ[n][j] = round(100 * sqrt((j + 1) / n)): equal-area band radii, %
+BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
+           [45, 63, 77, 89, 100], [41, 58, 71, 82, 91, 100]]
+
+
 def bead_radius(mag):
     """Effort-bead radius (final px, already scaled) from banked magnitude:
     1 + isqrt(mag), cap 24 (owner, 2026-10: steeper on both ends -- under the
@@ -135,8 +142,42 @@ class MossGrove:
         self.vx = [0] * NA
         self.vy = [0] * NA
 
-    def advance(self, snap):
-        self.rec.advance(snap)
+    def advance(self, snap, hist=None):
+        self.rec.advance(snap, hist)
+
+    # Growth rings (owner, 2026-10): a bead of radius >= BAND_MIN shows its
+    # episode's HR course as concentric EQUAL-AREA bands, start at the centre,
+    # end at the rim, each band the PEAK zone of its share of the episode's
+    # chronological slots (daysoma: eband/edur). Equal area gives every time
+    # slice the same ink; the outermost band is the thinnest, so the band
+    # count is bead/4 (keeps it >= ~2 px), capped at the slots recorded.
+    # Drawn outermost-first as nested discs; a band the same colour as the one
+    # outside it is skipped (already painted). Returns ink spent.
+    def draw_bands(self, dc, x, y, bead, b, dur):
+        lv = (b >> 24) & 15
+        ns = ((dur - 1) >> lv) + 1
+        nb = idiv(bead, 4)
+        if nb > DS.NSLOT:
+            nb = DS.NSLOT
+        if nb > ns:
+            nb = ns
+        prev = -1
+        spent = 0
+        for j in range(nb - 1, -1, -1):
+            s0 = idiv(j * ns, nb)
+            s1 = idiv((j + 1) * ns, nb)
+            z = 0
+            for k in range(s0, s1):
+                v = (b >> (4 * k)) & 15
+                if v > z:
+                    z = v
+            if z != prev:
+                r = bead if j == nb - 1 else idiv(bead * BAND_SQ[nb][j] + 50, 100)
+                dc.setColor(zone_color(z), COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, r)
+                spent += 1
+            prev = z
+        return spent
 
     def state_bytes(self):
         return self.rec.state_bytes()
@@ -452,8 +493,12 @@ class MossGrove:
                 ink -= 2
             dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
             dc.fillCircle(x, y, bead + 1)
-            dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
-            dc.fillCircle(x, y, bead)
+            if BANDS and bead >= BAND_MIN and rec.edur[e] > 0:
+                ink -= self.draw_bands(dc, x, y, bead, rec.eband[e],
+                                       rec.edur[e])
+            else:
+                dc.setColor(zone_color(rec.epz[e]), COLOR_TRANSPARENT)
+                dc.fillCircle(x, y, bead)
             ink -= 2
 
         # --- root star drawn LAST: stays on top of the colony all day ---

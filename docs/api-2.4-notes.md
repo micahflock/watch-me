@@ -58,7 +58,13 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
   clips and the StripGlyphs blitter.
 - `ActivityMonitor.getHeartRateHistory` is API 1.2.1 and the canonical
   watch-face HR source for this device generation. Guard with `has` and treat
-  `INVALID_HR_SAMPLE` as null.
+  `INVALID_HR_SAMPLE` as null. It also backfills what the face missed: a watch
+  face does NOT run while an activity app records, so `DataSource.hrMinutes`
+  reads the history OLDEST-first over a `Time.Duration` window ending now
+  (`getHeartRateHistory(new Time.Duration(s), false)`) and stops once its
+  chunk is filled. The SDK 9.2.0 sim returns history for this call; the
+  fr735xt's sample spacing, and whether workout HR lands in it, are
+  wrist-only facts (the sandbox assumes 2-minute samples).
 - `System.getSystemStats()` has `usedMemory/totalMemory/freeMemory/battery`
   but **no peak-memory field** at any API level — `Instrument` tracks its own
   high-water mark.
