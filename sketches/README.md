@@ -34,6 +34,15 @@ captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
   are exploration and measurement harnesses for those engines — each has a
   docstring saying what it renders.
 
+### Alternate faces (2026-10)
+
+`alt_faces.py` renders the round-1 alternate-face concepts (`algos/alt_*.py`,
+whole faces: time/date/art/status) from the owner interview in
+`docs/alt-faces.md`, on owner-like simulated days with a two-day replay so
+last night's sleep is in the record. The shared pieces -- bitmap fonts, sun /
+moon astro, the on-screen rim marker, and the `DayLog` day record -- live in
+`altkit.py`. Review sheets land in `out/alt/`.
+
 Because the primitives match 1:1, a winning sandbox algo ports to a `.mc` face
 mechanically. Arc/circle rasterization is the one thing only the SDK sim nails,
 so the final check is still `scripts/build.sh` + `scripts/sim.sh`.
