@@ -106,9 +106,12 @@ watchdog trip. The probe is the one in docs/watchdog-debugging.md plus
 `_edur[i] = 600`, a six-zone `_eband[i]`, `_epiOn = true; _epiIdx = 15`,
 `_lastMin = nm - 13`, and `hrMinutes` forced to fill HR 150.
 
-> Note: `faces/two-worlds/monkey.jungle` (V1) still pulls all of core and so now
-> carries MossGrove dead; its June figure above (55.2 KB, ~6 KB free) predates
-> MossGrove.mc. Unmeasured since; the same narrowing would recover it.
+**V1 narrowed too (2026-10).** `faces/two-worlds/monkey.jungle` still pulled all
+of core, so once MossGrove.mc landed, a rebuilt V1 release died "Out Of Memory"
+on load in the sim (PRG 57.0 KB; the tracked June PRG predated MossGrove and
+still ran). With the same per-file `sourcePath` narrowing (release and debug
+jungles) it loads at **46.8/59.8 kB** (sim status bar), PRG 36.4 KB -- below the
+June 53.9 KB above, since StrataField/Flock no longer ship dead either.
 
 ## How the watchdog budget was measured
 

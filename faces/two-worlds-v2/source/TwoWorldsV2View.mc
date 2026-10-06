@@ -11,7 +11,7 @@ using Toybox.Math as Math;
 // so the V1 "containment breach" warning is gone.
 //
 // Render order (back -> front): grove, field mask, border, uplink, battery,
-// north, readout, gps pip, time, debug.
+// readout, gps pip, time, north, debug.
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -45,10 +45,10 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new BorderComponent(), null);    // 3 white border
         _compositor.add(new UplinkComponent(), null);    // 4 phone bars
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
-        _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
-        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
-        _compositor.add(new GpsComponent(), null);       // 7b GPS fix recency pip
-        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
+        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
+        _compositor.add(new GpsComponent(), null);       // 6b GPS fix recency pip
+        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 7 time
+        _compositor.add(new NorthComponent(), null);     // 8 sun/north marker, over the chrome
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
 
@@ -271,8 +271,9 @@ class NorthComponent {
         var ry = -Math.cos(th);
         var tx = Math.cos(th);
         var ty = Math.sin(th);
-        var cx = 107.5 + 101.7 * rx;
-        var cy = 90.0 + 101.7 * ry;
+        var r = rimR(ry);
+        var cx = 107.5 + r * rx;
+        var cy = 90.0 + r * ry;
 
         dc.setColor(Gfx.COLOR_RED, Gfx.COLOR_TRANSPARENT);
         quad(cx, cy, rx, ry, tx, ty, 5.0, 4.3);
@@ -281,6 +282,15 @@ class NorthComponent {
         dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
         quad(cx, cy, rx, ry, tx, ty, 2.0, 1.72);
         dc.fillPolygon(_quad);
+    }
+
+    // The r=101.7 rim cut flat at the panel's top/bottom edges so the marker
+    // stays on the glass at every bearing (see the V1 NorthComponent).
+    function rimR(ry) {
+        var r = 101.7;
+        if (-ry * r > 84.5) { r = 84.5 / -ry; }        // top edge: centre y 5.5
+        else if (ry * r > 82.5) { r = 82.5 / ry; }     // bottom edge: centre y 172.5
+        return r;
     }
 
     function quad(cx, cy, rx, ry, tx, ty, sR, sT) {
