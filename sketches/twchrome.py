@@ -9,9 +9,9 @@ face, plus V2's GPS pip) onto the faithful device model, so chrome tweaks
     FieldMask  static black runs outside the field disc (same merged-rect build)
     Border     the white separation line (chord, slant, rim arcs, battery notch)
     Uplink     phone bars                Battery  three 33% chunks
-    North      the hollow red diamond on the rim at the sun-compass angle
     Readout    day-of-week + date strips Gps      fix-recency pip
     Clock      7-seg HH:MM strips
+    North      the hollow red marker on the rim at the sun-compass angle
 
 Float math runs in float32 like the watch (solar.F; NEP 50 keeps a Python
 float literal "weak", i.e. a Monkey C Float literal). The glyph strips are the
@@ -19,8 +19,10 @@ real resources (faces/two-worlds/resources/drawables), blitted through a clip
 exactly like core StripGlyphs.
 
 North takes a `track(rx, ry) -> r` callable: the rim radius along the unit ray
-(rx, ry) = (sin th, -cos th). The shipped face is the constant TRACK_R = 101.7
-(track_circle); sketches/north_compare.py holds the candidate fixes.
+(rx, ry) = (sin th, -cos th). The face ships track_edge -- the r=101.7 gutter
+circle cut flat at the panel's top and bottom edges -- and draws the marker
+LAST, over the clock/date/battery (owner, 2026-10). track_circle is the
+pre-2026-10 constant rim; sketches/north_compare.py compares the two.
 """
 
 import math
@@ -280,19 +282,35 @@ class Battery:
 
 
 TRACK_R = 101.7
+TOP_DY = 84.5      # top edge: marker centre y = 90 - 84.5 = 5.5
+BOT_DY = 82.5      # bottom edge: marker centre y = 90 + 82.5 = 172.5
 
 
 def track_circle(rx, ry):
-    """The shipped track: a constant 101.7 px rim about (107.5, 90)."""
+    """Pre-2026-10 track: a constant 101.7 px rim about (107.5, 90). Within
+    ~28 deg of 12 and 6 o'clock its centre leaves the 180-row panel."""
     return F(TRACK_R)
+
+
+def track_edge(rx, ry):
+    """NorthComponent.rimR: the r=101.7 rim cut flat at the panel's top and
+    bottom edges. Only the radius changes, never the angle, so the marker stays
+    on the bearing ray; centre y in [5.5, 172.5] keeps every pixel of it on
+    the glass at every bearing (north_compare.py sweeps them)."""
+    r = F(TRACK_R)
+    if -ry * r > TOP_DY:
+        r = TOP_DY / -ry
+    elif ry * r > BOT_DY:
+        r = BOT_DY / ry
+    return r
 
 
 class North:
     """NorthComponent with a pluggable track. render() is the shipped gate
     (SunCompass, sightable elevation); draw() the shipped quad geometry, with
-    the centre now (107.5, 90) + track(rx, ry) * (rx, ry)."""
+    the centre (107.5, 90) + track(rx, ry) * (rx, ry)."""
 
-    def __init__(self, track=track_circle):
+    def __init__(self, track=track_edge):
         self.track = track
         self.quad = [[0, 0], [0, 0], [0, 0], [0, 0]]
 
@@ -384,15 +402,17 @@ class Clock:
             self.digits.draw(dc, state.minute % 10, 98, y)
 
 
-def v2_chrome(north=None):
+def v2_chrome(north=None, north_last=True):
     """The V2 overlay stack in render order (after the grove): field mask,
-    border, uplink, battery, north, readout, gps pip, time."""
+    border, uplink, battery, readout, gps pip, time, north. north_last=False
+    is the pre-2026-10 order (north under the readout/pip/time)."""
     colon = Image.open(os.path.join(DRAWABLES, "tw_colon.png")).convert("RGBA")
-    return [FieldMask(), Border(), Uplink(), Battery(),
-            north if north is not None else North(),
-            Readout(StripGlyphs("tw_dow.png", 18), StripGlyphs("tw_date.png", 6)),
+    north = north if north is not None else North()
+    over = [Readout(StripGlyphs("tw_dow.png", 18), StripGlyphs("tw_date.png", 6)),
             Gps(),
             Clock(StripGlyphs("tw_time.png", 18), colon)]
+    base = [FieldMask(), Border(), Uplink(), Battery()]
+    return base + over + [north] if north_last else base + [north] + over
 
 
 # --------------------------------------------------------- display geometry --
