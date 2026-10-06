@@ -4,7 +4,7 @@
 
 project.manifest = manifest.xml
 
-# Face source + shared core + unit tests.
-base.sourcePath = source;../../core/src;tests
+# Face source + the release jungle's narrowed core file list + unit tests.
+base.sourcePath = source;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/BioBloom.mc;../../core/src/genart/BioState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc;tests
 
 base.resourcePath = resources
