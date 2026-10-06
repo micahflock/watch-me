@@ -130,5 +130,5 @@ Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
 direct download. `devface` needs a location (a GPS fix from any GPS activity,
 or `lat`/`lng` set in the app settings on the watch), else it shows the "?"
 compass rose; `two-worlds` and `two-worlds-v2` (shared settings) likewise need
-one for their sun/north marker. The tracked `devface`/`two-worlds` PRGs predate
-the GPS fix (2026-10) and read only `lat`/`lng` until rebuilt.
+one for their sun/north marker. The tracked `devface` PRG predates the GPS fix
+(2026-10) and reads only `lat`/`lng` until rebuilt.

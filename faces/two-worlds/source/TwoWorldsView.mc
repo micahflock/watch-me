@@ -13,7 +13,7 @@ using Toybox.Math as Math;
 // disc; the white border traces that same edge.
 //
 // Render order (back -> front): biobloom, field mask, border, uplink, battery,
-// north, readout, time, debug.
+// readout, time, north, breach, debug.
 class TwoWorldsView extends Ui.WatchFace {
 
     var _state;
@@ -48,9 +48,9 @@ class TwoWorldsView extends Ui.WatchFace {
         _compositor.add(new BorderComponent(), null);    // 3 white border
         _compositor.add(new UplinkComponent(), null);    // 4 phone bars
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
-        _compositor.add(new NorthComponent(), null);     // 6 sun/north marker
-        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 7 day/date
-        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 8 time
+        _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
+        _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 7 time
+        _compositor.add(new NorthComponent(), null);     // 8 sun/north marker, over the chrome
         _compositor.add(new BreachComponent(), null);    // 9 over-budget warning
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
@@ -302,6 +302,12 @@ class BatteryComponent {
 // (elevation in (-0.833, 80) deg); otherwise nothing is drawn (no location ->
 // SunCompass returns null -> hidden). The point list is allocated once and
 // rewritten in place each render.
+//
+// The rim is cut flat at the panel's top and bottom edges (rimR) and the marker
+// is drawn after the readout/time, over the battery chunks and digits it may
+// cross (owner, 2026-10: north must stay readable at every sun-up minute; the
+// overlap is fine). Drawn under them, a 24 h clock's leading "0" hid most of
+// it at summer sunrise.
 class NorthComponent {
     var _quad;
 
@@ -324,8 +330,9 @@ class NorthComponent {
         var ry = -Math.cos(th);
         var tx = Math.cos(th);
         var ty = Math.sin(th);
-        var cx = 107.5 + 101.7 * rx;
-        var cy = 90.0 + 101.7 * ry;
+        var r = rimR(ry);
+        var cx = 107.5 + r * rx;
+        var cy = 90.0 + r * ry;
 
         dc.setColor(Gfx.COLOR_RED, Gfx.COLOR_TRANSPARENT);
         quad(cx, cy, rx, ry, tx, ty, 5.0, 4.3);
@@ -335,6 +342,21 @@ class NorthComponent {
         dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
         quad(cx, cy, rx, ry, tx, ty, 2.0, 1.72);
         dc.fillPolygon(_quad);
+    }
+
+    // Rim radius along the bearing ray (rx, ry) = (sin th, -cos th); only ry
+    // matters: the r=101.7 gutter circle cut flat at the panel's top and bottom
+    // edges. The glass is the r=107.5 disc clipped to 215x180, so a constant
+    // rim left the screen within ~28 deg of 12 and 6 o'clock -- and north sits
+    // at 6 around a northern-hemisphere noon. Only the radius shrinks, never
+    // the angle, so the bearing stays exact; centre y in [5.5, 172.5] keeps
+    // every pixel of the marker (corners reach ~6.6 px) on the glass.
+    // sketches/north_compare.py sweeps it over every bearing.
+    function rimR(ry) {
+        var r = 101.7;
+        if (-ry * r > 84.5) { r = 84.5 / -ry; }        // top edge: centre y 5.5
+        else if (ry * r > 82.5) { r = 82.5 / ry; }     // bottom edge: centre y 172.5
+        return r;
     }
 
     // Diamond: +/- sR along the radial axis (rx,ry), +/- sT along tangential
