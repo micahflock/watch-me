@@ -8,7 +8,11 @@ using Toybox.Math as Math;
 // The day as a living patch of moss, time-of-day intentionally NOT encoded --
 // only WHAT happened, accreted in RAM and persisted across a reload (MossState),
 // since the device gives only the current HR sample and cumulative steps per
-// tick. From the heart outward:
+// tick. The face does NOT run while an activity app records a workout, so a
+// minute gap is replayed from the device's HR history (DataSource.hrMinutes),
+// CHUNK minutes per onUpdate, the gap's steps spread evenly (2026-10; before,
+// the gap collapsed into one minute scored at the HR on return -- a recorded
+// run usually made no bead at all). From the heart outward:
 //   root star      last night's inferred sleep (overnight quiescence, as in
 //                  BioBloom): the silver root system the day's growth stands
 //                  on. Hours = root count/length; each wake event snaps one
@@ -23,7 +27,7 @@ using Toybox.Math as Math;
 //   tufts          satellite colony clumps straddling the rim, popping in as
 //                  activity accrues; grains glow the dominant ELEVATED HR zone.
 //   texture        granular green stipple + a fuzzy rim fringe.
-//   episodes       elevated-HR events as bright peak-zone fruiting beads on K
+//   episodes       elevated-HR events as bright fruiting beads on K
 //                  interleaved orbits (owner, 2026-07). Beads never ride tufts
 //                  (the ~8-14 px tuft offset huddled same-tuft beads,
 //                  2026-07-17) -- each takes a shared golden-sequence angle and
@@ -31,7 +35,11 @@ using Toybox.Math as Math;
 //                  grow with the cushion (REACH_MIN -> DISP_R), fill OUTER-
 //                  first, carry no keep-out (inner rings ride OVER the sleep
 //                  root star), and a small morning moss lets outer beads fall
-//                  past the rim onto a podetium stalk (2026-07-18).
+//                  past the rim onto a podetium stalk (2026-07-18). A bead of
+//                  radius >= BAND_MIN draws its episode's HR course as
+//                  equal-area growth rings, start at the centre, each the
+//                  PEAK zone of its span (2026-10, see drawBands); smaller
+//                  beads stay solid peak-zone.
 //
 // All integer math (the watchdog is the binding constraint). A per-frame INK
 // budget caps draw work so a maximal day stays bounded (the root star rides
@@ -75,6 +83,13 @@ class MossGrove {
 
     const ACTIVE = 4;          // zone idx >= this is an elevated-HR minute
     const EMAX = 16;           // cap on stored episodes
+    const CHUNK = 12;          // max minutes accreted per advance() (gap replay)
+    const NSLOT = 6;           // chronological peak-zone slots per episode
+    const BAND_MIN = 8;        // bead radius (px) from which it shows its bands
+    // equal-area band radii, % of the bead: round(100 * sqrt((j + 1) / n)),
+    // flat, n = 1..6 at offset n * (n - 1) / 2
+    const BAND_SQ = [100, 71, 100, 58, 82, 100, 50, 71, 87, 100,
+                     45, 63, 77, 89, 100, 41, 58, 71, 82, 91, 100];
     const KACT = 6;            // steps/min -> one growth unit
     const MOM_DIV = 16;        // steps/min -> banked episode magnitude
 
@@ -102,6 +117,9 @@ class MossGrove {
     var _zoneMin;              // minutes per HR zone (9)
     var _actUnits; var _activeMin; var _idleMin;
     var _epz; var _emag; var _nepi;          // episodes: peak zone + magnitude
+    var _edur; var _eband;     // ... duration (min) + packed slots (see band())
+    var _pool;                 // steps not yet credited to a minute (gap replay)
+    var _hrBuf;                // per-minute HR for a gap replay chunk
     var _seed;                 // per-DAY shape/placement seed (from the date)
     var _night; var _sleepSeed;              // sleep meters (survive the reset)
     var _wakes; var _wakeSeed; var _awake;   // wake events (0-6am), survive reset
@@ -121,6 +139,9 @@ class MossGrove {
         _zoneMin = new [9];
         _epz = new [EMAX];
         _emag = new [EMAX];
+        _edur = new [EMAX];
+        _eband = new [EMAX];
+        _hrBuf = new [CHUNK];
         _sp = new [8];
         _lamp = new [5];
         _tri = [[0, 0], [0, 0], [0, 0]];
@@ -137,8 +158,11 @@ class MossGrove {
     function reset() {
         for (var i = 0; i < 9; i++) { _zoneMin[i] = 0; }
         _actUnits = 0; _activeMin = 0; _idleMin = 0;
-        for (var i = 0; i < EMAX; i++) { _epz[i] = 0; _emag[i] = 0; }
+        for (var i = 0; i < EMAX; i++) {
+            _epz[i] = 0; _emag[i] = 0; _edur[i] = 0; _eband[i] = 0;
+        }
         _nepi = 0;
+        _pool = 0;
         _prev = null;
         _lastMin = -1;
         _epiOn = false; _epiIdx = -1;
@@ -171,22 +195,49 @@ class MossGrove {
             return;                          // resync, don't accrete a bogus minute
         }
 
-        var spm = 0;
         var st = state.steps;
         if (st != null) {
-            if (_prev != null && st > _prev) { spm = st - _prev; }
+            if (_prev != null && st > _prev) { _pool += st - _prev; }
             _prev = st;
         }
+        var n = now - _lastMin;
+        if (n > CHUNK) { n = CHUNK; }
+        var hist = false;
+        if (now - _lastMin > 1) {
+            hist = DataSource.hrMinutes(_hrBuf, _lastMin + 1, n, state);
+        }
+        replay(now, state.heartRate, n, hist);
+    }
+
+    // Accrete minutes _lastMin+1 .. (n of them, ending at most at `now`),
+    // oldest first: a gap minute takes its HR from _hrBuf (filled from the HR
+    // history), `now` the live sample; the step pool is spread evenly over
+    // the minutes still owed. Without history (hist false) the gap collapses
+    // into the single minute `now` (the pre-2026-10 behaviour).
+    function replay(now, liveHr, n, hist) {
+        if (now - _lastMin > 1 && !hist) {
+            _lastMin = now - 1;
+            n = 1;
+        }
+        for (var k = 0; k < n; k++) {
+            var m = _lastMin + 1;
+            var spm = _pool / (now - _lastMin);
+            _pool -= spm;
+            minute(m / 60, spm, (m == now) ? liveHr : _hrBuf[k]);
+            _lastMin = m;
+        }
+    }
+
+    // One minute of the day record (port of daysoma._minute).
+    function minute(hh, spm, hr) {
         var move = spm / KACT;
         if (move > 0) { _actUnits += move; _activeMin += 1; }
         else { _idleMin += 1; }
 
-        var hr = state.heartRate;
         var zi = hrZone(hr);
         if (zi >= 0) { _zoneMin[zi] += 1; }
 
         // overnight quiescence -> last night's sleep
-        var hh = state.hour;
         var quiescent = (spm <= IDLE_SPM) && (hr == null || hr <= REST_HR);
         var isNight = (hh >= NIGHT_START || hh <= NIGHT_END);
         if (isNight && quiescent && _night < SLEEP_CAP) { _night += 1; }
@@ -213,17 +264,48 @@ class MossGrove {
                 _epiOn = true;
                 _epiIdx = (_nepi < EMAX) ? _nepi : -1;
                 if (_epiIdx >= 0) {
-                    _epz[_epiIdx] = zi; _emag[_epiIdx] = 0; _nepi += 1;
+                    _epz[_epiIdx] = zi; _emag[_epiIdx] = 0;
+                    _edur[_epiIdx] = 0; _eband[_epiIdx] = 0; _nepi += 1;
                 }
             }
             if (_epiIdx >= 0) {
                 if (zi > _epz[_epiIdx]) { _epz[_epiIdx] = zi; }
                 _emag[_epiIdx] += 1 + spm / MOM_DIV;
+                band(_epiIdx, zi);
             }
         } else {
             _epiOn = false; _epiIdx = -1;
         }
-        _lastMin = now;
+    }
+
+    // Fold this minute's zone into episode i's chronological record:
+    // _eband = NSLOT 4-bit slots (bits 0..23, slot 0 = the start) holding the
+    // PEAK zone of 2^L minutes each, L in bits 24..27. When all NSLOT fill,
+    // adjacent pairs merge to their max and L grows by one, so any duration
+    // fits. Owner chose peak over mean (2026-10): intervals read as their
+    // true purple, not an averaged pink never actually run.
+    function band(i, zi) {
+        var d = _edur[i];                  // minutes already in the episode
+        var b = _eband[i];
+        var lv = (b >> 24) & 15;
+        var s = d >> lv;
+        if (s >= NSLOT) {                  // full: merge pairs, halve resolution
+            var nb = 0;
+            for (var k = 0; k < NSLOT / 2; k++) {
+                var a = (b >> (8 * k)) & 15;
+                var c = (b >> (8 * k + 4)) & 15;
+                nb |= ((a > c) ? a : c) << (4 * k);
+            }
+            lv += 1;
+            b = nb | (lv << 24);
+            s = d >> lv;
+        }
+        var sh = 4 * s;
+        if ((d & ((1 << lv) - 1)) == 0 || zi > ((b >> sh) & 15)) {
+            b = (b & ~(15 << sh)) | (zi << sh);  // fresh slot, or a new peak
+        }
+        _eband[i] = b;
+        _edur[i] = d + 1;
     }
 
     // ---- helpers -------------------------------------------------------------
@@ -505,13 +587,52 @@ class MossGrove {
             }
             dc.setColor(Gfx.COLOR_DK_GREEN, Gfx.COLOR_TRANSPARENT);
             dc.fillCircle(x, y, bead + 1);
-            dc.setColor(zoneColor(_epz[e]), Gfx.COLOR_TRANSPARENT);
-            dc.fillCircle(x, y, bead);
+            if (bead >= BAND_MIN && _edur[e] > 0) {
+                _ink -= drawBands(dc, x, y, bead, _eband[e], _edur[e]);
+            } else {
+                dc.setColor(zoneColor(_epz[e]), Gfx.COLOR_TRANSPARENT);
+                dc.fillCircle(x, y, bead);
+            }
             _ink -= 2;
         }
 
         // root star drawn LAST: stays on top of the colony all day
         drawSleep(dc, _sleepSeed, _wakeSeed);
+    }
+
+    // Growth rings (owner, 2026-10): the episode's HR course as concentric
+    // EQUAL-AREA bands, start at the centre, end at the rim, each the PEAK
+    // zone of its share of the episode's slots (band()). Equal area gives every
+    // time slice the same ink; the outermost band is the thinnest, so the band
+    // count is bead/4 (keeps it >= ~2 px), capped at the slots recorded.
+    // Drawn outermost-first as nested discs; a band the same colour as the one
+    // outside it is skipped (already painted). Returns ink spent.
+    function drawBands(dc, x, y, bead, b, dur) {
+        var lv = (b >> 24) & 15;
+        var ns = ((dur - 1) >> lv) + 1;
+        var nb = bead / 4;
+        if (nb > NSLOT) { nb = NSLOT; }
+        if (nb > ns) { nb = ns; }
+        var off = (nb * (nb - 1)) / 2;
+        var prev = -1;
+        var spent = 0;
+        for (var j = nb - 1; j >= 0; j--) {
+            var s1 = ((j + 1) * ns) / nb;
+            var z = 0;
+            for (var k = (j * ns) / nb; k < s1; k++) {
+                var v = (b >> (4 * k)) & 15;
+                if (v > z) { z = v; }
+            }
+            if (z != prev) {
+                var r = (j == nb - 1) ? bead
+                        : (bead * BAND_SQ[off + j] + 50) / 100;
+                dc.setColor(zoneColor(z), Gfx.COLOR_TRANSPARENT);
+                dc.fillCircle(x, y, r);
+                spent += 1;
+            }
+            prev = z;
+        }
+        return spent;
     }
 
     function drawTuft(dc, seed, j, tx, ty, tsize, accent) {
@@ -616,10 +737,11 @@ class MossGrove {
     // The record is tiny (a few scalars + zoneMin[9] + nepi episode pairs), so a
     // reload restores it exactly. Validated on load: a wrong magic or out-of-range
     // count drops to a blank record rather than half-loading.
-    const SAVE_MAGIC = 0x6033F;  // bumped: wake fields added to the layout
+    const SAVE_MAGIC = 0x60340;  // bumped: step pool + episode bands (2026-10)
+    const SAVE_MAGIC_V1 = 0x6033F; // pre-2026-10 layout: loads, bands empty
 
     function save() {
-        var n = 15 + 9 + _nepi * 2;
+        var n = 16 + 9 + _nepi * 4;
         var a = new [n];
         var p = 0;
         a[p] = SAVE_MAGIC; p++;
@@ -637,13 +759,20 @@ class MossGrove {
         a[p] = _epiOn ? 1 : 0; p++;
         a[p] = _epiIdx; p++;
         a[p] = _nepi; p++;
+        a[p] = _pool; p++;
         for (var i = 0; i < 9; i++) { a[p] = _zoneMin[i]; p++; }
-        for (var i = 0; i < _nepi; i++) { a[p] = _epz[i]; p++; a[p] = _emag[i]; p++; }
+        for (var i = 0; i < _nepi; i++) {
+            a[p] = _epz[i]; p++; a[p] = _emag[i]; p++;
+            a[p] = _edur[i]; p++; a[p] = _eband[i]; p++;
+        }
         return a;
     }
 
     function load(a) {
-        if (a == null || a.size() < 24 || a[0] != SAVE_MAGIC) { return; }
+        if (a == null || a.size() < 24) { return; }
+        var v1 = (a[0] == SAVE_MAGIC_V1);  // old layout: no pool, pair episodes
+        if (!v1 && a[0] != SAVE_MAGIC) { return; }
+        var ew = v1 ? 2 : 4;               // Numbers per stored episode
         var sz = a.size();
         var p = 1;
         _lastDay = a[p]; p++;
@@ -661,14 +790,21 @@ class MossGrove {
         _epiIdx = a[p]; p++;
         var ne = a[p]; p++;
         if (ne < 0 || ne > EMAX) { reset(); return; }
+        _pool = 0;
+        if (!v1) {
+            if (p >= sz) { reset(); return; }
+            _pool = a[p]; p++;
+        }
         for (var i = 0; i < 9; i++) {
             if (p >= sz) { reset(); return; }
             _zoneMin[i] = a[p]; p++;
         }
-        if (p + ne * 2 > sz) { reset(); return; }
+        if (p + ne * ew > sz) { reset(); return; }
         _nepi = ne;
         for (var i = 0; i < _nepi; i++) {
             _epz[i] = a[p]; p++; _emag[i] = a[p]; p++;
+            _edur[i] = 0; _eband[i] = 0;   // v1: beads draw solid
+            if (!v1) { _edur[i] = a[p]; p++; _eband[i] = a[p]; p++; }
         }
     }
 }

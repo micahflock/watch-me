@@ -97,6 +97,15 @@ inside V2, dead. The fix is the narrowed per-file `sourcePath` in
 it actually uses — and re-run this measurement** (release `Instrument.tickStart`
 print, recipe above).
 
+**Re-measured 2026-10** after the effort-bead growth rings + recorded-workout
+HR backfill (MossGrove `_edur/_eband/_hrBuf/_pool`, `DataSource.hrMinutes`):
+**43.2/59.8 kB** (sim status bar) under the pinned worst case -- 16 beads with
+six distinct bands each, max cushion, 10 h root star, AND a 12-minute
+(`CHUNK`) history replay into an open episode in the same `onUpdate`. No
+watchdog trip. The probe is the one in docs/watchdog-debugging.md plus
+`_edur[i] = 600`, a six-zone `_eband[i]`, `_epiOn = true; _epiIdx = 15`,
+`_lastMin = nm - 13`, and `hrMinutes` forced to fill HR 150.
+
 > Note: `faces/two-worlds/monkey.jungle` (V1) still pulls all of core and so now
 > carries MossGrove dead; its June figure above (55.2 KB, ~6 KB free) predates
 > MossGrove.mc. Unmeasured since; the same narrowing would recover it.
