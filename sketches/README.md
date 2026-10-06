@@ -33,6 +33,14 @@ captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
   `morning_proto`/`scenarios`/`save_compare`/`verify_persist`/`ram_breakdown`)
   are exploration and measurement harnesses for those engines — each has a
   docstring saying what it renders.
+- **Chrome: `twchrome.py` / `solar.py` / `north_compare.py`** — the two-worlds
+  V2 overlay (field mask, border, uplink, battery, sun/north marker, readout,
+  GPS pip, 7-seg clock blitted from the real glyph strips) transcribed onto the
+  device model, plus a float32 port of `Solar.mc`/`SunCompass.mc`
+  (`python3 sketches/solar.py` self-checks it against the Monkey C fixtures).
+  `north_compare.py` sweeps the north-marker track over every bearing and over
+  real days (Portland, Sydney) and renders the candidate tracks — the chrome
+  counterpart of `scrub.py`.
 
 Because the primitives match 1:1, a winning sandbox algo ports to a `.mc` face
 mechanically. Arc/circle rasterization is the one thing only the SDK sim nails,

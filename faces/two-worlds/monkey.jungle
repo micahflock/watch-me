@@ -6,8 +6,13 @@
 
 project.manifest = manifest.xml
 
-# Face source + shared core. Paths are relative to this jungle file.
-base.sourcePath = source;../../core/src
+# Face source + ONLY the core files this face references (same reasoning as
+# faces/two-worlds-v2/monkey.jungle): monkeyc has no dead-code elimination and
+# the whole PRG loads into the 64 KB face RAM. Pulling in all of core/src
+# shipped MossGrove/StrataField/Flock dead and, once MossGrove landed, made the
+# release face die "Out Of Memory" on load (2026-10 sim, docs/memory-budget.md).
+# Paths are relative to this jungle file.
+base.sourcePath = source;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/BioBloom.mc;../../core/src/genart/BioState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
 
 # Face resources (fonts, launcher icon, settings).
 base.resourcePath = resources

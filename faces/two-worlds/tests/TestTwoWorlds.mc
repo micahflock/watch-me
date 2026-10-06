@@ -193,3 +193,51 @@ function testDisplayHour(logger) {
     Test.assert(Face.displayHour(23, false) == 11);
     return true;
 }
+
+// Records the marker's outer quad (the first fillPolygon of a NorthComponent
+// draw; the second is the hole) so the rim geometry is checkable without a Dc.
+class QuadDc {
+    var quad;
+    var polys = 0;
+    function initialize() { quad = [[0, 0], [0, 0], [0, 0], [0, 0]]; }
+    function setColor(a, b) {}
+    function fillPolygon(p) {
+        if (polys == 0) {
+            for (var i = 0; i < 4; i++) { quad[i][0] = p[i][0]; quad[i][1] = p[i][1]; }
+        }
+        polys++;
+    }
+}
+
+// The sun/north marker stays on the glass at EVERY bearing. The fr735xt panel
+// is the r=107.5 disc about (107.5,90) clipped to 215x180; the old constant
+// r=101.7 rim put the marker off it within ~28 deg of 12 and 6 o'clock --
+// north sits at 6 around a northern-hemisphere noon, so it vanished for hours
+// (corners reached y=-16 / y=197). Every corner as drawn must land on a panel
+// row/column and inside the disc (+0.5 px for the vertex rounding).
+(:test)
+function testNorthMarkerOnGlass(logger) {
+    var north = new NorthComponent();
+    var dc = new QuadDc();
+    for (var b = 0; b < 720; b++) {
+        dc.polys = 0;
+        north.draw(dc, b * 0.5);
+        Test.assert(dc.polys == 2);
+        for (var i = 0; i < 4; i++) {
+            var x = dc.quad[i][0];
+            var y = dc.quad[i][1];
+            var dx = x - 107.5;
+            var dy = y - 90.0;
+            if (x < 0 || x > 214 || y < 0 || y > 179 || dx * dx + dy * dy > 108.0 * 108.0) {
+                logger.debug("bearing " + (b * 0.5) + ": corner (" + x + "," + y
+                    + ") is off the glass");
+                return false;
+            }
+        }
+    }
+    // Sides keep the shipped gutter; only 12/6 o'clock flatten to the edges.
+    Test.assert(north.rimR(0.0) == 101.7);
+    Test.assert(north.rimR(-1.0) == 84.5);
+    Test.assert(north.rimR(1.0) == 82.5);
+    return true;
+}
