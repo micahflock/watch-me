@@ -11,7 +11,11 @@ Rows (moss_grove.RIM / RIM_MODE):
   blue halo     COLOR_BLUE silhouette painted 1 px proud under the mound and
                 tufts: the ring follows the outer edge of mound + tufts
 
-Also writes rim-compare-zoom.png: the 13:05 cell's lower-right rim at 6x.
+Round 2 (rim-tendrils.png): dk-blue under plus 1 x 5 px "phalanges" off
+the rim, perpendicular to the local edge -- at all 30 outline vertices, or
+at the 15 odd ones (between the dk-green fringe hairs).
+
+Each sheet also gets a -zoom.png: the 13:05 lower-right rim at 6x.
 
 Columns: the active day at 7:50 / 13:05 / 21:00 and the HEAVY day at 23:30
 (saturation: the watchdog-proxy check). Each cell is the full V2 face (grove
@@ -36,14 +40,22 @@ from twchrome import ChromeDc
 SCALE = 3
 DATE, OFF, DOW = (2026, 10, 15), -7 * 3600, 4
 
-ROWS = [
-    ("ship", None, "under"),
-    ("blue under", device.COLOR_BLUE, "under"),
-    ("dk-blue under", device.COLOR_DK_BLUE, "under"),
-    ("blue over", device.COLOR_BLUE, "over"),
-    ("blue halo", device.COLOR_BLUE, "halo"),
+# (label, RIM, RIM_MODE, TENDRIL_STEP, TENDRIL_OFF)
+FIRST = [
+    ("ship", None, "under", 0, 0),
+    ("blue under", device.COLOR_BLUE, "under", 0, 0),
+    ("dk-blue under", device.COLOR_DK_BLUE, "under", 0, 0),
+    ("blue over", device.COLOR_BLUE, "over", 0, 0),
+    ("blue halo", device.COLOR_BLUE, "halo", 0, 0),
 ]
-ZOOM_ROWS = ["ship", "blue under", "blue over", "blue halo"]
+# round 2 (owner): dk-blue under + 1x5 px phalanges perpendicular to the edge
+TENDRILS = [
+    ("ship", None, "under", 0, 0),
+    ("dk-blue under", device.COLOR_DK_BLUE, "under", 0, 0),
+    ("+tendrils x30", device.COLOR_DK_BLUE, "under", 1, 0),
+    ("+tendrils x15", device.COLOR_DK_BLUE, "under", 2, 1),
+]
+
 ZOOM_BOX = (95, 95, 200, 175)       # display px: the lower-right rim at 13:05
 ZOOM = 6
 COLS = [("active", "7:50"), ("active", "13:05"), ("active", "21:00"),
@@ -66,50 +78,55 @@ def face(grove, snap, t, scale=SCALE):
     return img, "grove ~{} VMi [{}]".format(work, wd)
 
 
-def main():
+def grove_at(row, snaps, t):
+    label, col, mode, step, off = row
+    mod = load_algo("moss_grove")
+    mod.RIM = col
+    mod.RIM_MODE = mode
+    mod.TENDRIL_STEP = step
+    mod.TENDRIL_OFF = off
+    grove = mod.build()["components"][0]
+    for m in range(t + 1):
+        grove.advance(snaps[m])
+    return grove
+
+
+def compare(rows, name, title, zoom_rows):
     days = {p: synthetic_day(profile=p) for p in ("active", "heavy")}
-    rows = []
-    for label, col, over in ROWS:
-        mod = load_algo("moss_grove")
-        mod.RIM = col
-        mod.RIM_MODE = over
+    out = []
+    for row in rows:
         cells = []
         for prof, at in COLS:
-            grove = mod.build()["components"][0]
-            snaps = days[prof]
             t = mins(at)
-            for m in range(t + 1):
-                grove.advance(snaps[m])
-            cells.append(face(grove, snaps[t], t))
-        rows.append((label, cells))
-    sheet(rows, ["{} {}".format(p, a) for p, a in COLS],
-          os.path.join(OUT, "rim-compare.png"),
-          "two-worlds V2: 1 px blue leading edge on the moss")
-    zoom()
+            g = grove_at(row, days[prof], t)
+            cells.append(face(g, days[prof][t], t))
+        out.append((row[0], cells))
+    sheet(out, ["{} {}".format(p, a) for p, a in COLS],
+          os.path.join(OUT, name + ".png"), title)
 
-
-def zoom():
-    snaps = synthetic_day(profile="active")
+    # close-up: the 13:05 lower-right rim at ZOOM x, one column per row
+    snaps = days["active"]
     t = mins("13:05")
     x0, y0, x1, y1 = ZOOM_BOX
-    crops = []
-    for label, col, mode in ROWS:
-        if label not in ZOOM_ROWS:
+    cells = []
+    for row in rows:
+        if row[0] not in zoom_rows:
             continue
-        mod = load_algo("moss_grove")
-        mod.RIM = col
-        mod.RIM_MODE = mode
-        grove = mod.build()["components"][0]
-        for m in range(t + 1):
-            grove.advance(snaps[m])
-        img, _ = face(grove, snaps[t], t, scale=0)
-        crops.append(img.crop(ZOOM_BOX).resize(((x1 - x0) * ZOOM,
-                                                (y1 - y0) * ZOOM),
-                                               Image.NEAREST))
-    sheet([(label, [(c, "")]) for label, c in zip(ZOOM_ROWS, crops)],
-          ["active 13:05, lower-right rim, 6x"],
-          os.path.join(OUT, "rim-compare-zoom.png"),
-          "leading-edge rim, close up")
+        img, _ = face(grove_at(row, snaps, t), snaps[t], t, scale=0)
+        cells.append((img.crop(ZOOM_BOX).resize(((x1 - x0) * ZOOM,
+                                                 (y1 - y0) * ZOOM),
+                                                Image.NEAREST), ""))
+    sheet([("13:05 rim 6x", cells)], zoom_rows,
+          os.path.join(OUT, name + "-zoom.png"), title + " -- close up")
+
+
+def main():
+    compare(FIRST, "rim-compare",
+            "two-worlds V2: 1 px blue leading edge on the moss",
+            ["ship", "blue under", "blue over", "blue halo"])
+    compare(TENDRILS, "rim-tendrils",
+            "two-worlds V2: dk-blue rim + 1x5 px tendrils off the edge",
+            [r[0] for r in TENDRILS])
 
 
 if __name__ == "__main__":

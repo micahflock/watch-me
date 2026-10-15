@@ -111,6 +111,14 @@ BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
 # keeps it.
 RIM = None
 RIM_MODE = "under"
+# Tendrils off the rim line (owner, 2026-10): 1 px x TENDRIL_LEN px lines from
+# rim vertices, perpendicular to the LOCAL edge (normal of the chord between
+# the two neighbouring vertices, flipped to point outward), in RIM. 0 = off;
+# else every TENDRIL_STEP-th vertex starting at TENDRIL_OFF (odd vertices sit
+# between the dk-green fringe hairs, which take the even ones).
+TENDRIL_STEP = 0
+TENDRIL_OFF = 0
+TENDRIL_LEN = 5
 
 
 def bead_radius(mag):
@@ -298,6 +306,32 @@ class MossGrove:
             dc.drawLine(x0, y0, x1, y1)
             x0 = x1
             y0 = y1
+        if TENDRIL_STEP > 0:
+            self.draw_tendrils(dc)
+
+    # phalanges: a short line at the outward normal of the local edge chord.
+    # Length via the octagonal approximation (max + min/2) like the stalks.
+    def draw_tendrils(self, dc):
+        for i in range(TENDRIL_OFF, NA, TENDRIL_STEP):
+            ip = imod(i + 1, NA)
+            im = imod(i + NA - 1, NA)
+            dx = self.vx[ip] - self.vx[im]
+            dy = self.vy[ip] - self.vy[im]
+            nx = dy                        # a normal of the chord ...
+            ny = -dx
+            if nx * self.vx[i] + ny * self.vy[i] < 0:
+                nx = -nx                   # ... flipped to face outward
+                ny = -ny
+            anx = nx if nx >= 0 else -nx
+            any_ = ny if ny >= 0 else -ny
+            ln = (anx if anx > any_ else any_) \
+                + idiv((anx if anx < any_ else any_), 2)
+            if ln < 1:
+                continue
+            x = CX + self.vx[i]
+            y = CY + self.vy[i]
+            dc.drawLine(x, y, x + rdiv(nx * TENDRIL_LEN, ln),
+                        y + rdiv(ny * TENDRIL_LEN, ln))
 
     # the silhouette halo: the mound fan pushed out 1 px plus each tuft disc
     # 1 px larger, all in RIM, under everything (same tuft math as render())
