@@ -120,8 +120,8 @@ class MossGrove {
     var _edur; var _eband;     // ... duration (min) + packed slots (see band())
     var _pool;                 // steps not yet credited to a minute (gap replay)
     var _hrBuf;                // per-minute HR for a gap replay chunk
-    // last gap seen (for the two-worlds-v2 diag readout): minutes, whether HR
-    // history was found, minute-of-day it was detected, HR on return
+    // the day's LONGEST gap (for the two-worlds-v2 diag readout): minutes,
+    // whether HR history was found, minute-of-day detected, HR on return
     var _dGap = 0; var _dHist = false; var _dAt = -1; var _dHr = null;
     var _dCatch = false;       // a long gap is still being replayed
     var _seed;                 // per-DAY shape/placement seed (from the date)
@@ -167,6 +167,7 @@ class MossGrove {
         }
         _nepi = 0;
         _pool = 0;
+        _dGap = 0; _dAt = -1; _dCatch = false;
         _prev = null;
         _lastMin = -1;
         _epiOn = false; _epiIdx = -1;
@@ -209,7 +210,7 @@ class MossGrove {
         var hist = false;
         if (now - _lastMin > 1) {
             hist = DataSource.hrMinutes(_hrBuf, _lastMin + 1, n, state);
-            if (!_dCatch) {
+            if (!_dCatch && now - _lastMin >= _dGap) {
                 _dGap = now - _lastMin; _dHist = hist; _dAt = now;
                 _dHr = state.heartRate;
             }

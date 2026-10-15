@@ -100,10 +100,13 @@ wrist. When a trip happens, the simulator is ground truth: **docs/watchdog-debug
   ends (the sandbox proxy's blind spot, `INK_MAX` shuffling, the midnight-reset
   red herring) — four rounds of lessons so the next trip takes one.
 - Display 215×180 semiround, fixed 14-color palette (COLOR_YELLOW is amber
-  0xFFAA00). No live GPS/sensors in watch faces (`Toybox.Position` needs a
-  permission faces can't hold), but `Activity.getActivityInfo().currentLocation`
-  gives the device's last known fix: `DataSource` prefers it, falls back to the
-  `lat`/`lng` app properties, and infers fix recency (docs/api-2.4-notes.md).
+  0xFFAA00). No live GPS in watch faces, but with the **`Positioning`
+  permission in the manifest** `Position.getInfo()` (and
+  `Activity.Info.currentLocation`) give the device's last known fix — without
+  the permission the fr735xt returns NO position at all (wrist, 2026-10).
+  `DataSource` prefers it, falls back to the `lat`/`lng` app properties, and
+  infers fix recency (docs/api-2.4-notes.md). Every face that compiles
+  `core/src/data` must declare `Positioning`.
 
 ## Architecture (details: docs/architecture.md)
 
