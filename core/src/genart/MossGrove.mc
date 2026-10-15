@@ -24,6 +24,9 @@ using Toybox.Math as Math;
 //                  Drawn LAST so it stays on top of the day's growth all day.
 //   cushion        a solid two-tone lumpy mound; radius grows with total
 //                  movement; the lumpy OUTLINE varies per day from the date seed.
+//                  Its leading edge is a 1 px dark-blue line bristling with
+//                  5 px tendrils perpendicular to the edge (owner, 2026-10;
+//                  see drawRim).
 //   tufts          satellite colony clumps straddling the rim, popping in as
 //                  activity accrues; grains glow the dominant ELEVATED HR zone.
 //   texture        granular green stipple + a fuzzy rim fringe.
@@ -57,6 +60,7 @@ class MossGrove {
                                // layer (incl. the beads, which the old budget
                                // starved) and clears the sim watchdog
     const NA = 30;             // rim samples for the cushion fans
+    const TENDRIL_LEN = 5;     // leading-edge tendril length (px), see drawRim
     const BASE_DIV = 60;       // act units -> cushion radius
     const TUFT_DIV = 600;      // act units -> one more satellite tuft
     const SCN = 5;             // overall size scale = SCN/SCD (= 1.25x), applied
@@ -385,6 +389,45 @@ class MossGrove {
         }
     }
 
+    // the leading edge (owner, 2026-10): a 1 px dark-blue line closing the
+    // cached outline polygon, then a TENDRIL_LEN px tendril at EVERY rim
+    // vertex, perpendicular to the local edge (normal of the chord between
+    // the two neighbouring vertices, flipped to face outward; length via the
+    // octagonal approximation max + min/2, like the stalks). Drawn straight
+    // after the mound, so tufts, fringe hairs and beads paint over it. Fixed
+    // cost 2*NA drawLines, outside the ink budget like the root star.
+    function drawRim(dc) {
+        dc.setColor(Gfx.COLOR_DK_BLUE, Gfx.COLOR_TRANSPARENT);
+        var x0 = CX + _evx[0];
+        var y0 = CY + _evy[0];
+        for (var i = 1; i <= NA; i++) {
+            var j = i % NA;
+            var x1 = CX + _evx[j];
+            var y1 = CY + _evy[j];
+            dc.drawLine(x0, y0, x1, y1);
+            x0 = x1; y0 = y1;
+        }
+        for (var i = 0; i < NA; i++) {
+            var ip = (i + 1) % NA;
+            var im = (i + NA - 1) % NA;
+            var nx = _evy[ip] - _evy[im];      // a normal of the chord ...
+            var ny = _evx[im] - _evx[ip];
+            if (nx * _evx[i] + ny * _evy[i] < 0) {
+                nx = -nx;                       // ... flipped to face outward
+                ny = -ny;
+            }
+            var anx = (nx >= 0) ? nx : -nx;
+            var ay = (ny >= 0) ? ny : -ny;
+            var ln = ((anx > ay) ? anx : ay) + ((anx < ay) ? anx : ay) / 2;
+            if (ln >= 1) {
+                var x = CX + _evx[i];
+                var y = CY + _evy[i];
+                dc.drawLine(x, y, x + rdiv(nx * TENDRIL_LEN, ln),
+                            y + rdiv(ny * TENDRIL_LEN, ln));
+            }
+        }
+    }
+
     // ---- render (port of moss_grove.py render) -------------------------------
 
     function render(dc, state) {
@@ -446,6 +489,7 @@ class MossGrove {
         fanLut(dc, 100);
         dc.setColor(Gfx.COLOR_GREEN, Gfx.COLOR_TRANSPARENT);
         fanLut(dc, 60);
+        drawRim(dc);                            // dk-blue leading edge + tendrils
 
         // satellite tufts straddling the rim
         var nt = (ntuft > 0) ? ntuft : 1;

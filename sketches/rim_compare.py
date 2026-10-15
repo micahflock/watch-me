@@ -2,7 +2,7 @@
 """rim_compare.py -- a 1 px blue line on the moss's leading edge (owner, 2026-10).
 
 Rows (moss_grove.RIM / RIM_MODE):
-  ship          no rim (the shipped look)
+  no rim        the pre-2026-10 look
   blue under    COLOR_BLUE (0x00AAFF) traced on the cushion outline right after
                 the mound fill -- tufts, fringe hairs and beads draw over it
   dk-blue under COLOR_DK_BLUE (0x0000FF), same placement
@@ -42,7 +42,7 @@ DATE, OFF, DOW = (2026, 10, 15), -7 * 3600, 4
 
 # (label, RIM, RIM_MODE, TENDRIL_STEP, TENDRIL_OFF)
 FIRST = [
-    ("ship", None, "under", 0, 0),
+    ("no rim", None, "under", 0, 0),
     ("blue under", device.COLOR_BLUE, "under", 0, 0),
     ("dk-blue under", device.COLOR_DK_BLUE, "under", 0, 0),
     ("blue over", device.COLOR_BLUE, "over", 0, 0),
@@ -50,7 +50,7 @@ FIRST = [
 ]
 # round 2 (owner): dk-blue under + 1x5 px phalanges perpendicular to the edge
 TENDRILS = [
-    ("ship", None, "under", 0, 0),
+    ("no rim", None, "under", 0, 0),
     ("dk-blue under", device.COLOR_DK_BLUE, "under", 0, 0),
     ("+tendrils x30", device.COLOR_DK_BLUE, "under", 1, 0),
     ("+tendrils x15", device.COLOR_DK_BLUE, "under", 2, 1),
@@ -123,7 +123,7 @@ def compare(rows, name, title, zoom_rows):
 def main():
     compare(FIRST, "rim-compare",
             "two-worlds V2: 1 px blue leading edge on the moss",
-            ["ship", "blue under", "blue over", "blue halo"])
+            ["no rim", "blue under", "blue over", "blue halo"])
     compare(TENDRILS, "rim-tendrils",
             "two-worlds V2: dk-blue rim + 1x5 px tendrils off the edge",
             [r[0] for r in TENDRILS])

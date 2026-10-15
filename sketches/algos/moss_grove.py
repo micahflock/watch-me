@@ -21,7 +21,9 @@ mechanically. The day organism, from the heart out:
                  rendered short nights in the beads' red/orange vocabulary
                  and read as effort at a glance (owner, 2026-07).
   cushion        a solid two-tone lumpy mound; radius grows with the day's total
-                 movement; per-day shape from the date seed (shape_params)
+                 movement; per-day shape from the date seed (shape_params);
+                 leading edge = 1 px dk-blue line + 30 perpendicular 5 px
+                 tendrils (owner, 2026-10; draw_rim)
   tufts          satellite colony clumps straddling the rim, popping in as
                  activity accrues; grains glow the dominant ELEVATED HR zone
   texture        granular green stipple + fuzzy rim fringe
@@ -97,9 +99,9 @@ BAND_MIN = 8           # bead radius (px) from which a bead shows its HR bands
 BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
            [45, 63, 77, 89, 100], [41, 58, 71, 82, 91, 100]]
 
-# Leading-edge rim (owner, 2026-10 -- sandbox only, not ported): a 1 px line
-# traced along the cushion outline. RIM = its colour (None = off, the shipped
-# look). RIM_MODE:
+# Leading-edge rim (owner, 2026-10): a 1 px line traced along the cushion
+# outline. SHIPPED: dk-blue, "under", tendrils at all 30 vertices (MossGrove.mc
+# drawRim). RIM = its colour (None = off, the pre-2026-10 look). RIM_MODE:
 #   "under"  trace the outline straight after the mound fill (tufts, fringe
 #            and beads draw over it); NA drawLines
 #   "over"   trace it after tufts/texture/fringe: one unbroken line that
@@ -108,15 +110,16 @@ BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
 #            BEFORE the mound, so a 1 px ring survives around the union of
 #            mound + tufts; NA fillPolygons + ntuft fillCircles
 # Fixed cost, outside the ink budget like the root star, so a saturated day
-# keeps it.
-RIM = None
+# keeps it. Only the shipped "under" + tendrils combination is ported;
+# "over"/"halo" are the not-chosen sandbox alternatives (rim_compare.py).
+RIM = COLOR_DK_BLUE
 RIM_MODE = "under"
 # Tendrils off the rim line (owner, 2026-10): 1 px x TENDRIL_LEN px lines from
 # rim vertices, perpendicular to the LOCAL edge (normal of the chord between
 # the two neighbouring vertices, flipped to point outward), in RIM. 0 = off;
 # else every TENDRIL_STEP-th vertex starting at TENDRIL_OFF (odd vertices sit
 # between the dk-green fringe hairs, which take the even ones).
-TENDRIL_STEP = 0
+TENDRIL_STEP = 1
 TENDRIL_OFF = 0
 TENDRIL_LEN = 5
 
