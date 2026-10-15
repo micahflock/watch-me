@@ -1,0 +1,11 @@
+# Diag jungle for two-worlds-v2: a RELEASE build (scripts/build.sh
+# two-worlds-v2 --diag, which passes -r) with the on-wrist diagnostic readout
+# (diag/Diag.mc) in place of the release stub (release/DiagStub.mc), and a
+# manifest that adds the Positioning permission for its Position.getInfo()
+# probe. Same app id as the face: sideload it IN PLACE of two-worlds-v2.prg.
+
+project.manifest = diag-manifest.xml
+
+base.sourcePath = source;diag;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
+
+base.resourcePath = ../two-worlds/resources

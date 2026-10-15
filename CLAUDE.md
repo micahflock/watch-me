@@ -22,7 +22,15 @@ scripts/build.sh <face> [--debug]   # release .prg / debug (tests+instrumentatio
 scripts/test.sh [face]              # API-2.4 symbol lint + the face's unit tests in the sim (default: devface)
 scripts/sim.sh <face> --debug       # headless sim; console prints "used/totalK p<peak> <ms>"
 scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
+scripts/build.sh two-worlds-v2 --diag  # on-wrist diagnostic readout (release build)
 ```
+
+**Wrist-only behaviour → the diag build.** `bin/two-worlds-v2-diag.prg` has the
+face's app id (sideload it IN PLACE of `two-worlds-v2.prg`) and swaps the moss
+for a readout on odd minutes: GPS from `Activity.currentLocation` and
+`Position.getInfo()`, the remembered fix, the last replayed gap, the biggest
+bead's slots, and a 3-hour HR-history sparkline (`faces/two-worlds-v2/diag/`;
+the release build compiles `release/DiagStub.mc` instead).
 
 ### Generative-art sandbox — iterate without building a PRG
 
