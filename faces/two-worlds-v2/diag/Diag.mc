@@ -14,12 +14,12 @@ using Toybox.Math as Math;
 // Even minutes: the normal face. Odd minutes: the moss is skipped (keeps the
 // watchdog budget for the readout) and the field shows
 //   A:  Activity.Info.currentLocation  (lat,lon + accuracy, or null/-)
-//   P:  Position.getInfo().position    (needs the diag manifest's
-//       Positioning permission; ERR if the device refuses it)
+//   P:  Position.getInfo().position    (+ the age of its `when` stamp;
+//       ERR if the device refuses the Positioning permission)
 //   fix: DataSource's remembered fix -> pip state, stamp age, lat/lng
 //        settings set Y/N, n = valid HR-history samples in the last 3 h
-//   gap: the last minute gap the grove replayed: length, history Y/N,
-//        when, HR on return
+//   gap: the day's LONGEST minute gap the grove replayed (a workout):
+//        length, history Y/N, when, HR on return
 //   e:  the biggest episode: duration, bead radius, slot level, peak slots
 //   a 3-hour HR history sparkline (one column per minute, zone colours,
 //   gray line = 105 bpm), blue tick under the last replayed gap.
@@ -116,10 +116,21 @@ class DiagComponent {
             if (pi == null) { return "-"; }
             if (pi.position == null) { return "null q" + pi.accuracy; }
             var d = pi.position.toDegrees();
-            return fmt(d[0]) + "," + fmt(d[1]) + " q" + pi.accuracy;
+            var w = "";
+            if (pi.when != null) {             // the fix's own timestamp, if any
+                w = " " + age((Time.now().value() - pi.when.value()) / 60);
+            }
+            return fmt(d[0]) + "," + fmt(d[1]) + " q" + pi.accuracy + w;
         } catch (e) {
             return "ERR";
         }
+    }
+
+    function age(m) {
+        if (m < 0) { return "-" + age(-m); }
+        if (m < 120) { return m + "m"; }
+        if (m < 2880) { return (m / 60) + "h"; }
+        return (m / 1440) + "d";
     }
 
     function fixLine(state) {
