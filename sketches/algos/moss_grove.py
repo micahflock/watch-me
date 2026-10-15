@@ -97,6 +97,21 @@ BAND_MIN = 8           # bead radius (px) from which a bead shows its HR bands
 BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
            [45, 63, 77, 89, 100], [41, 58, 71, 82, 91, 100]]
 
+# Leading-edge rim (owner, 2026-10 -- sandbox only, not ported): a 1 px line
+# traced along the cushion outline. RIM = its colour (None = off, the shipped
+# look). RIM_MODE:
+#   "under"  trace the outline straight after the mound fill (tufts, fringe
+#            and beads draw over it); NA drawLines
+#   "over"   trace it after tufts/texture/fringe: one unbroken line that
+#            crosses the tufts; NA drawLines
+#   "halo"   paint the silhouette (mound fan at e+1, each tuft at r+1) in RIM
+#            BEFORE the mound, so a 1 px ring survives around the union of
+#            mound + tufts; NA fillPolygons + ntuft fillCircles
+# Fixed cost, outside the ink budget like the root star, so a saturated day
+# keeps it.
+RIM = None
+RIM_MODE = "under"
+
 
 def bead_radius(mag):
     """Effort-bead radius (final px, already scaled) from banked magnitude:
@@ -271,6 +286,43 @@ class MossGrove:
             x0 = x1
             y0 = y1
 
+    # the leading edge: close the cached outline polygon with NA 1 px lines
+    def draw_rim(self, dc):
+        dc.setColor(RIM, COLOR_TRANSPARENT)
+        x0 = CX + self.vx[0]
+        y0 = CY + self.vy[0]
+        for i in range(1, NA + 1):
+            j = imod(i, NA)
+            x1 = CX + self.vx[j]
+            y1 = CY + self.vy[j]
+            dc.drawLine(x0, y0, x1, y1)
+            x0 = x1
+            y0 = y1
+
+    # the silhouette halo: the mound fan pushed out 1 px plus each tuft disc
+    # 1 px larger, all in RIM, under everything (same tuft math as render())
+    def draw_halo(self, dc, ntuft, tsize, seed):
+        dc.setColor(RIM, COLOR_TRANSPARENT)
+        tri = [(CX, CY), (0, 0), (0, 0)]
+        a0 = 0
+        x0 = px(CX, self.er[0] + 1, a0)
+        y0 = py(CY, self.er[0] + 1, a0)
+        for i in range(1, NA + 1):
+            j = imod(i, NA)
+            aj = imod(idiv(j * 256, NA), 256)
+            x1 = px(CX, self.er[j] + 1, aj)
+            y1 = py(CY, self.er[j] + 1, aj)
+            tri[1] = (x0, y0)
+            tri[2] = (x1, y1)
+            dc.fillPolygon(tri)
+            x0 = x1
+            y0 = y1
+        for j in range(ntuft):
+            hj = hash16(seed, j, 31)
+            a = imod(idiv(j * 256, ntuft if ntuft else 1) + (hj & 31), 256)
+            rr = idiv(self.er[idiv(a * NA, 256)] * (85 + (hj >> 8) % 30), 100)
+            dc.fillCircle(px(CX, rr, a), py(CY, rr, a), idiv(tsize, 2) + 1)
+
     # one colony tuft: solid blob + stipple; grains glow `accent` (dominant zone)
     def draw_tuft(self, dc, seed, j, tx, ty, tsize, accent, ink):
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
@@ -352,11 +404,16 @@ class MossGrove:
         account(NA * 2)                    # LUT stores (the isin/edge work is
                                            # already counted per call)
 
+        if RIM is not None and RIM_MODE == "halo":
+            self.draw_halo(dc, ntuft, tsize, seed)
+
         # --- central cushion: dark mound + bright green crown ---
         dc.setColor(COLOR_DK_GREEN, COLOR_TRANSPARENT)
         self.fan_lut(dc, 100)
         dc.setColor(COLOR_GREEN, COLOR_TRANSPARENT)
         self.fan_lut(dc, 60)
+        if RIM is not None and RIM_MODE == "under":
+            self.draw_rim(dc)
 
         # --- satellite tufts straddling the rim ---
         for j in range(ntuft):
@@ -400,6 +457,9 @@ class MossGrove:
             dc.drawLine(CX + self.vx[i], CY + self.vy[i],
                         px(CX, e + le, a), py(CY, e + le, a))
             ink -= 1
+
+        if RIM is not None and RIM_MODE == "over":
+            self.draw_rim(dc)
 
         # --- episodes: the display-referenced orbits (owner, 2026-07) ---
         # Every bead rides one of K interleaved rings; three rules keep them
