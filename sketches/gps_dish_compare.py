@@ -296,6 +296,47 @@ def face(design, g, grove, snap, t):
     return twchrome.glass(dc.img)
 
 
+# --- round 4 (owner, 2026-10-16): A up-left chosen. Flatter dish (a half-
+# ELLIPSE: rim half-width 6, depth `depth` < 6), a shorter arm (3 diagonal
+# steps instead of 4), no neck/foot; re-centred on the day-of-week's mid-line.
+
+def half_ellipse(cx, cy, a, b, n=8):
+    """Convex half-ellipse dish facing up-left: rim half-width a along the
+    (1,-1) diagonal, depth b toward the back (down-right)."""
+    k = 1 / math.sqrt(2)
+    pts = []
+    for i in range(n + 1):
+        t = math.pi * i / n
+        u, v = a * math.cos(t), b * math.sin(t)       # rim, back
+        p = (round(cx + (u + v) * k), round(cy + (-u + v) * k))
+        if not pts or pts[-1] != p:
+            pts.append(p)
+    return pts
+
+
+class FlatDish:
+    """A up-left, flatter, shorter arm, no mount."""
+
+    def __init__(self, depth, arm=3, cx=71, cy=15):
+        self.cx, self.cy = cx, cy
+        self.disc = half_ellipse(cx, cy, 6, depth)
+        self.feed = (cx - arm, cy - arm)
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(self.disc)
+        fx, fy = self.feed
+        dc.drawLine(self.cx, self.cy, fx, fy)             # arm
+        dc.fillRectangle(fx - 1, fy - 1, 2, 2)            # feed horn
+        waves(dc, fx - 1, fy - 1, g, 80, 190, 4, 6)
+
+
+FLAT_DESIGNS = [("round 3 A", LeftTilt(False)),
+                ("flatter (5/6)", FlatDish(5)),
+                ("flatter (4/6)", FlatDish(4)),
+                ("flatter (3/6)", FlatDish(3))]
+
+
 def compare(designs, name, title, states, ctx_state):
     snaps = synthetic_day(profile="active")
     t = mins("13:05")
@@ -337,6 +378,9 @@ def main():
             (0, 1, 2), 2)
     compare(LEFT_DESIGNS, "gps-dish-left",
             "GPS fix icon round 3: facing left, clear of the date",
+            (1, 2, 0), 1)
+    compare(FLAT_DESIGNS, "gps-dish-flat",
+            "GPS fix icon round 4: A up-left, flatter, shorter arm, no mount",
             (1, 2, 0), 1)
 
 
