@@ -11,7 +11,7 @@ using Toybox.Math as Math;
 // so the V1 "containment breach" warning is gone.
 //
 // Render order (back -> front): grove, field mask, border, uplink, battery,
-// readout, gps pip, time, north, debug.
+// readout, gps dish, time, north, debug.
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -46,7 +46,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new UplinkComponent(), null);    // 4 phone bars
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
         _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
-        _compositor.add(new GpsComponent(), null);       // 6b GPS fix recency pip
+        _compositor.add(new GpsComponent(), null);       // 6b GPS fix recency dish
         _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 7 time
         _compositor.add(new NorthComponent(), null);     // 8 sun/north marker, over the chrome
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
@@ -339,15 +339,42 @@ class ReadoutComponent {
 // connected uplink), amber = an older fix (or one whose age the face doesn't
 // know yet), dark gray hollow ring = no GPS fix ever seen (the north marker is
 // then on the lat/lng settings). See DataSource for how recency is inferred.
+// GPS fix recency as a cross-section satellite dish (owner, 2026-10): a
+// flattened half-ellipse dish facing up-left (rim half-width 8, depth 6.7 --
+// one convex fillPolygon, sampled at 11 points, nub-free), an arm to a 2x2
+// feed horn, and signal waves off the feed pointing away from the date.
+// Colour as before -- DK_GRAY no fix / YELLOW (amber) stale / BLUE fresh --
+// and the waves double-encode it: none / 1 / 2. Right edge x = 74 (8 px
+// clear of the day-of-week at 82), bottom y = 22 (clock digits at 26).
+// Geometry from sketches/gps_dish_compare.py big(67, 15); all integer
+// points, no drawArc (whose rasterization only the SDK sim gets right).
 class GpsComponent {
+    const W1 = [63, 5, 60, 6, 58, 8, 57, 11];           // stale + fresh
+    const W2 = [63, 2, 60, 2, 56, 4, 54, 8, 54, 11];    // fresh only
+    var _dish;
+
+    function initialize() {
+        _dish = [[73, 9], [74, 11], [74, 13], [74, 16], [73, 18], [72, 20],
+                 [70, 21], [68, 22], [65, 22], [63, 22], [61, 21]];
+    }
+
     function render(dc, state) {
         var g = state.gpsFix;
         var c = Gfx.COLOR_DK_GRAY;
         if (g == 2) { c = Gfx.COLOR_BLUE; }
         else if (g == 1) { c = Gfx.COLOR_YELLOW; }
         dc.setColor(c, Gfx.COLOR_TRANSPARENT);
-        dc.drawCircle(75, 16, 4);
-        if (g == 1 || g == 2) { dc.fillCircle(75, 16, 1); }
+        dc.fillPolygon(_dish);
+        dc.drawLine(67, 15, 63, 11);                      // arm
+        dc.fillRectangle(62, 10, 2, 2);                   // feed horn
+        if (g == 1 || g == 2) { wave(dc, W1); }
+        if (g == 2) { wave(dc, W2); }
+    }
+
+    function wave(dc, p) {
+        for (var i = 2; i < p.size(); i += 2) {
+            dc.drawLine(p[i - 2], p[i - 1], p[i], p[i + 1]);
+        }
     }
 }
 

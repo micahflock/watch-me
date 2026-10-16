@@ -82,7 +82,7 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
   user-entered `lat`/`lng` properties are the fallback. Reject the "no fix"
   sentinels ((0,0), 180/180). `DataSource` calls `toDegrees()` on the untyped
   Location value and never names `Toybox.Position`; it builds and runs with an
-  empty `<iq:permissions/>`. The headless sim reports no position (pip reads "none"); only
+  empty `<iq:permissions/>`. The headless sim reports no position (the GPS dish reads "none", gray); only
   the wrist proves the fr735xt keeps its last fix outside an activity.
 - The SDK device id is **`fr735xt`** (not "forerunner735xt") — in
   manifest products, `monkeyc -d`, monkeydo, and the device-files directory.
