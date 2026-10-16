@@ -55,7 +55,7 @@ INSIDE = field_mask()
 
 def white_pixels():
     dc = ChromeDc()
-    twchrome.Border().render(dc, None)
+    twchrome.Border(aa=False).render(dc, None)
     px = dc.img.load()
     return {(x, y) for y in range(H) for x in range(W)
             if px[x, y] == (255, 255, 255)}
@@ -118,7 +118,7 @@ class Exact:
 def score(layer):
     dc = ChromeDc()
     layer.render(dc, None)
-    twchrome.Border().render(dc, None)            # white on top, as on-device
+    twchrome.Border(aa=False).render(dc, None)            # white on top, as on-device
     px = dc.img.load()
     grey = {(x, y) for y in range(H) for x in range(W)
             if px[x, y] not in ((0, 0, 0), (255, 255, 255))}
