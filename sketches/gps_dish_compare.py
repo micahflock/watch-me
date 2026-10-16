@@ -269,7 +269,7 @@ DESIGNS = [("current ring", Current()), ("A tilted", Tilted()),
            ("B truss", Truss()), ("C telescope", Telescope()),
            ("D rays", Rays()), ("E mini", Minimal())]
 
-CROP = (52, 4, 116, 26)          # the icon + the day-of-week, for context
+CROP = (36, 0, 116, 27)          # the icon + the day-of-week, for context
 ZOOM = 9
 DATE, OFF, DOW = (2026, 10, 15), -7 * 3600, 4
 
@@ -315,26 +315,47 @@ def half_ellipse(cx, cy, a, b, n=8):
 
 
 class FlatDish:
-    """A up-left, flatter, shorter arm, no mount."""
+    """A up-left, flatter, shorter arm, no mount. Round 5 scales it: rim
+    half-width a, depth b, arm steps, wave radii, feed horn size, n ellipse
+    samples (re-checked convex + nub-free per size)."""
 
-    def __init__(self, depth, arm=3, cx=71, cy=15):
+    def __init__(self, depth, arm=3, cx=71, cy=15, a=6, wr=(4, 6), feed=2,
+                 n=8):
         self.cx, self.cy = cx, cy
-        self.disc = half_ellipse(cx, cy, 6, depth)
+        self.disc = half_ellipse(cx, cy, a, depth, n)
         self.feed = (cx - arm, cy - arm)
+        self.wr, self.fs = wr, feed
 
     def draw(self, dc, g):
         dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
         dc.fillPolygon(self.disc)
         fx, fy = self.feed
         dc.drawLine(self.cx, self.cy, fx, fy)             # arm
-        dc.fillRectangle(fx - 1, fy - 1, 2, 2)            # feed horn
-        waves(dc, fx - 1, fy - 1, g, 80, 190, 4, 6)
+        dc.fillRectangle(fx - 1, fy - 1, self.fs, self.fs)  # feed horn
+        waves(dc, fx - 1, fy - 1, g, 80, 190, self.wr[0], self.wr[1])
 
 
 FLAT_DESIGNS = [("round 3 A", LeftTilt(False)),
                 ("flatter (5/6)", FlatDish(5)),
                 ("flatter (4/6)", FlatDish(4)),
                 ("flatter (3/6)", FlatDish(3))]
+
+
+# --- round 5 (owner, 2026-10-16): depth 5/6 chosen; scale up ~1.33x for
+# more curve resolution (rim half-width 8, depth 6.7, arm 4, waves r 5/8,
+# ellipse sampled at 10 -- convex, nub-free) and try positions along the
+# top of the clock: at the date / nudged left / over the colon / over the
+# hour. All on the glass, bottom <= 24 (clock digits at 26).
+
+def big(cx, cy):
+    return FlatDish(6.7, arm=4, cx=cx, cy=cy, a=8, wr=(5, 8), feed=2, n=10)
+
+
+BIG_DESIGNS = [("round 4 (5/6)", FlatDish(5)),
+               ("big @ date", big(70, 15)),
+               ("big, nudged left", big(66, 15)),
+               ("big, over colon", big(61, 16)),
+               ("big, over hour", big(55, 16))]
 
 
 def compare(designs, name, title, states, ctx_state):
@@ -378,6 +399,9 @@ def main():
             (0, 1, 2), 2)
     compare(LEFT_DESIGNS, "gps-dish-left",
             "GPS fix icon round 3: facing left, clear of the date",
+            (1, 2, 0), 1)
+    compare(BIG_DESIGNS, "gps-dish-big",
+            "GPS fix icon round 5: depth 5/6, scaled up, placement",
             (1, 2, 0), 1)
     compare(FLAT_DESIGNS, "gps-dish-flat",
             "GPS fix icon round 4: A up-left, flatter, shorter arm, no mount",
