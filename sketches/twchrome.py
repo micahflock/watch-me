@@ -33,7 +33,8 @@ from PIL import Image
 import device
 import solar
 from device import (COLOR_BLACK, COLOR_WHITE, COLOR_RED, COLOR_ORANGE,
-                    COLOR_DK_GRAY, COLOR_BLUE, COLOR_YELLOW, COLOR_TRANSPARENT)
+                    COLOR_DK_GRAY, COLOR_LT_GRAY, COLOR_BLUE, COLOR_YELLOW,
+                    COLOR_TRANSPARENT)
 
 F = solar.F
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -237,9 +238,27 @@ class FieldMask:
 
 class Border:
     """BorderComponent: chord + slant, rim arcs (r=95.8 about (107.5,90.7))
-    broken at the slant and the battery notch, and the notch walls."""
+    broken at the slant and the battery notch, and the notch walls -- then
+    the anti-aliasing pixels (2026-10; generated table, see
+    sketches/border_aa_compare.py). aa=False draws the bare white line.
+    The watch's drawLine puts 5 diagonal steps one pixel over and skips one
+    endpoint (border_aa_compare.DEVICE_ONLY / SANDBOX_ONLY); the table is
+    built against the device's pixels, so this mirror differs from the
+    watch at those 6 spots only."""
+
+    def __init__(self, aa=True):
+        self.aa = aa
 
     def render(self, dc, state):
+        self.white(dc)
+        if self.aa:
+            import border_aa_pixels as px
+            for col, pts in ((COLOR_DK_GRAY, px.DK), (COLOR_LT_GRAY, px.LT)):
+                dc.setColor(col, COLOR_TRANSPARENT)
+                for x, y in pts:
+                    dc.fillRectangle(x, y, 1, 1)      # = Dc.drawPoint
+
+    def white(self, dc):
         dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
         dc.drawLine(16, 62, 134, 62)
         dc.drawLine(134, 62, 166, 15)
