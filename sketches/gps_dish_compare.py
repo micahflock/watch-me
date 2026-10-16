@@ -122,12 +122,12 @@ def wave(cx, cy, r, a0, a1, n):
     return arc_pts(cx, cy, r, a0, a1, n)
 
 
-def waves(dc, fx, fy, g, a0, a1):
+def waves(dc, fx, fy, g, a0, a1, r1=3, r2=5):
     """Freshness in the signal: 1 wave stale, 2 fresh."""
     if g >= 1:
-        lines(dc, arc_pts(fx, fy, 3, a0, a1, 3))
+        lines(dc, arc_pts(fx, fy, r1, a0, a1, 3))
     if g >= 2:
-        lines(dc, arc_pts(fx, fy, 5, a0, a1, 4))
+        lines(dc, arc_pts(fx, fy, r2, a0, a1, 4))
 
 
 TILT_DISC = arc_pts(69, 17, 5, 135, 315, 6)   # down-left half; faces up-right
@@ -203,11 +203,73 @@ class Minimal:
         dc.fillRectangle(77, 13, 2, 2)
 
 
+# --- round 3 (owner, 2026-10-16): face LEFT, shift left off the date (right
+# edge x <= 77, 5 px clear of the day-of-week at 82), bigger (r = 6) with a
+# neater post + foot, waves away from the date. Amber stale is the common
+# state, so it leads the sheet and the 1x strip.
+
+def half_disc(cx, cy, r, back_deg):
+    """Convex half-disc dish: the back bulges toward back_deg (math degrees)."""
+    return arc_pts(cx, cy, r, back_deg - 90, back_deg + 90, 8)
+
+
+class LeftTilt:
+    """A/B facing up-left (A mirrored): back bulges down-right."""
+
+    def __init__(self, truss):
+        self.truss = truss
+        self.disc = half_disc(70, 15, 6, 315)
+        self.feed = (65, 10) if truss else (66, 11)
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(self.disc)
+        fx, fy = self.feed
+        if self.truss:
+            for x, y in (self.disc[0], self.disc[-1]):
+                dc.drawLine(x, y, fx, fy)                 # rim struts
+        else:
+            dc.drawLine(70, 15, fx, fy)                   # centre arm
+        dc.fillRectangle(fx - 1, fy - 1, 2, 2)            # feed horn
+        dc.fillRectangle(72, 21, 2, 2)                    # neck
+        dc.fillRectangle(69, 23, 8, 1)                    # foot
+        waves(dc, fx - 1, fy - 1, g, 80, 190, 4, 6)   # 1 px of air off the feed
+
+
+class LeftLevel:
+    """A/B facing straight left (radar pose): back bulges right, chord
+    vertical; the truss variant is the textbook cross-section triangle."""
+
+    def __init__(self, truss):
+        self.truss = truss
+        self.disc = half_disc(71, 15, 6, 0)
+        self.feed = (63, 15) if truss else (64, 15)
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(self.disc)
+        fx, fy = self.feed
+        if self.truss:
+            for x, y in (self.disc[0], self.disc[-1]):
+                dc.drawLine(x, y, fx, fy)
+        else:
+            dc.drawLine(71, 15, fx, fy)
+        dc.fillRectangle(fx - 1, fy - 1, 2, 2)
+        dc.fillRectangle(74, 21, 2, 2)
+        dc.fillRectangle(71, 23, 7, 1)
+        waves(dc, fx - 1, fy, g, 135, 225, 4, 6)
+
+
+LEFT_DESIGNS = [("current ring", Current()),
+                ("A up-left", LeftTilt(False)), ("B up-left", LeftTilt(True)),
+                ("A left", LeftLevel(False)), ("B left", LeftLevel(True))]
+
+
 DESIGNS = [("current ring", Current()), ("A tilted", Tilted()),
            ("B truss", Truss()), ("C telescope", Telescope()),
            ("D rays", Rays()), ("E mini", Minimal())]
 
-CROP = (58, 4, 116, 26)          # the icon + the day-of-week, for context
+CROP = (52, 4, 116, 26)          # the icon + the day-of-week, for context
 ZOOM = 9
 DATE, OFF, DOW = (2026, 10, 15), -7 * 3600, 4
 
@@ -234,7 +296,7 @@ def face(design, g, grove, snap, t):
     return twchrome.glass(dc.img)
 
 
-def main():
+def compare(designs, name, title, states, ctx_state):
     snaps = synthetic_day(profile="active")
     t = mins("13:05")
     grove = load_algo("moss_grove").build()["components"][0]
@@ -242,30 +304,40 @@ def main():
         grove.advance(snaps[m])
 
     rows = []
-    for label, d in DESIGNS:
+    for label, d in designs:
         cells = []
-        for g in (0, 1, 2):
+        for g in states:
             img = face(d, g, grove, snaps[t], t).crop(CROP)
             w, h = img.size
             cells.append((img.resize((w * ZOOM, h * ZOOM), Image.NEAREST),
                           STATE_NAME[g]))
-        full = face(d, 2, grove, snaps[t], t)
+        full = face(d, ctx_state, grove, snaps[t], t)
         cells.append((full.resize((device.W * 2, device.H * 2), Image.NEAREST)
                       .crop((0, 0, device.W * 2, (CROP[3] - CROP[1]) * ZOOM)),
-                      "fresh, on the face (2x, top)"))
+                      STATE_NAME[ctx_state] + ", on the face (2x, top)"))
         rows.append((label, cells))
-    sheet(rows, ["no fix (gray)", "stale (yellow)", "fresh (blue)",
-                 "in context"],
-          os.path.join(OUT, "gps-dish-compare.png"),
-          "GPS fix icon: cross-section satellite dish options")
+    heads = {0: "no fix (gray)", 1: "stale (amber, most common)",
+             2: "fresh (blue)"}
+    sheet(rows, [heads[g] for g in states] + ["in context"],
+          os.path.join(OUT, name + ".png"), title)
 
-    # actual size: the whole face at 1x per design (fresh)
-    strip = Image.new("RGB", (device.W * len(DESIGNS) + 8 * (len(DESIGNS) - 1),
+    # actual size: the top of the face at 1x per design
+    strip = Image.new("RGB", (device.W * len(designs) + 8 * (len(designs) - 1),
                               device.H), (24, 24, 24))
-    for i, (_, d) in enumerate(DESIGNS):
-        strip.paste(face(d, 2, grove, snaps[t], t), (i * (device.W + 8), 0))
-    strip.save(os.path.join(OUT, "gps-dish-1x.png"))
-    print(os.path.join(OUT, "gps-dish-1x.png"))
+    for i, (_, d) in enumerate(designs):
+        strip.paste(face(d, ctx_state, grove, snaps[t], t),
+                    (i * (device.W + 8), 0))
+    strip.save(os.path.join(OUT, name + "-1x.png"))
+    print(os.path.join(OUT, name + "-1x.png"))
+
+
+def main():
+    compare(DESIGNS, "gps-dish-compare",
+            "GPS fix icon: cross-section satellite dish options",
+            (0, 1, 2), 2)
+    compare(LEFT_DESIGNS, "gps-dish-left",
+            "GPS fix icon round 3: facing left, clear of the date",
+            (1, 2, 0), 1)
 
 
 if __name__ == "__main__":
