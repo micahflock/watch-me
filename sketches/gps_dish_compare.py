@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""gps_dish_compare.py -- GPS-freshness icon options: the "cross-section"
+satellite dish (owner, 2026-10).
+
+The shipped GpsComponent is a 9 px ring at (75, 16) left of the day-of-week:
+DK_GRAY = no fix, YELLOW = stale fix (> 24 h), BLUE = fresh (< 24 h), with a
+centre dot when there is a fix (Snapshot.gpsFix 0/1/2). Each option here keeps
+that colour code and adds the dish motif; most also double-encode freshness in
+the signal (fresh = two marks, stale = one, none = bare gray dish) so the
+state reads at a glance even without colour.
+
+Icons use only drawLine / fillCircle / fillRectangle / fillPolygon (convex)
+with explicit integer points -- no drawArc, whose rasterization only the SDK
+sim gets right (the chrome Border draws its arcs as lines for the same
+reason) -- so they port mechanically and render the same on the watch. The
+box must end at x <= 80 (the day-of-week starts at 82) and y <= 23 (the clock
+digits start at 26).
+
+  current     the shipped ring + dot
+  A tilted    a filled half-disc dish facing up-right (the emoji pose),
+              centre arm to a 2x2 feed, plinth, waves (1 stale / 2 fresh)
+  B truss     A with the cross-section feed truss: struts from both rims
+              to the feed instead of the centre arm
+  C telescope an upright filled bowl (radio-telescope pose), mast to the
+              feed, waves stacked above
+  D rays      C with the textbook diagram's incoming rays falling into the
+              bowl and reflecting to the feed (a GPS only receives),
+              1 ray stale / 2 fresh
+  E mini      a small A in the current pip's ~9 x 9 box; colour only
+
+Earlier passes (2026-10): LINE-ART dishes do not survive 15 px -- a thin
+parabola read as a hockey stick / anchor, a focus dot on a diagonal arm as
+an arrowhead, and a 2 px shell + strut truss as a blob or an onion. Only
+the filled (convex fillPolygon) dish read as a dish, so every option here
+is built on it.
+
+    python3 sketches/gps_dish_compare.py
+"""
+import math
+import os
+import sys
+
+from PIL import Image
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import device
+import twchrome
+from bead_compare import OUT, load_algo, mins, sheet
+from day import synthetic_day
+from device import (COLOR_BLUE, COLOR_YELLOW, COLOR_DK_GRAY,
+                    COLOR_TRANSPARENT)
+from north_compare import chrome_state
+from twchrome import ChromeDc
+
+STATE_COLOR = {0: COLOR_DK_GRAY, 1: COLOR_YELLOW, 2: COLOR_BLUE}
+STATE_NAME = {0: "no fix", 1: "stale", 2: "fresh"}
+
+
+def arc_pts(cx, cy, r, a0, a1, n):
+    """Integer polyline approximating an arc (math degrees, y up)."""
+    out = []
+    for i in range(n + 1):
+        a = math.radians(a0 + (a1 - a0) * i / n)
+        out.append((round(cx + r * math.cos(a)), round(cy - r * math.sin(a))))
+    return out
+
+
+def poly(dc, ox, oy, pts):
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        dc.drawLine(ox + x0, oy + y0, ox + x1, oy + y1)
+
+
+# Each design: draw(dc, g) with g = gpsFix; ox/oy = box origin on screen.
+
+class Current:
+    calls = 0
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.drawCircle(75, 16, 4)
+        if g in (1, 2):
+            dc.fillCircle(75, 16, 1)
+
+
+def dish_geom(vx, vy, phi, R, f, feed_v, n=8):
+    """A parabola cross-section v = u^2 / 4f about vertex (vx, vy), its axis at
+    math angle phi (90 = facing up, 45 = up-right). Returns (curve points,
+    rim ends, feed point, axis unit)."""
+    a = math.radians(phi)
+    ax, ay = math.cos(a), -math.sin(a)        # axis (screen coords)
+    rx, ry = math.sin(a), math.cos(a)         # rim direction (perpendicular)
+
+    def at(u, v):
+        return (vx + u * rx + v * ax, vy + u * ry + v * ay)
+
+    pts = []
+    for i in range(n + 1):
+        u = -R + 2 * R * i / n
+        x, y = at(u, u * u / (4 * f))
+        p = (round(x), round(y))
+        if not pts or pts[-1] != p:
+            pts.append(p)
+    rim = (pts[0], pts[-1])
+    fx, fy = at(0, feed_v)
+    return pts, rim, (round(fx), round(fy)), (ax, ay)
+
+
+def lines(dc, pts):
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        dc.drawLine(x0, y0, x1, y1)
+
+
+def thick(dc, pts, axis):
+    """The dish shell 2 px thick: the curve plus a copy 1 px behind it."""
+    lines(dc, pts)
+    bx, by = -axis[0], -axis[1]
+    lines(dc, [(round(x + bx), round(y + by)) for x, y in pts])
+
+
+def wave(cx, cy, r, a0, a1, n):
+    return arc_pts(cx, cy, r, a0, a1, n)
+
+
+def waves(dc, fx, fy, g, a0, a1):
+    """Freshness in the signal: 1 wave stale, 2 fresh."""
+    if g >= 1:
+        lines(dc, arc_pts(fx, fy, 3, a0, a1, 3))
+    if g >= 2:
+        lines(dc, arc_pts(fx, fy, 5, a0, a1, 4))
+
+
+TILT_DISC = arc_pts(69, 17, 5, 135, 315, 6)   # down-left half; faces up-right
+BOWL = [(round(72 + 6 * math.cos(math.radians(t))),
+         round(18 + 4 * math.sin(math.radians(t)))) for t in range(0, 181, 30)]
+
+
+class Tilted:
+    """A: filled half-disc dish facing up-right (the emoji pose), centre arm
+    to a 2x2 feed, plinth, waves."""
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(TILT_DISC)
+        dc.drawLine(69, 17, 74, 12)
+        dc.fillRectangle(74, 11, 2, 2)
+        dc.fillRectangle(65, 22, 5, 1)
+        waves(dc, 75, 12, g, 100, -10)
+
+
+class Truss:
+    """B: the same dish with the cross-section feed truss -- struts from both
+    rims to the feed instead of a centre arm."""
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(TILT_DISC)
+        dc.drawLine(TILT_DISC[0][0], TILT_DISC[0][1], 75, 12)
+        dc.drawLine(TILT_DISC[-1][0], TILT_DISC[-1][1], 75, 12)
+        dc.fillRectangle(74, 11, 2, 2)
+        dc.fillRectangle(65, 22, 5, 1)
+        waves(dc, 75, 12, g, 100, -10)
+
+
+class Telescope:
+    """C: an upright filled bowl (radio-telescope pose), mast to the feed,
+    waves stacked above."""
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(BOWL)
+        dc.drawLine(72, 18, 72, 13)
+        dc.fillRectangle(71, 12, 3, 1)
+        waves(dc, 72, 12, g, 40, 140)
+
+
+class Rays:
+    """D: the upright bowl with the textbook diagram's incoming rays -- they
+    fall parallel into the bowl and reflect to the feed (a GPS only
+    receives). 1 ray stale / 2 fresh."""
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(BOWL)
+        dc.drawLine(72, 18, 72, 13)
+        dc.fillRectangle(71, 12, 3, 1)
+        if g >= 1:
+            dc.drawLine(77, 7, 77, 16)
+            dc.drawLine(77, 16, 74, 13)
+        if g >= 2:
+            dc.drawLine(67, 7, 67, 16)
+            dc.drawLine(67, 16, 70, 13)
+
+
+class Minimal:
+    """E: a mini tilted dish in the old pip's ~9 x 9 box; colour only."""
+    DISC = arc_pts(73, 18, 4, 135, 315, 5)
+
+    def draw(self, dc, g):
+        dc.setColor(STATE_COLOR[g], COLOR_TRANSPARENT)
+        dc.fillPolygon(self.DISC)
+        dc.drawLine(73, 18, 77, 14)
+        dc.fillRectangle(77, 13, 2, 2)
+
+
+DESIGNS = [("current ring", Current()), ("A tilted", Tilted()),
+           ("B truss", Truss()), ("C telescope", Telescope()),
+           ("D rays", Rays()), ("E mini", Minimal())]
+
+CROP = (58, 4, 116, 26)          # the icon + the day-of-week, for context
+ZOOM = 9
+DATE, OFF, DOW = (2026, 10, 15), -7 * 3600, 4
+
+
+class IconChrome:
+    """Stands in for twchrome.Gps in the V2 stack."""
+
+    def __init__(self, design):
+        self.design = design
+
+    def render(self, dc, state):
+        self.design.draw(dc, state.gpsFix)
+
+
+def face(design, g, grove, snap, t):
+    dc = ChromeDc()
+    grove.render(dc, snap)
+    st = chrome_state(DATE, OFF, DOW, t, snap=snap)
+    st.gpsFix = g
+    for c in twchrome.v2_chrome():
+        if isinstance(c, twchrome.Gps):
+            c = IconChrome(design)
+        c.render(dc, st)
+    return twchrome.glass(dc.img)
+
+
+def main():
+    snaps = synthetic_day(profile="active")
+    t = mins("13:05")
+    grove = load_algo("moss_grove").build()["components"][0]
+    for m in range(t + 1):
+        grove.advance(snaps[m])
+
+    rows = []
+    for label, d in DESIGNS:
+        cells = []
+        for g in (0, 1, 2):
+            img = face(d, g, grove, snaps[t], t).crop(CROP)
+            w, h = img.size
+            cells.append((img.resize((w * ZOOM, h * ZOOM), Image.NEAREST),
+                          STATE_NAME[g]))
+        full = face(d, 2, grove, snaps[t], t)
+        cells.append((full.resize((device.W * 2, device.H * 2), Image.NEAREST)
+                      .crop((0, 0, device.W * 2, (CROP[3] - CROP[1]) * ZOOM)),
+                      "fresh, on the face (2x, top)"))
+        rows.append((label, cells))
+    sheet(rows, ["no fix (gray)", "stale (yellow)", "fresh (blue)",
+                 "in context"],
+          os.path.join(OUT, "gps-dish-compare.png"),
+          "GPS fix icon: cross-section satellite dish options")
+
+    # actual size: the whole face at 1x per design (fresh)
+    strip = Image.new("RGB", (device.W * len(DESIGNS) + 8 * (len(DESIGNS) - 1),
+                              device.H), (24, 24, 24))
+    for i, (_, d) in enumerate(DESIGNS):
+        strip.paste(face(d, 2, grove, snaps[t], t), (i * (device.W + 8), 0))
+    strip.save(os.path.join(OUT, "gps-dish-1x.png"))
+    print(os.path.join(OUT, "gps-dish-1x.png"))
+
+
+if __name__ == "__main__":
+    main()
