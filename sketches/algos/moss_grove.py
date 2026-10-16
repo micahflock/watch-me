@@ -122,6 +122,11 @@ RIM_MODE = "under"
 TENDRIL_STEP = 1
 TENDRIL_OFF = 0
 TENDRIL_LEN = 5
+# rim width in px (owner, 2026-10-16: 1 -> 2). There is no pen-width
+# primitive in the API-2.4 sandbox model, so ring w (0..RIM_W-1) is the outline
+# pulled w px INWARD (vertex offsets scaled (e - w) / e): the silhouette and
+# the tendril roots stay on the outer ring.
+RIM_W = 1
 
 
 def bead_radius(mag):
@@ -300,17 +305,24 @@ class MossGrove:
     # the leading edge: close the cached outline polygon with NA 1 px lines
     def draw_rim(self, dc):
         dc.setColor(RIM, COLOR_TRANSPARENT)
-        x0 = CX + self.vx[0]
-        y0 = CY + self.vy[0]
-        for i in range(1, NA + 1):
-            j = imod(i, NA)
-            x1 = CX + self.vx[j]
-            y1 = CY + self.vy[j]
-            dc.drawLine(x0, y0, x1, y1)
-            x0 = x1
-            y0 = y1
+        for w in range(RIM_W):
+            x0 = CX + self.rim_off(self.vx, 0, w)
+            y0 = CY + self.rim_off(self.vy, 0, w)
+            for i in range(1, NA + 1):
+                j = imod(i, NA)
+                x1 = CX + self.rim_off(self.vx, j, w)
+                y1 = CY + self.rim_off(self.vy, j, w)
+                dc.drawLine(x0, y0, x1, y1)
+                x0 = x1
+                y0 = y1
         if TENDRIL_STEP > 0:
             self.draw_tendrils(dc)
+
+    # vertex offset v[j] pulled w px inward along its ray
+    def rim_off(self, v, j, w):
+        if w == 0 or self.er[j] <= w:
+            return v[j]
+        return idiv(v[j] * (self.er[j] - w), self.er[j])
 
     # phalanges: a short line at the outward normal of the local edge chord.
     # Length via the octagonal approximation (max + min/2) like the stalks.

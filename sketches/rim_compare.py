@@ -55,6 +55,18 @@ TENDRILS = [
     ("+tendrils x30", device.COLOR_DK_BLUE, "under", 1, 0),
     ("+tendrils x15", device.COLOR_DK_BLUE, "under", 2, 1),
 ]
+# round 3 (owner, 2026-10-16): shipped rim (1 px, 5 px tendrils) vs 2 px rim
+# + 7 px tendrils; the in-between rows isolate each change
+WIDER = [
+    ("shipped 1px/5", device.COLOR_DK_BLUE, "under", 1, 0,
+     {"RIM_W": 1, "TENDRIL_LEN": 5}),
+    ("2px rim/5", device.COLOR_DK_BLUE, "under", 1, 0,
+     {"RIM_W": 2, "TENDRIL_LEN": 5}),
+    ("1px/7 tendril", device.COLOR_DK_BLUE, "under", 1, 0,
+     {"RIM_W": 1, "TENDRIL_LEN": 7}),
+    ("2px rim/7", device.COLOR_DK_BLUE, "under", 1, 0,
+     {"RIM_W": 2, "TENDRIL_LEN": 7}),
+]
 
 ZOOM_BOX = (95, 95, 200, 175)       # display px: the lower-right rim at 13:05
 ZOOM = 6
@@ -79,8 +91,10 @@ def face(grove, snap, t, scale=SCALE):
 
 
 def grove_at(row, snaps, t):
-    label, col, mode, step, off = row
+    label, col, mode, step, off = row[:5]
     mod = load_algo("moss_grove")
+    for k, v in (row[5] if len(row) > 5 else {}).items():
+        setattr(mod, k, v)
     mod.RIM = col
     mod.RIM_MODE = mode
     mod.TENDRIL_STEP = step
@@ -127,6 +141,9 @@ def main():
     compare(TENDRILS, "rim-tendrils",
             "two-worlds V2: dk-blue rim + 1x5 px tendrils off the edge",
             [r[0] for r in TENDRILS])
+    compare(WIDER, "rim-wider",
+            "two-worlds V2: 2 px dk-blue rim + 7 px tendrils",
+            [r[0] for r in WIDER])
 
 
 if __name__ == "__main__":
