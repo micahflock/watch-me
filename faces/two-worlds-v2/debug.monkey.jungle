@@ -6,4 +6,4 @@ project.manifest = manifest.xml
 # Same narrowed core file list as the release jungle (see the RAM note there).
 base.sourcePath = source;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
 
-base.resourcePath = ../two-worlds/resources
+base.resourcePath = ../two-worlds/resources;resources

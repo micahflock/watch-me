@@ -33,7 +33,12 @@ breach-tall*.png (8 x 14 letters, TALL), +20% is breach-mid*.png (8 x 12,
 MID) -- 40% was too much. Never a resample: the letters are redrawn and the
 tape / rails / stripes re-proportioned; see Banner and SIZES.
 
-    python3 sketches/breach_compare.py
+SHIPPED: style B at 12 px (+20%) -- faces/two-worlds-v2 BreachComponent
+mirrors Banner("B", 12) exactly; `--emit` regenerates its text bitmap
+(faces/two-worlds-v2/resources/drawables/tw_breach.png).
+
+    python3 sketches/breach_compare.py            # the sheets
+    python3 sketches/breach_compare.py --emit     # the face's text bitmap
 """
 import os
 import sys
@@ -51,6 +56,7 @@ from north_compare import chrome_state
 from twchrome import ChromeDc, DRAWABLES
 
 BREACH_ACT = 4200
+SHIPPED = ("B", 12)        # owner, 2026-10: style B (inverse), 20% taller
 TEXT = "CONTAINMENT BREACH"
 GAP = 1                    # px between letters (the DOW strip uses 2)
 SPACE = 4                  # px for the word space
@@ -256,8 +262,9 @@ def face(banner, grove, snap, t):
     st.gpsFix = 1
     st.breach = grove.rec.act_units >= BREACH_ACT
     for c in twchrome.v2_chrome():
-        if isinstance(c, twchrome.North):
+        if isinstance(c, twchrome.Breach):
             banner.render(dc, st)            # over the chrome, under north
+            continue
         c.render(dc, st)
     return twchrome.glass(dc.img), grove.rec.act_units
 
@@ -342,7 +349,45 @@ def tall_sheets(options=None, name="breach-tall",
           title + " -- close-up")
 
 
-if __name__ == "__main__":
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RES = os.path.join(REPO, "faces", "two-worlds-v2", "resources", "drawables")
+
+
+def emit():
+    """Write the SHIPPED text as the face's resource PNG (palette-exact amber
+    or black on transparent, no antialiasing -- monkeyc keys the alpha out)."""
+    style, size = SHIPPED
+    fg = COLOR_BLACK if style in ("A", "C") else COLOR_YELLOW
+    img = text_bitmap(fg, SIZES[size][0])
+    os.makedirs(RES, exist_ok=True)
+    img.save(os.path.join(RES, "tw_breach.png"))
+    print("tw_breach.png {} x {} ({} style {}, {} px letters)".format(
+        img.width, img.height, "amber" if fg == COLOR_YELLOW else "black",
+        style, size))
+    # The striped END CAPS, cut from the banner itself: drawing the ~30
+    # stripe polygons per frame (8 array stores + a fillPolygon each) tipped
+    # the saturated sim frame over the watchdog (2026-10); two small bitmaps
+    # cost two drawBitmap calls. Opaque crops of the tape rows, so the face's
+    # caps are pixel-identical to Banner by construction.
+    b = Banner(style, size)
+
+    class St:
+        breach = True
+    dc = ChromeDc()
+    b.render(dc, St())
+    left_w = b.tx - 4
+    right_x = b.tx + b.text.width + 4
+    for name, box in (("tw_breach_l.png", (0, b.y0, left_w, b.y0 + b.bh)),
+                      ("tw_breach_r.png", (right_x, b.y0, device.W,
+                                           b.y0 + b.bh))):
+        cap = dc.img.crop(box).convert("RGBA")
+        cap.save(os.path.join(RES, name))
+        print("{} {} x {} at x={}".format(name, cap.width, cap.height, box[0]))
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["--emit"]:
+    emit()
+elif __name__ == "__main__":
     main()
     tall_sheets()
     tall_sheets(MID_OPTIONS, "breach-mid",

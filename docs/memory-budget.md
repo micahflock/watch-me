@@ -114,6 +114,10 @@ not per-frame allocation. The saturated pinned probe (above) stays silent.
 Cheapest claw-back if RAM gets tight: re-emit a smaller AA variant
 (`sketches/border_aa_compare.py --emit "dk, chrome side"`, 107 px).
 
+**CONTAINMENT BREACH easter egg (2026-10):** 47.3 -> 48.1 kB on a normal
+day (code only; its three bitmaps load on the first breach), **49.9/59.8 kB**
+on a breach day with them loaded; PRG 39.1 -> 41.5 KB.
+
 **V1 narrowed too (2026-10).** `faces/two-worlds/monkey.jungle` still pulled all
 of core, so once MossGrove.mc landed, a rebuilt V1 release died "Out Of Memory"
 on load in the sim (PRG 57.0 KB; the tracked June PRG predated MossGrove and
