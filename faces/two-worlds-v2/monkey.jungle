@@ -14,5 +14,6 @@ project.manifest = manifest.xml
 # Paths are relative to this jungle file.
 base.sourcePath = source;release;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
 
-# Reuse the two-worlds resources (fonts, launcher icon, settings).
-base.resourcePath = ../two-worlds/resources
+# Reuse the two-worlds resources (fonts, launcher icon, settings), plus V2's
+# own (the CONTAINMENT BREACH text bitmap) so V1 does not ship it.
+base.resourcePath = ../two-worlds/resources;resources

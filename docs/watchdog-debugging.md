@@ -145,6 +145,25 @@ fans. The **dish STATE and `save()/load()` are untouched**, so the day's record
 and every HR-episode's position/size/zone-color survive — only fine detail
 (wiggle, within-bloom gradient, curl/fork) is dropped.
 
+## Measure the MARGIN, not just trip / no-trip (2026-10)
+
+A silent run says the frame fits; it does not say by how much. Append a
+calibrated busy loop to `onUpdate` in the pinned-worst-case probe --
+`var acc = 0; for (var k = 0; k < N; k++) { acc = (acc + k) & 0x7FFFFFFF; }`,
+~8 VM instructions per iteration (docs/memory-budget.md calibration) -- and
+bisect N. two-worlds V2, saturated grove + 12-min replay + breach banner:
+
+| build | trips at N | margin |
+|---|---|---|
+| anti-aliased border OFF | 500 ok, 900 trips | ~4-7k instructions |
+| anti-aliased border ON (shipped) | 200 trips | **< ~1.6k** |
+| ON, no replay (lastMin = nm - 1) | 200 ok, 500 trips | ~1.6-4k |
+
+The border's 245 static `drawPoint`s cost a few thousand instructions -- the
+per-element-call cost again. A banner drawn as ~30 `fillPolygon` stripes
+(8 array stores + a call each) tripped this frame outright; as two bitmaps
+it does not. Anything added to V2's chrome now needs this margin check.
+
 ## Dead ends — don't repeat these
 
 - **Lowering `INK_MAX` alone shuffles, it doesn't cut.** The ink budget caps
