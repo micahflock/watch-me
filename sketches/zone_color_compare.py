@@ -12,6 +12,15 @@ green Z3 / orange Z4 / red Z5. Two candidate remaps (no gray anywhere):
   B shifted every colour one zone lower, pink on top:
             Z1 blue, Z2 green, Z3 orange, Z4 red, Z5 pink;
             below Z1 dark blue, sleep (<60) purple
+  C rescaled  the shipped colours in the shipped order, bounds moved so the
+            top five ARE Garmin's zones: Z1 amber, Z2 orange, Z3 red,
+            Z4 pink, Z5 purple; the four cool colours split <98 (60/80/90).
+            Slot 4 is now Z1's floor, so beads start at 98 bpm, not 105 --
+            which also merges the heavy day's episodes into fewer, bigger beads.
+  C keep105 C's colours, but Z1 takes two amber slots (98-104 / 105+) so
+            ACTIVE = 4 still means 105 bpm and the same beads form; bright
+            green drops out of the cool end (cool slots almost never reach
+            the screen: beads and the day colour only use zones >= ACTIVE).
 
 A and B use the default %-of-max zones for an ESTIMATED max HR of 195
 (Z1 98 / Z2 117 / Z3 137 / Z4 156 / Z5 176) -- the photo puts 153 near the
@@ -50,6 +59,11 @@ VARIANTS = [
      [D.COLOR_PURPLE, D.COLOR_DK_BLUE, D.COLOR_DK_BLUE,
       D.COLOR_BLUE, D.COLOR_BLUE,                    # Z1
       D.COLOR_GREEN, D.COLOR_ORANGE, D.COLOR_RED, D.COLOR_PINK]),
+    ("C rescaled", [60, 80, 90] + GZ, list(daybuckets.HR_RAMP)),
+    ("C keep105", G_BOUNDS,
+     [D.COLOR_DK_BLUE, D.COLOR_BLUE, D.COLOR_DK_GREEN,
+      D.COLOR_YELLOW, D.COLOR_YELLOW,                # Z1
+      D.COLOR_ORANGE, D.COLOR_RED, D.COLOR_PINK, D.COLOR_PURPLE]),
 ]
 
 
@@ -93,9 +107,9 @@ def legend(bounds, ramp, size):
         if b > a:
             d.rectangle([xof(a), y0, xof(b) - 1, y1],
                         fill=((c >> 16) & 255, (c >> 8) & 255, c & 255))
-    for bpm in bounds:
+    for i, bpm in enumerate(bounds):
         d.line([xof(bpm), y1, xof(bpm), y1 + 6], fill=(200, 200, 200))
-        d.text((xof(bpm) - 8, y1 + 8 + (12 if bpm in (80, 105, 138, 165, 117, 156) else 0)),
+        d.text((xof(bpm) - 8, y1 + 8 + (12 if i % 2 else 0)),
                str(bpm), fill=(200, 200, 200))
     d.line([xof(153), y0 - 10, xof(153), y0 - 2], fill=(255, 255, 255))
     d.text((xof(153) - 30, y0 - 24), "153 (photo)", fill=(255, 255, 255))
@@ -110,6 +124,8 @@ def main():
             ("HEAVY 23:30", synthetic_day(profile="heavy"), "23:30")]
     rows = []
     for label, bounds, ramp in VARIANTS:
+        if label.startswith("A "):
+            continue
         apply(bounds, ramp)
         mod = load_algo("moss_grove")
         cells = []
