@@ -16,7 +16,12 @@
         <iq:products>
             <iq:product id="fr735xt"/>
         </iq:products>
-        <iq:permissions/>
+        <iq:permissions>
+            <!-- Position.getInfo(): the last known GPS fix (core DataSource).
+                 Without it the fr735xt hands a watch face NO position, not
+                 even via Activity.Info.currentLocation (wrist, 2026-10). -->
+            <iq:uses-permission id="Positioning"/>
+        </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>
         </iq:languages>

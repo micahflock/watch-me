@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Build a face to a .prg.
-#   scripts/build.sh <face> [--debug]
+#   scripts/build.sh <face> [--debug|--diag]
 #
 # <face> is a directory name under faces/ (e.g. devface).
 # --debug uses debug.monkey.jungle (includes (:debug) code + tests) and emits
 #         <face>-debug.prg; otherwise the release jungle → <face>.prg.
+# --diag  uses diag.monkey.jungle (a RELEASE build with an on-wrist
+#         diagnostic readout, where the face has one) → <face>-diag.prg.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 
 FACE="${1:-devface}"
 MODE="release"
 if [ "${2:-}" = "--debug" ]; then MODE="debug"; fi
+if [ "${2:-}" = "--diag" ]; then MODE="diag"; fi
 
 FACE_DIR="$REPO_ROOT/faces/$FACE"
 [ -d "$FACE_DIR" ] || { echo "No such face: $FACE_DIR" >&2; exit 1; }
@@ -18,6 +21,10 @@ FACE_DIR="$REPO_ROOT/faces/$FACE"
 if [ "$MODE" = "debug" ]; then
   JUNGLE="$FACE_DIR/debug.monkey.jungle"
   OUT="$REPO_ROOT/bin/$FACE-debug.prg"
+elif [ "$MODE" = "diag" ]; then
+  JUNGLE="$FACE_DIR/diag.monkey.jungle"
+  OUT="$REPO_ROOT/bin/$FACE-diag.prg"
+  [ -f "$JUNGLE" ] || { echo "No diag build for $FACE ($JUNGLE)" >&2; exit 1; }
 else
   JUNGLE="$FACE_DIR/monkey.jungle"
   OUT="$REPO_ROOT/bin/$FACE.prg"
@@ -41,7 +48,7 @@ echo "Building $FACE ($MODE) -> $OUT"
 # -r selects a release build: strips (:debug), keeps (:release) stubs.
 # Debug build omits -r (keeps (:debug)) and adds --unit-test for the test runner.
 EXTRA=""
-if [ "$MODE" = "release" ]; then
+if [ "$MODE" != "debug" ]; then
   EXTRA="-r"
 else
   EXTRA="--unit-test"

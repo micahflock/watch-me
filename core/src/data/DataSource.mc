@@ -3,6 +3,7 @@ using Toybox.Time as Time;
 using Toybox.Time.Gregorian as Greg;
 using Toybox.ActivityMonitor as Act;
 using Toybox.Activity as Activity;
+using Toybox.Position as Position;
 using Toybox.Application as App;
 using Toybox.Lang as Lang;
 
@@ -16,11 +17,13 @@ using Toybox.Lang as Lang;
 // null leaves the corresponding Snapshot field null.
 //
 // Location: GPS ALWAYS wins, the user-entered lat/lng properties are the
-// fallback (owner, 2026-10). A watch face cannot use Toybox.Position (needs the
-// Positioning permission, which watch faces can't hold), but
-// Activity.getActivityInfo().currentLocation (API 1.0, no permission) reports
-// the device's LAST KNOWN position -- in practice the fix from the most recent
-// GPS activity. It carries no timestamp, so the face remembers the last fix it
+// fallback (owner, 2026-10). Position.getInfo() reports the device's LAST
+// KNOWN position -- in practice the fix from the most recent GPS activity --
+// without switching GPS on; Activity.Info.currentLocation is the fallback.
+// Both need the Positioning permission in the face's manifest: without it
+// the fr735xt hands a watch face no position at all (wrist, 2026-10: the pip
+// stayed grey after a GPS run; the diag build, with the permission, read the
+// fix from both). A fix carries no trusted age, so the face remembers it
 // saw (micro-degrees) and WHEN it first saw it change, persisted in the object
 // store; recency (Snapshot.gpsFix) derives from that stamp. The remembered fix
 // also covers a device that forgets its position (e.g. after a reboot).
@@ -69,10 +72,17 @@ module DataSource {
     // ever report a jittering position outside an activity.
     function readGps(nowSec) {
         try {
-            var info = Activity.getActivityInfo();
-            if (info != null && info has :currentLocation
-                    && info.currentLocation != null) {
-                var d = info.currentLocation.toDegrees();
+            var loc = null;
+            var pi = Position.getInfo();
+            if (pi != null) { loc = pi.position; }
+            if (loc == null) {
+                var info = Activity.getActivityInfo();
+                if (info != null && info has :currentLocation) {
+                    loc = info.currentLocation;
+                }
+            }
+            if (loc != null) {
+                var d = loc.toDegrees();
                 noteFix((d[0] * 1000000.0).toNumber(),
                         (d[1] * 1000000.0).toNumber(), nowSec);
             }

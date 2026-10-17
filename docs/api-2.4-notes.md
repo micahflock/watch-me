@@ -71,19 +71,23 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
 - Object store (`getProperty/setProperty`) values must stay small (KB-scale)
   and writes are flash-slow: write only in `onStop`, read only at startup /
   `onSettingsChanged`. Never read properties per tick.
-- Watch faces cannot read live GPS/sensors/network at this API level:
-  `Toybox.Position` needs the Positioning permission, which a watch face can't
-  hold. BUT `Activity.getActivityInfo().currentLocation` (API 1.0, no
-  permission) reports the device's **last known position** -- in practice the
-  fix from the most recent GPS activity. It has no timestamp, so `DataSource`
-  remembers the last fix it saw (object store key `gpsFix`:
+- Watch faces cannot run GPS, but they CAN read the device's **last known
+  fix** -- in practice the end of the most recent GPS activity -- via
+  `Position.getInfo().position` (and `Activity.Info.currentLocation`), given
+  the **`Positioning` permission** in the manifest. monkeyc accepts it for a
+  watchface, and the call does not switch GPS on. **Without the permission the
+  fr735xt returns no position from either API** (wrist, 2026-10: the pip
+  stayed grey after a GPS run; the diag build, with the permission, read
+  a valid lat/lng with quality 1 = LAST_KNOWN from both). The sim returns null with
+  quality 0 unless a position is set. A fix has no trusted age, so
+  `DataSource` remembers the last fix it saw (object store key `gpsFix`:
   `[latE6, lonE6, stampSec]`) and stamps when it CHANGES; that stamp drives
   `Snapshot.gpsFix` (0 none / 1 stale / 2 fresh < 24 h). GPS always wins; the
   user-entered `lat`/`lng` properties are the fallback. Reject the "no fix"
-  sentinels ((0,0), 180/180). `DataSource` calls `toDegrees()` on the untyped
-  Location value and never names `Toybox.Position`; it builds and runs with an
-  empty `<iq:permissions/>`. The headless sim reports no position (the GPS dish reads "none", gray); only
-  the wrist proves the fr735xt keeps its last fix outside an activity.
+  sentinels ((0,0), 180/180). `Position.Info.when` is shown by the diag
+  build -- whether the fr735xt stamps a last-known fix with its real time is
+  unverified, so recency does not rely on it yet. The headless sim reports
+  no position (the GPS dish reads "none", gray).
 - The SDK device id is **`fr735xt`** (not "forerunner735xt") — in
   manifest products, `monkeyc -d`, monkeydo, and the device-files directory.
 - Old-style Monkey C discipline: untyped `var`s, no `as Number` annotations,
