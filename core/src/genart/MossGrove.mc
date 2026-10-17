@@ -333,6 +333,10 @@ class MossGrove {
         return best;
     }
 
+    // the day's movement total (growth units) -- read by the V2 face's
+    // CONTAINMENT BREACH easter egg
+    function actUnits() { return _actUnits; }
+
     function scl(v) { return v * SCN / SCD; }
 
     // rounded division, symmetric in sign: plain truncation shaves ~30% off
