@@ -11,8 +11,9 @@ using Toybox.Math as Math;
 // app id as the face, so it reads the face's real saved record; sideload it
 // IN PLACE of two-worlds-v2.prg, swap back when done.
 //
-// Even minutes: the normal face. Odd minutes: the moss is skipped (keeps the
-// watchdog budget for the readout) and the field shows
+// The readout shows ONE minute in ten (:00, :10, :20 ...; owner, 2026-10);
+// the other nine are the normal face. On a readout minute the moss is
+// skipped (keeps the watchdog budget for the readout) and the field shows
 //   A:  Activity.Info.currentLocation  (lat,lon + accuracy, or null/-)
 //   P:  Position.getInfo().position    (+ the age of its `when` stamp;
 //       ERR if the device refuses the Positioning permission)
@@ -51,7 +52,7 @@ module Diag {
     }
 
     function page(state) {
-        return state.minute != null && (state.minute % 2) == 1;
+        return state.minute != null && (state.minute % 10) == 0;
     }
 }
 

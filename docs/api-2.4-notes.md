@@ -86,7 +86,8 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
   user-entered `lat`/`lng` properties are the fallback. Reject the "no fix"
   sentinels ((0,0), 180/180). `Position.Info.when` is shown by the diag
   build -- whether the fr735xt stamps a last-known fix with its real time is
-  unverified, so recency does not rely on it yet.
+  unverified, so recency does not rely on it yet. The headless sim reports
+  no position (the GPS dish reads "none", gray).
 - The SDK device id is **`fr735xt`** (not "forerunner735xt") — in
   manifest products, `monkeyc -d`, monkeydo, and the device-files directory.
 - Old-style Monkey C discipline: untyped `var`s, no `as Number` annotations,

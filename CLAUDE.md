@@ -27,7 +27,7 @@ scripts/build.sh two-worlds-v2 --diag  # on-wrist diagnostic readout (release bu
 
 **Wrist-only behaviour → the diag build.** `bin/two-worlds-v2-diag.prg` has the
 face's app id (sideload it IN PLACE of `two-worlds-v2.prg`) and swaps the moss
-for a readout on odd minutes: GPS from `Activity.currentLocation` and
+for a readout one minute in ten (:00, :10, ...): GPS from `Activity.currentLocation` and
 `Position.getInfo()`, the remembered fix, the last replayed gap, the biggest
 bead's slots, and a 3-hour HR-history sparkline (`faces/two-worlds-v2/diag/`;
 the release build compiles `release/DiagStub.mc` instead).

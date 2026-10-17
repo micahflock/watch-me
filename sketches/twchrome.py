@@ -9,7 +9,7 @@ face, plus V2's GPS pip) onto the faithful device model, so chrome tweaks
     FieldMask  static black runs outside the field disc (same merged-rect build)
     Border     the white separation line (chord, slant, rim arcs, battery notch)
     Uplink     phone bars                Battery  three 33% chunks
-    Readout    day-of-week + date strips Gps      fix-recency pip
+    Readout    day-of-week + date strips Gps      fix-recency dish
     Clock      7-seg HH:MM strips
     North      the hollow red marker on the rim at the sun-compass angle
 
@@ -33,7 +33,8 @@ from PIL import Image
 import device
 import solar
 from device import (COLOR_BLACK, COLOR_WHITE, COLOR_RED, COLOR_ORANGE,
-                    COLOR_DK_GRAY, COLOR_BLUE, COLOR_YELLOW, COLOR_TRANSPARENT)
+                    COLOR_DK_GRAY, COLOR_LT_GRAY, COLOR_BLUE, COLOR_YELLOW,
+                    COLOR_TRANSPARENT)
 
 F = solar.F
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -237,9 +238,27 @@ class FieldMask:
 
 class Border:
     """BorderComponent: chord + slant, rim arcs (r=95.8 about (107.5,90.7))
-    broken at the slant and the battery notch, and the notch walls."""
+    broken at the slant and the battery notch, and the notch walls -- then
+    the anti-aliasing pixels (2026-10; generated table, see
+    sketches/border_aa_compare.py). aa=False draws the bare white line.
+    The watch's drawLine puts 5 diagonal steps one pixel over and skips one
+    endpoint (border_aa_compare.DEVICE_ONLY / SANDBOX_ONLY); the table is
+    built against the device's pixels, so this mirror differs from the
+    watch at those 6 spots only."""
+
+    def __init__(self, aa=True):
+        self.aa = aa
 
     def render(self, dc, state):
+        self.white(dc)
+        if self.aa:
+            import border_aa_pixels as px
+            for col, pts in ((COLOR_DK_GRAY, px.DK), (COLOR_LT_GRAY, px.LT)):
+                dc.setColor(col, COLOR_TRANSPARENT)
+                for x, y in pts:
+                    dc.fillRectangle(x, y, 1, 1)      # = Dc.drawPoint
+
+    def white(self, dc):
         dc.setColor(COLOR_WHITE, COLOR_TRANSPARENT)
         dc.drawLine(16, 62, 134, 62)
         dc.drawLine(134, 62, 166, 15)
@@ -371,6 +390,14 @@ class Readout:
 
 
 class Gps:
+    """GpsComponent: the cross-section satellite dish (2026-10), coloured
+    by fix recency, waves none / 1 stale / 2 fresh. See
+    sketches/gps_dish_compare.py big(67, 15) for the design rounds."""
+    DISH = [(73, 9), (74, 11), (74, 13), (74, 16), (73, 18), (72, 20),
+            (70, 21), (68, 22), (65, 22), (63, 22), (61, 21)]
+    W1 = [(63, 5), (60, 6), (58, 8), (57, 11)]
+    W2 = [(63, 2), (60, 2), (56, 4), (54, 8), (54, 11)]
+
     def render(self, dc, state):
         g = state.gpsFix
         c = COLOR_DK_GRAY
@@ -379,9 +406,13 @@ class Gps:
         elif g == 1:
             c = COLOR_YELLOW
         dc.setColor(c, COLOR_TRANSPARENT)
-        dc.drawCircle(75, 16, 4)
-        if g in (1, 2):
-            dc.fillCircle(75, 16, 1)
+        dc.fillPolygon(self.DISH)
+        dc.drawLine(67, 15, 63, 11)
+        dc.fillRectangle(62, 10, 2, 2)
+        waves = (self.W1, self.W2) if g == 2 else (self.W1,) if g == 1 else ()
+        for w in waves:
+            for (x0, y0), (x1, y1) in zip(w, w[1:]):
+                dc.drawLine(x0, y0, x1, y1)
 
 
 class Clock:
