@@ -433,9 +433,28 @@ class Clock:
             self.digits.draw(dc, state.minute % 10, 98, y)
 
 
+class Breach:
+    """BreachComponent (2026-10 easter egg): the CONTAINMENT BREACH tape when
+    the day's movement outgrows the dish (state.breach, set by the caller
+    from the grove's act_units >= breach_compare.BREACH_ACT). The face draws
+    exactly breach_compare.Banner("B", 12); this delegates to it."""
+
+    def __init__(self):
+        self._banner = None
+
+    def render(self, dc, state):
+        if getattr(state, "breach", None) is not True:
+            return
+        if self._banner is None:
+            import breach_compare
+            self._banner = breach_compare.Banner(*breach_compare.SHIPPED)
+        self._banner.render(dc, state)
+
+
 def v2_chrome(north=None, north_last=True):
     """The V2 overlay stack in render order (after the grove): field mask,
-    border, uplink, battery, readout, gps pip, time, north. north_last=False
+    border, uplink, battery, readout, gps dish, time, breach, north.
+    north_last=False
     is the pre-2026-10 order (north under the readout/pip/time)."""
     colon = Image.open(os.path.join(DRAWABLES, "tw_colon.png")).convert("RGBA")
     north = north if north is not None else North()
@@ -443,7 +462,8 @@ def v2_chrome(north=None, north_last=True):
             Gps(),
             Clock(StripGlyphs("tw_time.png", 18), colon)]
     base = [FieldMask(), Border(), Uplink(), Battery()]
-    return base + over + [north] if north_last else base + [north] + over
+    return (base + over + [Breach(), north] if north_last
+            else base + [north] + over + [Breach()])
 
 
 # --------------------------------------------------------- display geometry --
