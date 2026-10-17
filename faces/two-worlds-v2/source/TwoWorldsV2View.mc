@@ -42,7 +42,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
 
         _compositor = new Compositor();
         _compositor.setBackground(Gfx.COLOR_BLACK);
-        _compositor.add(_grove, null);                   // 1 moss organism (back)
+        _compositor.add(Diag.wrapGrove(_grove), null);   // 1 moss organism (back)
         _compositor.add(new FieldMaskComponent(), null); // 2 confine art to field
         _compositor.add(new BorderComponent(), null);    // 3 white border
         _compositor.add(new UplinkComponent(), null);    // 4 phone bars
@@ -53,6 +53,8 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new BreachComponent(_grove), null); // 7b easter egg tape
         _compositor.add(new NorthComponent(), null);     // 8 sun/north marker, over the chrome
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
+        var diag = Diag.component();                     // diag build only
+        if (diag != null) { _compositor.add(diag, null); }
     }
 
     function onUpdate(dc) {
@@ -67,7 +69,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
     function onExitSleep() { Ui.requestUpdate(); }
 
     // Persist the day record so it survives a teardown (menu open).
-    function onHide() { MossState.save(_grove); }
+    function onHide() { MossState.save(_grove); Diag.save(_grove); }
 
     function onSettingsChanged() {}
 }
