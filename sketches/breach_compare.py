@@ -28,9 +28,10 @@ Options (rows):
               top and bottom
   C framed    A with black/amber striped rules above and below the band
 
-+40% (owner, 2026-10, "stretch 40% in Z" read as vertical): breach-tall*.png.
-Not a resample -- the letters are redrawn at 8 x 14 (TALL) and the tape /
-rails / stripes re-proportioned; see Banner.
+Taller (owner, 2026-10, "stretch in Z" read as vertical): +40% is
+breach-tall*.png (8 x 14 letters, TALL), +20% is breach-mid*.png (8 x 12,
+MID) -- 40% was too much. Never a resample: the letters are redrawn and the
+tape / rails / stripes re-proportioned; see Banner and SIZES.
 
     python3 sketches/breach_compare.py
 """
@@ -122,6 +123,38 @@ TALL = {
 assert all(len(g) == 14 and all(len(r) == 8 for r in g)
            for g in TALL.values()), "tall glyphs must be 8 x 14"
 
+# 20% taller (owner, 2026-10: 40% was too much). Redrawn at 8 x 12 by the
+# same rules: 2 px strokes, crossbars on the centred rows 5-6, the extra two
+# rows in the stems (M's centre stroke 4 -> 5 rows, R's leg re-stepped).
+MID = {
+    "C": rows((".#######", 1), ("########", 1), ("##......", 8),
+              ("########", 1), (".#######", 1)),
+    "O": rows((".######.", 1), ("########", 1), ("##....##", 8),
+              ("########", 1), (".######.", 1)),
+    "N": rows((".######.", 1), ("########", 1), ("##....##", 10)),
+    "T": rows(("########", 2), ("...##...", 10)),
+    "A": rows((".######.", 1), ("########", 1), ("##....##", 3),
+              ("########", 2), ("##....##", 5)),
+    "I": rows(("########", 2), ("...##...", 8), ("########", 2)),
+    "M": rows((".######.", 1), ("########", 2), ("##.##.##", 5),
+              ("##....##", 4)),
+    "E": rows(("#######.", 2), ("##......", 3), ("#####...", 2),
+              ("##......", 3), ("#######.", 2)),
+    "B": rows(("#######.", 1), ("########", 1), ("##....##", 3),
+              ("#######.", 2), ("##....##", 3), ("########", 1),
+              ("#######.", 1)),
+    "R": rows(("#######.", 1), ("########", 1), ("##....##", 3),
+              ("#######.", 1), ("######..", 1), ("##.###..", 1),
+              ("##..###.", 1), ("##...###", 2), ("##....##", 1)),
+    "H": rows(("##....##", 5), ("########", 2), ("##....##", 5)),
+}
+assert all(len(g) == 12 and all(len(r) == 8 for r in g)
+           for g in MID.values()), "mid glyphs must be 8 x 12"
+
+# size -> (glyphs, tape rows, rail rows); 20% tape = 19.2 -> 20 so the 12 px
+# text gets an even 4 px above and below
+SIZES = {10: (None, 16, 4), 12: (MID, 20, 5), 14: (TALL, 22, 6)}
+
 
 def text_bitmap(color, glyphs=None):
     """TEXT as one RGBA bitmap (glyph pixels = color, rest transparent) --
@@ -158,19 +191,18 @@ PITCH, SW = 8, 4           # stripe pitch / width (px)
 
 
 class Banner:
-    """tall=False: the 10 px original (band 16, rails 4, 45-degree stripes).
-    tall=True: the 40%-taller redraw -- 14 px letters, band 22 (16 x 1.4),
-    rails 6 (4 x 1.4, rounded), still centred on y = 90. The stripes keep
+    """size=10: the original (band 16, rails 4, 45-degree stripes).
+    size=12: +20% -- 12 px letters, band 20, rails 5. size=14: +40% -- 14 px
+    letters, band 22, rails 6. All centred on y = 90. The stripes keep
     their horizontal rhythm (width 4, pitch 8, run 15) -- a vertical stretch
     changes no x -- so they just steepen (45 -> ~55 degrees) and each end of
     the tape keeps the same stripe count."""
 
-    def __init__(self, style, tall=False):
+    def __init__(self, style, size=10):
         self.style = style
         fg = COLOR_BLACK if style in ("A", "C") else COLOR_YELLOW
-        self.text = text_bitmap(fg, TALL if tall else None)
-        self.bh = 22 if tall else BH
-        self.rail = 6 if tall else 4
+        glyphs, self.bh, self.rail = SIZES[size]
+        self.text = text_bitmap(fg, glyphs)
         self.y0 = 90 - self.bh // 2
         self.run = BH - 1                   # stripe x-run, shared by both
         self.tx = (device.W - self.text.width) // 2
@@ -269,12 +301,18 @@ def main():
           "CONTAINMENT BREACH banner close-up")
 
 
-TALL_OPTIONS = [("A tape", Banner("A")), ("A tape +40%", Banner("A", True)),
-                ("B inverse +40%", Banner("B", True)),
-                ("C framed +40%", Banner("C", True))]
+TALL_OPTIONS = [("A tape", Banner("A")), ("A tape +40%", Banner("A", 14)),
+                ("B inverse +40%", Banner("B", 14)),
+                ("C framed +40%", Banner("C", 14))]
+MID_OPTIONS = [("A tape", Banner("A")), ("A tape +20%", Banner("A", 12)),
+               ("B inverse +20%", Banner("B", 12)),
+               ("C framed +20%", Banner("C", 12)),
+               ("A tape +40%", Banner("A", 14))]
 
 
-def tall_sheets():
+def tall_sheets(options=None, name="breach-tall",
+                title="CONTAINMENT BREACH, 40% taller (letters redrawn at 8x14)"):
+    options = options or TALL_OPTIONS
     days = {p: synthetic_day(profile=p) for p in ("active", "heavy")}
     cols = [("heavy", "11:31"), ("heavy", "23:30")]
     groves = {}
@@ -285,7 +323,7 @@ def tall_sheets():
             g.advance(days[prof][m])
         groves[(prof, at)] = (g, days[prof][t], t)
     rows_, z = [], []
-    for label, banner in TALL_OPTIONS:
+    for label, banner in options:
         cells = []
         for prof, at in cols:
             g, snap, t = groves[(prof, at)]
@@ -299,12 +337,13 @@ def tall_sheets():
         z.append((label, [(crop.resize((crop.width * 5, crop.height * 5),
                                         Image.NEAREST), "")]))
     sheet(rows_, ["{} {}".format(p, a) for p, a in cols],
-          os.path.join(OUT, "breach-tall.png"),
-          "CONTAINMENT BREACH, 40% taller (letters redrawn at 8x14)")
-    sheet(z, ["banner, 5x"], os.path.join(OUT, "breach-tall-zoom.png"),
-          "CONTAINMENT BREACH +40%: original vs redrawn")
+          os.path.join(OUT, name + ".png"), title)
+    sheet(z, ["banner, 5x"], os.path.join(OUT, name + "-zoom.png"),
+          title + " -- close-up")
 
 
 if __name__ == "__main__":
     main()
     tall_sheets()
+    tall_sheets(MID_OPTIONS, "breach-mid",
+                "CONTAINMENT BREACH, 20% taller (letters redrawn at 8x12)")
