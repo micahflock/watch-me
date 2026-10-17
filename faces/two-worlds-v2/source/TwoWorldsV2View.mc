@@ -8,10 +8,12 @@ using Toybox.Math as Math;
 // (core/src/genart/MossGrove.mc) replacing BioBloom. The grove is centred 2/5 up
 // from the bottom (CY=108), the same centre BioBloom used, so the field-mask and
 // border geometry are unchanged. The grove record is tiny and always persists,
-// so the V1 "containment breach" warning is gone.
+// so V1's save-failure "containment breach" warning is gone -- the words came
+// back as an easter egg instead (BreachComponent: the day's movement outgrew
+// the dish).
 //
 // Render order (back -> front): grove, field mask, border, uplink, battery,
-// readout, gps dish, time, north, debug.
+// readout, gps dish, time, breach, north, debug.
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -48,6 +50,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
         _compositor.add(new GpsComponent(), null);       // 6b GPS fix recency dish
         _compositor.add(new ClockComponent(_timeStrip, _colon), null);      // 7 time
+        _compositor.add(new BreachComponent(_grove), null); // 7b easter egg tape
         _compositor.add(new NorthComponent(), null);     // 8 sun/north marker, over the chrome
         _compositor.add(new DebugComponent(), null);     // (:debug) overlay
     }
@@ -453,6 +456,54 @@ class ClockComponent {
             _digits.draw(dc, (state.minute / 10) % 10, 75, y);
             _digits.draw(dc, state.minute % 10, 98, y);
         }
+    }
+}
+
+// CONTAINMENT BREACH (owner, 2026-10 easter egg): once the day's movement
+// reaches BREACH_ACT growth units the moss has maxed out every way it can
+// grow (cushion radius caps at 3000, tuft size 3120, tuft count 4200) -- the
+// organism has outgrown its dish, ~25-28k steps -- and hazard tape goes
+// across the middle of the glass: black tape, amber stripes at both ends,
+// amber rules above and below, CONTAINMENT BREACH in the day-of-week font
+// redrawn 20% taller (8 x 12). Clears at midnight with the day record;
+// survives a reload with it (MossState).
+// Geometry is sketches/breach_compare.py Banner("B", 12); its --emit writes
+// all three bitmaps. The striped ends are BITMAPS, not polygons: the ~30
+// stripe fillPolygons per frame tipped the saturated sim frame over the
+// watchdog (2026-10). The bitmaps load on the first breach only (no RAM
+// until then); on every other day the component is one comparison.
+class BreachComponent {
+    const BREACH_ACT = 4200;
+    const Y0 = 80;             // tape rows 80..99, centred on the glass (y=90)
+    const BH = 20;
+    const CAP_R = 189;         // right cap x (both caps 26 x 20)
+    const TX = 30;             // text bitmap 155 x 12, centred
+    const TY = 84;
+    var _grove;
+    var _text;
+    var _capL;
+    var _capR;
+
+    function initialize(grove) {
+        _grove = grove;
+        _text = null;
+    }
+
+    function render(dc, state) {
+        if (_grove.actUnits() < BREACH_ACT) { return; }
+        if (_text == null) {
+            _text = Ui.loadResource(Rez.Drawables.BreachText);
+            _capL = Ui.loadResource(Rez.Drawables.BreachCapL);
+            _capR = Ui.loadResource(Rez.Drawables.BreachCapR);
+        }
+        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
+        dc.fillRectangle(0, Y0, 215, BH);
+        dc.setColor(Gfx.COLOR_YELLOW, Gfx.COLOR_TRANSPARENT);
+        dc.fillRectangle(0, Y0 - 1, 215, 1);              // amber rules
+        dc.fillRectangle(0, Y0 + BH, 215, 1);
+        dc.drawBitmap(0, Y0, _capL);
+        dc.drawBitmap(CAP_R, Y0, _capR);
+        dc.drawBitmap(TX, TY, _text);
     }
 }
 
