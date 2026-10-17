@@ -106,6 +106,14 @@ watchdog trip. The probe is the one in docs/watchdog-debugging.md plus
 `_edur[i] = 600`, a six-zone `_eband[i]`, `_epiOn = true; _epiIdx = 15`,
 `_lastMin = nm - 13`, and `hrMinutes` forced to fill HR 150.
 
+**V2 chrome polish (2026-10), same unpinned sim conditions:** the GPS
+satellite-dish icon 43.2 -> 44.8 kB, then the anti-aliased white border
+(245 static grey pixels, 123 packed Numbers in `BorderComponent`) 44.8 ->
+**47.3/59.8 kB**; PRG 36.3 -> 39.1 KB. Mostly code + const-array literals,
+not per-frame allocation. The saturated pinned probe (above) stays silent.
+Cheapest claw-back if RAM gets tight: re-emit a smaller AA variant
+(`sketches/border_aa_compare.py --emit "dk, chrome side"`, 107 px).
+
 **V1 narrowed too (2026-10).** `faces/two-worlds/monkey.jungle` still pulled all
 of core, so once MossGrove.mc landed, a rebuilt V1 release died "Out Of Memory"
 on load in the sim (PRG 57.0 KB; the tracked June PRG predated MossGrove and
