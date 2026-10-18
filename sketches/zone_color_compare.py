@@ -6,7 +6,7 @@ Aerobic"): the 9-step HR_RAMP turns hot about a zone early -- a bead at 153
 is PINK where the watch says green. Garmin's gauge is gray Z1 / blue Z2 /
 green Z3 / orange Z4 / red Z5. Two candidate remaps (no gray anywhere):
 
-  now       the shipped ramp (fixed bpm bounds 60..165)
+  pre-10/18 the ramp before this change (fixed bpm bounds 60..165)
   A garmin  Garmin's colours per zone, Z1 dark blue instead of gray,
             everything below Z1 purple
   B shifted every colour one zone lower, pink on top:
@@ -17,7 +17,7 @@ green Z3 / orange Z4 / red Z5. Two candidate remaps (no gray anywhere):
             Z4 pink, Z5 purple; the four cool colours split <98 (60/80/90).
             Slot 4 is now Z1's floor, so beads start at 98 bpm, not 105 --
             which also merges the heavy day's episodes into fewer, bigger beads.
-  C keep105 C's colours, but Z1 takes two amber slots (98-104 / 105+) so
+  C keep105 SHIPPED 2026-10-18 (MossGrove.mc). C's colours, but Z1 takes two amber slots (98-104 / 105+) so
             ACTIVE = 4 still means 105 bpm and the same beads form; bright
             green drops out of the cool end (cool slots almost never reach
             the screen: beads and the day colour only use zones >= ACTIVE).
@@ -50,7 +50,10 @@ GZ = [98, 117, 137, 156, 176]
 G_BOUNDS = [60, 80, GZ[0], 105, GZ[1], GZ[2], GZ[3], GZ[4]]
 
 VARIANTS = [
-    ("now", list(daybuckets.HR_BOUNDS), list(daybuckets.HR_RAMP)),
+    ("pre-10/18", [60, 80, 95, 105, 120, 138, 152, 165],   # before the port
+     [D.COLOR_DK_BLUE, D.COLOR_BLUE, D.COLOR_DK_GREEN, D.COLOR_GREEN,
+      D.COLOR_YELLOW, D.COLOR_ORANGE, D.COLOR_RED, D.COLOR_PINK,
+      D.COLOR_PURPLE]),
     ("A garmin", G_BOUNDS,
      [D.COLOR_PURPLE, D.COLOR_PURPLE, D.COLOR_PURPLE,
       D.COLOR_DK_BLUE, D.COLOR_DK_BLUE,              # Z1 (gray on Garmin)
@@ -59,7 +62,10 @@ VARIANTS = [
      [D.COLOR_PURPLE, D.COLOR_DK_BLUE, D.COLOR_DK_BLUE,
       D.COLOR_BLUE, D.COLOR_BLUE,                    # Z1
       D.COLOR_GREEN, D.COLOR_ORANGE, D.COLOR_RED, D.COLOR_PINK]),
-    ("C rescaled", [60, 80, 90] + GZ, list(daybuckets.HR_RAMP)),
+    ("C rescaled", [60, 80, 90] + GZ,
+     [D.COLOR_DK_BLUE, D.COLOR_BLUE, D.COLOR_DK_GREEN, D.COLOR_GREEN,
+      D.COLOR_YELLOW, D.COLOR_ORANGE, D.COLOR_RED, D.COLOR_PINK,
+      D.COLOR_PURPLE]),
     ("C keep105", G_BOUNDS,
      [D.COLOR_DK_BLUE, D.COLOR_BLUE, D.COLOR_DK_GREEN,
       D.COLOR_YELLOW, D.COLOR_YELLOW,                # Z1
@@ -135,7 +141,7 @@ def main():
         size = cells[0][0].size
         cells.append((legend(bounds, ramp, size), "bpm ramp"))
         rows.append((label, cells))
-    apply(VARIANTS[0][1], VARIANTS[0][2])
+    apply(VARIANTS[-1][1], VARIANTS[-1][2])   # back to the shipped ramp
     sheet(rows, [d[0] for d in days] + ["ramp"],
           os.path.join(OUT, "zone-color-compare.png"),
           "HR ramp vs Garmin zones (est. max HR 195: Z1 98 Z2 117 Z3 137 "
