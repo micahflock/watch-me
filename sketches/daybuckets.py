@@ -31,9 +31,12 @@ BUCKETS = 96           # 24 h / 96 = 15-min buckets (3.75 deg each on a ring)
 BUCKET_MIN = 15
 CX, CY = 107, 90       # bezel centre (sandbox renders standalone, no overlays)
 
-# Same 9-step HR ramp BioBloom uses: cool at rest -> hot for hard efforts.
-HR_BOUNDS = [60, 80, 95, 105, 120, 138, 152, 165]
-HR_RAMP = [COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
+# MossGrove's 9-step HR ramp (mirrors MossGrove.mc HR_BOUNDS/HR_RAMP): cool at
+# rest -> hot for hard efforts, the hot end on Garmin's zones (Z1 amber x2,
+# Z2 orange, Z3 red, Z4 pink, Z5 purple; owner 2026-10, "C keep105" in
+# zone_color_compare.py). BioBloom keeps the older ramp (algos/biobloom.py).
+HR_BOUNDS = [60, 80, 98, 105, 117, 137, 156, 176]
+HR_RAMP = [COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_YELLOW,
            COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK, COLOR_PURPLE]
 
 
@@ -43,7 +46,7 @@ def hr_zi(hr):
     for i in range(len(HR_BOUNDS)):
         if hr < HR_BOUNDS[i]:
             return i
-    return len(HR_BOUNDS)        # 8 == PURPLE (HR >= 165)
+    return len(HR_BOUNDS)        # 8 == PURPLE (HR >= 176, Z5)
 
 
 def hr_color(hr):
