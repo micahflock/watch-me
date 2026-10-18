@@ -98,6 +98,7 @@ shadow, AA, or fillText.
 
 ### 6. Known data bindings (use these EXACTLY)
 - Phone-connection bars (the blue bar group, upper right): bind phoneConnected.
+  (two-worlds V2 later re-tooled them as the GPS fix indicator: gpsFix.)
   Connected (true) -> every bar BLUE; disconnected (false) OR null -> every bar
   DK_GRAY. Bar lengths/positions are fixed design (a signal-bars motif); only the
   color is data-driven, and it's all-or-nothing across the whole group.
