@@ -12,11 +12,12 @@ using Toybox.Math as Math;
 // back as an easter egg instead (BreachComponent: the day's movement outgrew
 // the dish).
 //
-// Render order (back -> front): grove, field mask, border, uplink, battery,
-// readout, time, breach, north, debug.
+// Render order (back -> front): grove, field mask, border, phone ring, uplink,
+// battery, readout, time, breach, north, debug.
 //
 // The uplink bars report GPS fix recency, not the phone link (owner, 2026-10;
-// they replaced the satellite-dish icon -- sketches/uplink_gps_compare.py).
+// they replaced the satellite-dish icon -- sketches/uplink_gps_compare.py);
+// the phone link is a blue ring round the glass edge instead (PhoneRing).
 class TwoWorldsV2View extends Ui.WatchFace {
 
     var _state;
@@ -48,6 +49,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
         _compositor.add(Diag.wrapGrove(_grove), null);   // 1 moss organism (back)
         _compositor.add(new FieldMaskComponent(), null); // 2 confine art to field
         _compositor.add(new BorderComponent(), null);    // 3 white border
+        _compositor.add(new PhoneRingComponent(), null); // 3b phone-connected ring
         _compositor.add(new UplinkComponent(), null);    // 4 GPS fix bars
         _compositor.add(new BatteryComponent(), null);   // 5 battery chunks
         _compositor.add(new ReadoutComponent(_dowStrip, _dateStrip), null); // 6 day/date
@@ -280,6 +282,25 @@ class BorderComponent {
     }
 
     function rnd(v) { return (v + 0.5).toNumber(); }
+}
+
+// Phone connected (owner, 2026-10): a 2 px BLUE ring hugging the edge of the
+// glass; nothing when disconnected. The panel's centre pixel is x 107 and
+// between rows 89 and 90, so r 107 and 106 about both, plus the two flat
+// chord rows at the top and bottom. Fitted to the SDK sim's midpoint
+// drawCircle: no gaps against the ideal 2 px edge band, a few 3 px spots on
+// the diagonals. sketches/phone_ring_compare.py option A.
+class PhoneRingComponent {
+    function render(dc, state) {
+        if (state.phoneConnected != true) { return; }
+        dc.setColor(Gfx.COLOR_BLUE, Gfx.COLOR_TRANSPARENT);
+        dc.drawCircle(107, 89, 107);
+        dc.drawCircle(107, 89, 106);
+        dc.drawCircle(107, 90, 107);
+        dc.drawCircle(107, 90, 106);
+        dc.fillRectangle(46, 0, 123, 2);
+        dc.fillRectangle(46, 178, 123, 2);
+    }
 }
 
 // GPS fix recency on the uplink bars (owner, 2026-10): BLUE = a fix within
