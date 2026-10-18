@@ -6,16 +6,20 @@ whole watch face when it's connected"; nothing when disconnected).
 Options (columns = connected / disconnected, at 2x):
 
   A blue ring   a 2 px ring hugging the edge of the glass, BLUE (the old
-                connected-bars colour)
+                connected-bars colour) -- SHIPPED (owner, 2026-10)
   B white ring  the same ring in WHITE (the chrome's line colour)
   C thick field the white field border doubled to 2 px (its path offset
                 1 px toward the chrome, as border_outline_compare's Outline)
 
-The ring is drawCircle at r 106 and 105 about (107, 90) and (108, 90) -- the
-panel disc is r 107.5 about (107.5, 90), between pixel centres -- plus the
-top and bottom two rows of the glass (its flat chords). Six calls, nothing
-precomputed. drawCircle rasterization is the one thing only the SDK sim gets
-exactly; PIL's ellipse is close enough to judge the look.
+The ring is drawCircle at r 107 and 106 about (107, 89) and (107, 90) -- the
+panel's centre pixel is x 107 (215 wide) and between rows 89 and 90 (180
+tall) -- plus the top and bottom two rows of the glass (its flat chords).
+Six calls, nothing precomputed. Fitted against the SDK sim (2026-10): its
+drawCircle(cx, cy, r) is the midpoint circle (rows cx - r .. cx + r), and
+this set covers every glass pixel within 2 px of the edge with no gaps (68
+spots go 3 px thick on the diagonals). The first try, about (107|108, 90) at
+r 106/105, left a black pixel column at x 0 and drew 3-4 px.
+PIL's ellipse here is close enough to judge the look.
 
     python3 sketches/phone_ring_compare.py
 """
@@ -47,22 +51,22 @@ def chord_x(y):
 
 
 class Ring:
+    """PhoneRingComponent (shipped as option A). The chord rows span the
+    glass's widest top/bottom row, chord_x(1) = chord_x(178) = (46, 168);
+    the extra corner pixels on rows 0/179 are off the glass."""
+
     def __init__(self, color):
         self.color = color
-        self.top = [chord_x(0), chord_x(1)]
-        self.bot = [chord_x(178), chord_x(179)]
 
     def render(self, dc, state):
         if state.phoneConnected is not True:
             return
         dc.setColor(self.color, COLOR_TRANSPARENT)
-        for cx in (107, 108):
-            dc.drawCircle(cx, 90, 106)
-            dc.drawCircle(cx, 90, 105)
-        x0, x1 = self.top[0]
-        dc.fillRectangle(x0, 0, x1 - x0 + 1, 2)
-        x0, x1 = self.bot[0]
-        dc.fillRectangle(x0, 178, x1 - x0 + 1, 2)
+        for cy in (89, 90):
+            dc.drawCircle(107, cy, 107)
+            dc.drawCircle(107, cy, 106)
+        dc.fillRectangle(46, 0, 123, 2)
+        dc.fillRectangle(46, 178, 123, 2)
 
 
 class Thick:
@@ -81,6 +85,8 @@ def face(layer, connected, grove, snap, t):
     st.gpsFix = 1
     st.phoneConnected = connected
     for c in twchrome.v2_chrome():
+        if isinstance(c, twchrome.PhoneRing):
+            continue                      # the option under test stands in
         c.render(dc, st)
         if isinstance(c, twchrome.Border):
             layer.render(dc, st)          # over the border, under the readouts
