@@ -81,8 +81,12 @@ class TwoWorldsV2View extends Ui.WatchFace {
 // --- pure helpers (shared geometry with V1) ----------------------------------
 
 module Face {
+    const LOW_PCT = 10;
+
+    // Chunks lit: 1 above 10% (owner, 2026-10: the last chunk greys out at
+    // 10%), 2 above 33.33%, 3 above 66.66%.
     function batteryLevel(pct) {
-        if (pct == null) { return 0; }
+        if (pct == null || pct <= LOW_PCT) { return 0; }
         var lit = 0;
         for (var k = 1; k <= 3; k++) {
             if (pct > (k - 1) * 33.33) { lit = k; }

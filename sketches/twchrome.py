@@ -120,8 +120,8 @@ class ChromeState:
 
 
 def battery_level(pct):
-    """Face.batteryLevel."""
-    if pct is None:
+    """Face.batteryLevel: the last chunk greys out at 10% (2026-10)."""
+    if pct is None or pct <= 10:
         return 0
     lit = 0
     for k in range(1, 4):
