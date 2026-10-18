@@ -8,8 +8,8 @@ face, plus V2's GPS pip) onto the faithful device model, so chrome tweaks
 
     FieldMask  static black runs outside the field disc (same merged-rect build)
     Border     the white separation line (chord, slant, rim arcs, battery notch)
-    Uplink     phone bars                Battery  three 33% chunks
-    Readout    day-of-week + date strips Gps      fix-recency dish
+    Uplink     GPS fix bars              Battery  three 33% chunks
+    Readout    day-of-week + date strips Gps      retired fix-recency dish
     Clock      7-seg HH:MM strips
     North      the hollow red marker on the rim at the sun-compass angle
 
@@ -284,9 +284,20 @@ class Border:
 
 
 class Uplink:
+    """UplinkComponent. V2 (owner, 2026-10) colours the bars by GPS fix
+    recency -- BLUE fresh / YELLOW (amber) stale / DK_GRAY none; gps=False
+    is the phone-link colouring V1 (and pre-2026-10 V2) ships."""
+
+    def __init__(self, gps=True):
+        self.gps = gps
+
     def render(self, dc, state):
-        dc.setColor(COLOR_BLUE if state.phoneConnected is True else COLOR_DK_GRAY,
-                    COLOR_TRANSPARENT)
+        if self.gps:
+            g = state.gpsFix
+            c = COLOR_BLUE if g == 2 else COLOR_YELLOW if g == 1 else COLOR_DK_GRAY
+        else:
+            c = COLOR_BLUE if state.phoneConnected is True else COLOR_DK_GRAY
+        dc.setColor(c, COLOR_TRANSPARENT)
         for i in range(5):
             w = F(29.0) + (4.0 - 29.0) * i / 4.0
             dc.fillRectangle(128, 12 + i * 9, rnd(w), 4)
@@ -390,7 +401,8 @@ class Readout:
 
 
 class Gps:
-    """GpsComponent: the cross-section satellite dish (2026-10), coloured
+    """The retired GpsComponent (pre-2026-10 V2; v2_chrome(dish=True)):
+    the cross-section satellite dish, coloured
     by fix recency, waves none / 1 stale / 2 fresh. See
     sketches/gps_dish_compare.py big(67, 15) for the design rounds."""
     DISH = [(73, 9), (74, 11), (74, 13), (74, 16), (73, 18), (72, 20),
@@ -451,17 +463,18 @@ class Breach:
         self._banner.render(dc, state)
 
 
-def v2_chrome(north=None, north_last=True):
+def v2_chrome(north=None, north_last=True, dish=False):
     """The V2 overlay stack in render order (after the grove): field mask,
-    border, uplink, battery, readout, gps dish, time, breach, north.
-    north_last=False
-    is the pre-2026-10 order (north under the readout/pip/time)."""
+    border, uplink (GPS fix bars), battery, readout, time, breach, north.
+    north_last=False is the pre-2026-10 order (north under the readout/time);
+    dish=True is the pre-2026-10 chrome: phone-link bars plus the GPS dish
+    after the readout (the older comparison scripts index into it)."""
     colon = Image.open(os.path.join(DRAWABLES, "tw_colon.png")).convert("RGBA")
     north = north if north is not None else North()
-    over = [Readout(StripGlyphs("tw_dow.png", 18), StripGlyphs("tw_date.png", 6)),
-            Gps(),
-            Clock(StripGlyphs("tw_time.png", 18), colon)]
-    base = [FieldMask(), Border(), Uplink(), Battery()]
+    over = ([Readout(StripGlyphs("tw_dow.png", 18), StripGlyphs("tw_date.png", 6))]
+            + ([Gps()] if dish else [])
+            + [Clock(StripGlyphs("tw_time.png", 18), colon)])
+    base = [FieldMask(), Border(), Uplink(gps=not dish), Battery()]
     return (base + over + [Breach(), north] if north_last
             else base + [north] + over + [Breach()])
 

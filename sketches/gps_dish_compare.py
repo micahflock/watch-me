@@ -289,7 +289,7 @@ def face(design, g, grove, snap, t):
     grove.render(dc, snap)
     st = chrome_state(DATE, OFF, DOW, t, snap=snap)
     st.gpsFix = g
-    for c in twchrome.v2_chrome():
+    for c in twchrome.v2_chrome(dish=True):
         if isinstance(c, twchrome.Gps):
             c = IconChrome(design)
         c.render(dc, st)

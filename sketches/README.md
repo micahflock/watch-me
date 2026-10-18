@@ -34,8 +34,8 @@ captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
   are exploration and measurement harnesses for those engines — each has a
   docstring saying what it renders.
 - **Chrome: `twchrome.py` / `solar.py` / `north_compare.py`** — the two-worlds
-  V2 overlay (field mask, border, uplink, battery, sun/north marker, readout,
-  GPS pip, 7-seg clock blitted from the real glyph strips) transcribed onto the
+  V2 overlay (field mask, border, GPS-fix uplink bars, battery, sun/north
+  marker, readout, 7-seg clock blitted from the real glyph strips) transcribed onto the
   device model, plus a float32 port of `Solar.mc`/`SunCompass.mc`
   (`python3 sketches/solar.py` self-checks it against the Monkey C fixtures).
   `north_compare.py` sweeps the north-marker track over every bearing and over
