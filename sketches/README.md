@@ -41,6 +41,9 @@ captioned strip in `sketches/out/<algo>-scrub.png`. The pieces:
   `north_compare.py` sweeps the north-marker track over every bearing and over
   real days (Portland, Sydney) and renders the candidate tracks — the chrome
   counterpart of `scrub.py`.
+- **`readme_figs.py`** — renders the project README's pictures of the shipped
+  face (hero, annotated anatomy, day timeline, day types, nights, breach,
+  V1 vs V2) into `docs/img/` from the same moss_grove + chrome mirrors.
 
 Because the primitives match 1:1, a winning sandbox algo ports to a `.mc` face
 mechanically. Arc/circle rasterization is the one thing only the SDK sim nails,
