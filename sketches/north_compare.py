@@ -108,7 +108,7 @@ class Obstacles:
     it -- and under it after)."""
 
     def __init__(self):
-        c = twchrome.v2_chrome(north_last=False)
+        c = twchrome.v2_chrome(north_last=False, dish=True)
         self.battery = ink(c[3], ChromeState(batteryPct=100))
         self.uplink = ink(c[2], ChromeState(phoneConnected=True))
         self.readout = set()
@@ -341,7 +341,7 @@ def track_maps(obs):
         north = North(track)
         dc = chrome_with_markers(north, [float(b) for b in range(0, 360, 10)], st, last)
         if not last:   # under the clock: redraw the chrome over the markers
-            for c in twchrome.v2_chrome(north, north_last=False)[5:]:
+            for c in twchrome.v2_chrome(north, north_last=False, dish=True)[5:]:
                 c.render(dc, st)
         for k in range(0, 3600, 2):
             cx, cy, _, _ = north.centre(k / 10.0)
