@@ -54,6 +54,8 @@ def face(variant, g, grove, snap, t):
     st.gpsFix = g
     st.phoneConnected = True
     for c in twchrome.v2_chrome(dish=(variant == "old")):
+        if isinstance(c, twchrome.PhoneRing):
+            continue                      # came later (phone_ring_compare)
         if variant == "orange" and isinstance(c, twchrome.Uplink):
             c = OrangeUplink()
         c.render(dc, st)
