@@ -118,8 +118,44 @@ _SEG_RESTLESS = [
     (22.0,  1,   58),
 ]
 
+
+def _hm(h, m):
+    """Segment start for h:mm (a hair early so t / 60.0 lands inside it)."""
+    return h + m / 60.0 - 1e-6
+
+
+# HIIT morning run (README figures, 2026-10): replaces the active profile's
+# steady 7:00-8:00 run with a 48 min interval pyramid, so its effort bead
+# shows growth rings. 48 min = six 8-min peak-zone slots (daysoma NSLOT at
+# L=3), each block one 4-min rep + 4-min recovery that stays >= 105 bpm so
+# the episode never closes: warm-up orange, then red / pink / PURPLE / pink /
+# red reps, cool-down below 105 at 7:48.
+_HIIT_RUN = [
+    (7.0,         120, 125),   # warm-up                 (orange)
+    (_hm(7, 8),   165, 145),   # rep 1                   (red)
+    (_hm(7, 12),  100, 112),   #   recover (amber, keeps the episode open)
+    (_hm(7, 16),  170, 165),   # rep 2                   (pink)
+    (_hm(7, 20),  100, 112),
+    (_hm(7, 24),  175, 182),   # rep 3, all out          (purple)
+    (_hm(7, 28),  100, 112),
+    (_hm(7, 32),  170, 165),   # rep 4                   (pink)
+    (_hm(7, 36),  100, 112),
+    (_hm(7, 40),  165, 145),   # rep 5                   (red)
+    (_hm(7, 44),  100, 112),
+    (_hm(7, 48),  40,  95),    # cool-down walk: the episode closes
+]
+
+
+def _with_hiit(segs):
+    """`segs` with its 7:00-8:00 morning run swapped for _HIIT_RUN."""
+    return ([s for s in segs if s[0] < 7.0] + _HIIT_RUN
+            + [s for s in segs if s[0] >= 8.0])
+
+
 _PROFILES = {"active": _SEG_ACTIVE, "rest": _SEG_REST, "heavy": _SEG_HEAVY,
-             "restless": _SEG_RESTLESS}
+             "restless": _SEG_RESTLESS,
+             "hiit": _with_hiit(_SEG_ACTIVE),
+             "hiit_restless": _with_hiit(_SEG_RESTLESS)}
 
 
 def _segment(h, segs):

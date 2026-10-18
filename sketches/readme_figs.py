@@ -4,8 +4,8 @@
 Renders the real sandbox mirror (moss_grove + the twchrome overlay) across
 synthetic days into docs/img/:
 
-    hero.png         one face, 4x, glass-shaped (transparent outside the disc)
-    anatomy.png      the same face with callouts naming each element
+    anatomy.png      one face, 4x, with callouts naming each element (the
+                     only render with the phone-connected ring on)
     day-timeline.png an active day, morning to night
     day-types.png    rest / active / heavy days at the same evening minute
     nights.png       a rested night vs a broken one, read the next morning
@@ -42,8 +42,9 @@ def font(size):
     return ImageFont.load_default(size=size)
 
 
-def run_day(profile, times):
-    """Replay a day minute by minute; return {time: (grove snapshot render)}."""
+def run_day(profile, times, ring=()):
+    """Replay a day minute by minute; return {time: face render}. Times in
+    `ring` are also rendered phone-connected, under the key time + "+ring"."""
     snaps = synthetic_day(profile=profile)
     grove = load_algo("moss_grove").build()["components"][0]
     want = {mins(t): t for t in times}
@@ -52,15 +53,17 @@ def run_day(profile, times):
         grove.advance(snaps[m])
         if m in want:
             out[want[m]] = face(grove, snaps[m], m)
+            if want[m] in ring:
+                out[want[m] + "+ring"] = face(grove, snaps[m], m, phone=True)
     return out
 
 
-def face(grove, snap, t, breach=None):
+def face(grove, snap, t, breach=None, phone=False):
     dc = ChromeDc()
     grove.render(dc, snap)
     st = chrome_state(DATE, OFF, DOW, t, snap=snap)
     st.gpsFix = 2
-    st.phoneConnected = True
+    st.phoneConnected = phone
     st.breach = (grove.rec.act_units >= BREACH_ACT) if breach is None else breach
     for c in twchrome.v2_chrome():
         c.render(dc, st)
@@ -170,13 +173,14 @@ def anatomy(img, path, k=4):
 def main():
     os.makedirs(OUT, exist_ok=True)
 
-    # Hero + anatomy: an active day, early evening.
-    act = run_day("active", ["6:30", "8:00", "12:30", "17:00", "18:20", "21:45"])
-    up(act["18:20"], 4).save(os.path.join(OUT, "hero.png"))
-    anatomy(act["18:20"], os.path.join(OUT, "anatomy.png"))
+    # An active day with a HIIT morning run (day.py "hiit"). The hero image
+    # is a simulator capture of the real face, not rendered here.
+    act = run_day("hiit", ["6:30", "8:00", "12:30", "17:00", "18:20", "21:45"],
+                  ring=("18:20",))
+    anatomy(act["18:20+ring"], os.path.join(OUT, "anatomy.png"))
 
     strip([(act["6:30"], "06:30", "waking: just the sleep roots"),
-           (act["8:00"], "08:00", "after a morning run"),
+           (act["8:00"], "08:00", "after a HIIT run"),
            (act["12:30"], "12:30", "mid lunch walk"),
            (act["17:00"], "17:00", "stress spike + a dash for the bus"),
            (act["21:45"], "21:45", "after the gym: the day, complete")],
@@ -198,14 +202,14 @@ def main():
           os.path.join(OUT, "day-types.png"),
           title="Same minute (21:45), three different days")
 
-    rested = run_day("active", ["9:00"])["9:00"]
-    broken = run_day("restless", ["9:00"])["9:00"]
+    rested = run_day("hiit", ["9:00"])["9:00"]
+    broken = run_day("hiit_restless", ["9:00"])["9:00"]
     strip([(rested, "slept through", "long, straight silver roots"),
            (broken, "three wake-ups", "snapped roots + white specks")],
           os.path.join(OUT, "nights.png"), k=3,
           title="The night, read at 09:00 the next morning")
 
-    snaps = synthetic_day(profile="active")
+    snaps = synthetic_day(profile="hiit")
     dish = load_algo("biobloom").build()["components"][0]
     for m in range(mins("21:45") + 1):
         dish.advance(snaps[m])
