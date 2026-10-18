@@ -7,11 +7,12 @@ single white line. The moss starts each morning as a bare root star and ends
 the day as a record of how I lived it.
 
 <p align="center">
-  <img src="docs/img/hero.png" width="430" alt="The Two Worlds watch face: a 7-segment clock reading 6:20 above a green moss organism with red and magenta effort beads, a silver root star at its heart, and a blue ring around the glass">
+  <img src="docs/img/hero-sim.png" width="480" alt="The Two Worlds face on a Forerunner 735XT in the Garmin simulator: a 7-segment clock reading 11:46 above a green moss organism with a ringed orange-red-pink-purple effort bead, a red bead, and a silver root star at its heart">
+  <br><sub>The real face running in Garmin's simulator, loaded with the sample HIIT day used throughout this page</sub>
 </p>
 
 <p align="center">
-  <img src="docs/img/day-timeline.png" alt="Five frames of one active day: at 06:30 only the sleep roots, at 08:00 a small moss after a morning run, growing through 12:30 and 17:00 to a large fringed cushion at 21:45">
+  <img src="docs/img/day-timeline.png" alt="Five frames of one active day: at 06:30 only the sleep roots, at 08:00 a small moss and a ringed bead after a HIIT run, growing through 12:30 and 17:00 to a large fringed cushion at 21:45">
 </p>
 
 | | |
@@ -88,6 +89,10 @@ arrives.
 | Each elevated-HR episode | An **effort bead**. Size grows with the episode's magnitude; concentric **growth rings** record its peak zone over time, centre outward |
 | Last night's sleep | The silver **root star** at the heart. Hours slept set root count and length; each wake-up **snaps a root** at a white speck |
 | The date | A per-day seed for the cushion's lobe count, tilt and outline |
+
+The big ringed bead in these pictures is a 48-minute HIIT run. Read from
+the centre out, its rings follow the session: orange warm-up, then red,
+pink, **purple** (the all-out rep), pink and red intervals.
 
 The colour ramp follows Garmin's own heart-rate zones (blue → green → amber
 → orange → red → magenta → purple), and the palette is split on purpose:
@@ -301,7 +306,7 @@ colour and sleep treatments:
 The same day, before and after:
 
 <p align="center">
-  <img src="docs/img/v1-vs-v2.png" width="720" alt="The same active day at 21:45: V1 shows a thin multicoloured filament network; V2 shows a solid green moss with beads, a root star and a phone ring">
+  <img src="docs/img/v1-vs-v2.png" width="720" alt="The same active day at 21:45: V1 shows a thin multicoloured filament network; V2 shows a solid green moss with beads and a root star">
 </p>
 
 ### 7. Tuning the organism
@@ -481,4 +486,5 @@ bin/                   ready-to-sideload PRGs
 **Try it:** copy `bin/two-worlds-v2.prg` to the watch's `GARMIN/APPS`
 folder over USB ([sideload guide](docs/sideload.md)).
 **Build it:** see the [development guide](docs/development.md).
-**Regenerate the README images:** `python3 sketches/readme_figs.py`.
+**Regenerate the README images:** `python3 sketches/readme_figs.py`; the
+simulator hero comes from `sketches/sim_hero.py` (see its docstring).
