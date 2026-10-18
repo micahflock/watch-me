@@ -8,7 +8,8 @@ face, plus V2's GPS pip) onto the faithful device model, so chrome tweaks
 
     FieldMask  static black runs outside the field disc (same merged-rect build)
     Border     the white separation line (chord, slant, rim arcs, battery notch)
-    Uplink     GPS fix bars              Battery  three 33% chunks
+    PhoneRing  blue glass-edge ring      Uplink   GPS fix bars
+    Battery    three 33% chunks
     Readout    day-of-week + date strips Gps      retired fix-recency dish
     Clock      7-seg HH:MM strips
     North      the hollow red marker on the rim at the sun-compass angle
@@ -303,6 +304,21 @@ class Uplink:
             dc.fillRectangle(128, 12 + i * 9, rnd(w), 4)
 
 
+class PhoneRing:
+    """PhoneRingComponent (2026-10): a 2 px BLUE ring round the glass edge
+    while the phone is connected (sketches/phone_ring_compare.py A)."""
+
+    def render(self, dc, state):
+        if state.phoneConnected is not True:
+            return
+        dc.setColor(COLOR_BLUE, COLOR_TRANSPARENT)
+        for cy in (89, 90):
+            dc.drawCircle(107, cy, 107)
+            dc.drawCircle(107, cy, 106)
+        dc.fillRectangle(46, 0, 123, 2)
+        dc.fillRectangle(46, 178, 123, 2)
+
+
 class Battery:
     def render(self, dc, state):
         level = battery_level(state.batteryPct)
@@ -465,16 +481,19 @@ class Breach:
 
 def v2_chrome(north=None, north_last=True, dish=False):
     """The V2 overlay stack in render order (after the grove): field mask,
-    border, uplink (GPS fix bars), battery, readout, time, breach, north.
+    border, phone ring, uplink (GPS fix bars), battery, readout, time, breach,
+    north.
     north_last=False is the pre-2026-10 order (north under the readout/time);
     dish=True is the pre-2026-10 chrome: phone-link bars plus the GPS dish
-    after the readout (the older comparison scripts index into it)."""
+    after the readout, no phone ring (the older comparison scripts index
+    into it)."""
     colon = Image.open(os.path.join(DRAWABLES, "tw_colon.png")).convert("RGBA")
     north = north if north is not None else North()
     over = ([Readout(StripGlyphs("tw_dow.png", 18), StripGlyphs("tw_date.png", 6))]
             + ([Gps()] if dish else [])
             + [Clock(StripGlyphs("tw_time.png", 18), colon)])
-    base = [FieldMask(), Border(), Uplink(gps=not dish), Battery()]
+    base = ([FieldMask(), Border()] + ([] if dish else [PhoneRing()])
+            + [Uplink(gps=not dish), Battery()])
     return (base + over + [Breach(), north] if north_last
             else base + [north] + over + [Breach()])
 
