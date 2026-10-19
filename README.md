@@ -1,10 +1,9 @@
 # Two Worlds
 
 **A living watch face for the Garmin Forerunner 735XT.** A small moss-like
-organism grows across the screen over the day, fed by my steps, heart rate
-and sleep. A hard-edged digital clock sits on top of it, split off by a
-single white line. The moss starts each morning as a bare root star and ends
-the day as a record of how I lived it.
+organism grows procedurally across the screen over the day, fed by my steps, heart rate
+and sleep. A digital clock face sits on top of it. The moss starts each morning as a bare 
+root star and ends the day as a glance-able record of my activity (or lack thereof...).
 
 <p align="center">
   <img src="docs/img/hero-sim.png" width="480" alt="The Two Worlds face on a Forerunner 735XT in the Garmin simulator: a 7-segment clock reading 11:46 above a green moss organism with a ringed orange-red-pink-purple effort bead, a red bead, and a silver root star at its heart">
