@@ -78,7 +78,7 @@ after shifting (`(word >> b) & 1`), and `1 << 31` is a negative `Number`
   watchface, and the call does not switch GPS on. **Without the permission the
   fr735xt returns no position from either API** (wrist, 2026-10: the pip
   stayed grey after a GPS run; the diag build, with the permission, read
-  45.59,-122.47 quality 1 = LAST_KNOWN from both). The sim returns null with
+  a valid lat/lng with quality 1 = LAST_KNOWN from both). The sim returns null with
   quality 0 unless a position is set. A fix has no trusted age, so
   `DataSource` remembers the last fix it saw (object store key `gpsFix`:
   `[latE6, lonE6, stampSec]`) and stamps when it CHANGES; that stamp drives

@@ -266,9 +266,9 @@ def _selfcheck():
     # float32 vs float64: the single-precision error is far below a pixel.
     worst = 0.0
     for t in range(0, 1440, 7):
-        a32 = compute(2026, 10, 6, t // 60, t % 60, -25200, 45.5126, -122.6387)
+        a32 = compute(2026, 10, 6, t // 60, t % 60, -25200, 45.52, -122.68)
         set_float64(True)
-        a64 = compute(2026, 10, 6, t // 60, t % 60, -25200, 45.5126, -122.6387)
+        a64 = compute(2026, 10, 6, t // 60, t % 60, -25200, 45.52, -122.68)
         set_float64(False)
         dd = abs((float(a32[0]) - float(a64[0]) + 180.0) % 360.0 - 180.0)
         worst = max(worst, dd)
