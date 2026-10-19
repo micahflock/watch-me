@@ -51,7 +51,7 @@ BEFORE = ("before: r=101.7 rim, under the clock", track_circle, False)
 AFTER = ("after: rim cut at the screen edges, drawn last", track_edge, True)
 VARIANTS = [BEFORE, AFTER]
 
-PORTLAND = (45.52, -122.68)
+PORTLAND = (45.52, -122.68)      # downtown, city precision
 SYDNEY = (-33.8688, 151.2093)
 DATES = [  # (y, m, d), utc offset, dayOfWeek (1=Sun)
     ((2026, 6, 14), -25200, 1),
