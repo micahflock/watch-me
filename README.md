@@ -39,7 +39,7 @@ the day as a record of how I lived it.
   7. [Tuning the organism](#7-tuning-the-organism)
   8. [Polishing the chrome](#8-polishing-the-chrome)
 - [Engineering inside 64 KB](#engineering-inside-64-kb)
-- [How it was built](#how-it-was-built)
+- [Working with Claude](#working-with-claude)
 - [Repository map](#repository-map)
 
 ---
@@ -179,14 +179,17 @@ the whole pipeline on the simulator:
 
 ### 3. Designing the chrome
 
-For the clock and gauges I used **Claude Design** as a pixel-accurate studio.
-The prompt in [`docs/claude-design-prompt.md`](docs/claude-design-prompt.md)
-encodes every device rule (exact 215×180 semi-round mask, the 14-colour
-palette with a pass/fail checker, no anti-aliasing, mock data panels with
-stress presets like 23:59 and "everything null"). The design that came out
-of it is the two-worlds layout: big 7-segment time, day and date, signal
-bars, battery chunks, and a white border with a slanted notch that frames
-the organic field.
+I designed the clock and gauges by hand, starting from the pixel-art first
+pass shown in [Working with Claude](#working-with-claude): big 7-segment
+time, day and date, signal bars, battery chunks, and a white border with a
+slanted notch that frames the organic field. To check that design against
+the real screen, I rebuilt it in **Claude Design**, set up as a
+pixel-accurate studio. The prompt in
+[`docs/claude-design-prompt.md`](docs/claude-design-prompt.md) encodes every
+device rule (exact 215×180 semi-round mask, the 14-colour palette with a
+pass/fail checker, no anti-aliasing, mock data panels with stress presets
+like 23:59 and "everything null"), so my layout could be checked against
+the real constraints before any Monkey C was written.
 
 A second prompt, [`docs/claude-design-handoff.md`](docs/claude-design-handoff.md),
 exports a finished design as a build spec: real glyph-strip PNGs, element
@@ -439,13 +442,51 @@ Measurements and how to repeat them:
 
 ---
 
-## How it was built
+## Working with Claude
 
-I directed this project and built it with **Claude Code** as the
-implementation partner, mostly in cloud sessions where the agent provisions
-the Garmin toolchain itself. My role was product owner and designer: I set
-the brief, wore every build, and approved or redirected every visual change
-(commit messages record those calls as "owner: ...").
+I started this project on a whim. I got a great deal on a running watch at a
+garage sale, but I was not impressed with the user experience. I wanted a
+glanceable record of my day, and the best the watch could do was display hard
+numbers from sensors that I knew were not particularly precise. 6,078 steps in
+a day? It bothered me knowing that number was really ±5%. I wanted something
+that better represented the effort I made during a day, and was more honest
+about the precision of the data involved.
+
+My goal for the visual design was to separate the "hard/artificial" numbers
+(clock, calendar, device state) from the "soft/bio" sensors (activity: steps,
+heart rate, etc.). This reflects the real difference in precision between the
+two "worlds", and it gave me a framework to base the design on. I knew I would
+want to iterate on different algorithms and visualizations for the biometric
+part of the display, so I made sure the architecture let that part be swapped
+easily while keeping the "artificial" chrome I designed by hand.
+
+My first step was a conversation with Opus 4.8. I wanted to:
+
+- understand the feasibility of the project,
+- sketch out the software stack at a high level so I could sanity-check it, and
+- find out which sensors are exposed to a watch face.
+
+The output of that conversation was a
+[prompt to kick off the software side of the project](docs/kickoff-prompt.md)
+in Claude Code.
+
+Separately, I used a pixel-art program to make a first pass of the watch face
+and the fonts I knew I'd need:
+
+<p align="center">
+  <img src="docs/img/first-face.png" width="360" alt="First pixel-art pass of the face: a white 7-segment clock reading 12:34 and 'WE 10' at top left, five blue signal bars, a red battery-style marker on the bezel, a flat green field framed by a white line with a slanted notch, and three orange chunks along the bottom">
+  <br><sub>The first face, drawn by hand in a pixel-art program</sub>
+</p>
+
+Once the project was kicked off and generating working test faces, I added my
+hand-built references and began iterating on the algorithmic display.
+
+Opus 4.8 (then 5.0, and now 5.5) handled the software implementation of my
+ideas, chased down bugs, and found optimizations, but contributed no creative
+direction to this project. Most of the work ran in Claude Code cloud sessions
+where the agent provisions the Garmin toolchain itself. I wore every build and
+approved or redirected every visual change (commit messages record those calls
+as "owner: ...").
 
 The process that made this work:
 
@@ -478,8 +519,8 @@ core/src/              shared library: data, compositor, glyphs, astronomy,
                        generative engines (GenArt, MossGrove, BioBloom, ...)
 sketches/              the Python sandbox, every exploration script, and out/
                        with all the comparison sheets in this README
-docs/                  device notes, memory and watchdog playbooks, Claude Design
-                       prompts, development guide
+docs/                  device notes, memory and watchdog playbooks, the kickoff
+                       and Claude Design prompts, development guide
 bin/                   ready-to-sideload PRGs
 ```
 
