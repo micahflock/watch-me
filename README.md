@@ -179,14 +179,17 @@ the whole pipeline on the simulator:
 
 ### 3. Designing the chrome
 
-For the clock and gauges I used **Claude Design** as a pixel-accurate studio.
-The prompt in [`docs/claude-design-prompt.md`](docs/claude-design-prompt.md)
-encodes every device rule (exact 215×180 semi-round mask, the 14-colour
-palette with a pass/fail checker, no anti-aliasing, mock data panels with
-stress presets like 23:59 and "everything null"). The design that came out
-of it is the two-worlds layout: big 7-segment time, day and date, signal
-bars, battery chunks, and a white border with a slanted notch that frames
-the organic field.
+I designed the clock and gauges by hand, starting from the pixel-art first
+pass shown in [Working with Claude](#working-with-claude): big 7-segment
+time, day and date, signal bars, battery chunks, and a white border with a
+slanted notch that frames the organic field. To check that design against
+the real screen, I rebuilt it in **Claude Design**, set up as a
+pixel-accurate studio. The prompt in
+[`docs/claude-design-prompt.md`](docs/claude-design-prompt.md) encodes every
+device rule (exact 215×180 semi-round mask, the 14-colour palette with a
+pass/fail checker, no anti-aliasing, mock data panels with stress presets
+like 23:59 and "everything null"), so my layout could be checked against
+the real constraints before any Monkey C was written.
 
 A second prompt, [`docs/claude-design-handoff.md`](docs/claude-design-handoff.md),
 exports a finished design as a build spec: real glyph-strip PNGs, element
