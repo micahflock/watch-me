@@ -16,7 +16,7 @@ face, plus V2's GPS pip) onto the faithful device model, so chrome tweaks
 
 Float math runs in float32 like the watch (solar.F; NEP 50 keeps a Python
 float literal "weak", i.e. a Monkey C Float literal). The glyph strips are the
-real resources (faces/two-worlds/resources/drawables), blitted through a clip
+real resources (faces/two-worlds-v2/resources/drawables), blitted through a clip
 exactly like core StripGlyphs.
 
 North takes a `track(rx, ry) -> r` callable: the rim radius along the unit ray
@@ -39,7 +39,8 @@ from device import (COLOR_BLACK, COLOR_WHITE, COLOR_RED, COLOR_ORANGE,
 
 F = solar.F
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DRAWABLES = os.path.join(REPO, "faces", "two-worlds", "resources", "drawables")
+DRAWABLES = os.path.join(REPO, "faces", "two-worlds-v2", "resources",
+                         "drawables")
 
 
 # ------------------------------------------------------ the extra primitives --
