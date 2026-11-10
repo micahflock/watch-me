@@ -117,6 +117,7 @@ highlights in order.
 | A GPS-freshness icon | `gps_dish_compare.py` | `gps-dish-*`, `gps-pip-states` | Satellite dish shipped briefly, then retired (next row) |
 | Uplink bars as the GPS indicator | `uplink_gps_compare.py` | `uplink-gps-compare` | Bars show GPS fix in blue / amber / grey; dish removed (2026-10) |
 | Phone-connected indicator | `phone_ring_compare.py` | `phone-ring-compare` | A, the 2 px blue ring at the glass edge (2026-10) |
+| A cooler diag readout (diag build only) | `diag_compare.py` | `diag-compare`, `diag-ondevice` | D: B's colour-coded rows hugging the border, with A's point sparkline moved to the top of the field (2026-11) |
 | A grey outline outside the white border | `border_outline_compare.py` | `border-outline-compare`, `-zoom` | Not shipped; anti-aliasing instead |
 | Anti-aliasing the white border | `sketches/border_aa_compare.py` (live: it generates the face's tables) | `border-aa-compare`, `-zoom` | "dk+lt ramp" (2026-10) |
 | Halftone texture in the chrome | `halftone_compare.py` | `halftone-compare`, `-zoom` | Not shipped |

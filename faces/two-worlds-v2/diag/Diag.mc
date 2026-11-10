@@ -13,17 +13,20 @@ using Toybox.Math as Math;
 //
 // The readout shows ONE minute in ten (:00, :10, :20 ...; owner, 2026-10);
 // the other nine are the normal face. On a readout minute the moss is
-// skipped (keeps the watchdog budget for the readout) and the field shows
-//   A:  Activity.Info.currentLocation  (lat,lon + accuracy, or null/-)
-//   P:  Position.getInfo().position    (+ the age of its `when` stamp;
-//       ERR if the device refuses the Positioning permission)
+// skipped (keeps the watchdog budget for the readout) and the field shows,
+// top to bottom (amber labels, white values, state words in colour):
+//   a 3-hour HR history sparkline across the widest part of the field (one
+//   point per minute, zone colours, gray line = 105 bpm), blue bar under
+//   the last replayed gap
+//   gap: the day's LONGEST minute gap the grove replayed (a workout):
+//        length, when, history Y/N, HR on return
+//   e:   the biggest episode: index/count, duration, bead radius, slot
+//        level, peak slots (each digit in its zone's colour)
 //   fix: DataSource's remembered fix -> pip state, stamp age, lat/lng
 //        settings set Y/N, n = valid HR-history samples in the last 3 h
-//   gap: the day's LONGEST minute gap the grove replayed (a workout):
-//        length, history Y/N, when, HR on return
-//   e:  the biggest episode: duration, bead radius, slot level, peak slots
-//   a 3-hour HR history sparkline (one column per minute, zone colours,
-//   gray line = 105 bpm), blue tick under the last replayed gap.
+//   P:   Position.getInfo().position    (+ the age of its `when` stamp;
+//        ERR if the device refuses the Positioning permission)
+//   A:   Activity.Info.currentLocation  (lat,lon + accuracy, or null/-)
 module Diag {
     const KEY = "diagGap";
     var _g = null;
@@ -67,63 +70,101 @@ class DiagGrove {
 class DiagComponent {
     const W = 180;             // sparkline columns = minutes of history
     const H = 22;              // sparkline height (px) for HR 40..200
+    const X0 = 18;
+    const YB = 89;             // sparkline base (HR 40); HR 200 at YB - H
+    const ROW0 = 91;           // first text row (drawText y)
+    const PITCH = 13;
+    // Left edge of each text row: the border's curve at that row + 4 px.
+    // The rows sit lower and lower on the disc, so they are ordered
+    // longest-first (gap, e, fix, P, A) and each starts a little further in.
+    const ROWX = [18, 20, 26, 33, 44];
     var _col;
+    var _row;
+    var _x;
+    var _y;
 
     function initialize() { _col = new [W]; }
 
+    // Layout and colours: sketches "D" in archive/sketches/diag_compare.py
+    // (owner, 2026-11). Nothing is blacked out -- the moss is skipped on a
+    // readout minute, so the field is already empty and the border stays
+    // whole; only a breach banner needs clearing from under the readout.
     function render(dc, state) {
         if (!Diag.page(state)) { return; }
         var g = Diag._g;
-        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
-        dc.fillRectangle(14, 63, 188, 102);
-        dc.setColor(Gfx.COLOR_WHITE, Gfx.COLOR_TRANSPARENT);
-        var f = Gfx.FONT_XTINY;
-        var lh = dc.getFontHeight(f) - 2;
+        if (g.actUnits() >= 4200) {
+            dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
+            dc.fillRectangle(14, 79, 188, 22);
+        }
         var n = history(state);
-        var y = 63;
-        dc.drawText(18, y, f, "A:" + locA(), Gfx.TEXT_JUSTIFY_LEFT);
-        y += lh;
-        dc.drawText(18, y, f, "P:" + locP(), Gfx.TEXT_JUSTIFY_LEFT);
-        y += lh;
-        dc.drawText(18, y, f, fixLine(state) + " n" + n, Gfx.TEXT_JUSTIFY_LEFT);
-        y += lh;
-        dc.drawText(18, y, f, gapLine(g), Gfx.TEXT_JUSTIFY_LEFT);
-        y += lh;
-        dc.drawText(18, y, f, epLine(g), Gfx.TEXT_JUSTIFY_LEFT);
         sparkline(dc, g, state);
+        _row = 0;
+        gapRow(dc, g);
+        epRow(dc, g);
+        fixRow(dc, state, n);
+        locP(dc);
+        locA(dc);
+    }
+
+    // Start the next row with its amber label.
+    function begin(dc, label) {
+        _x = ROWX[_row];
+        _y = ROW0 + _row * PITCH;
+        _row++;
+        put(dc, 0, label, Gfx.COLOR_YELLOW);
+        _x += 3;
+    }
+
+    // Draw `text` in `color`, `gap` px after the previous token.
+    function put(dc, gap, text, color) {
+        _x += gap;
+        dc.setColor(color, Gfx.COLOR_TRANSPARENT);
+        dc.drawText(_x, _y, Gfx.FONT_XTINY, text, Gfx.TEXT_JUSTIFY_LEFT);
+        _x += dc.getTextWidthInPixels(text, Gfx.FONT_XTINY);
     }
 
     function fmt(v) { return v.format("%.2f"); }
 
-    function locA() {
+    function locA(dc) {
+        begin(dc, "A");
         try {
             var info = Activity.getActivityInfo();
-            if (info == null) { return "-"; }
-            if (!(info has :currentLocation)) { return "n/a"; }
+            if (info == null) { put(dc, 0, "-", Gfx.COLOR_LT_GRAY); return; }
+            if (!(info has :currentLocation)) {
+                put(dc, 0, "n/a", Gfx.COLOR_LT_GRAY);
+                return;
+            }
             var loc = info.currentLocation;
-            if (loc == null) { return "null"; }
+            if (loc == null) { put(dc, 0, "null", Gfx.COLOR_LT_GRAY); return; }
             var d = loc.toDegrees();
             var q = (info has :currentLocationAccuracy)
                     ? info.currentLocationAccuracy : "?";
-            return fmt(d[0]) + "," + fmt(d[1]) + " q" + q;
+            put(dc, 0, fmt(d[0]) + "," + fmt(d[1]), Gfx.COLOR_WHITE);
+            put(dc, 4, "q" + q, Gfx.COLOR_LT_GRAY);
         } catch (e) {
-            return "ERR";
+            put(dc, 0, "ERR", Gfx.COLOR_RED);
         }
     }
 
-    function locP() {
+    function locP(dc) {
+        begin(dc, "P");
         try {
             var pi = Position.getInfo();
-            if (pi == null) { return "-"; }
-            if (pi.position == null) { return "null q" + pi.accuracy; }
-            var d = pi.position.toDegrees();
-            var w = "";
-            if (pi.when != null) {             // the fix's own timestamp, if any
-                w = " " + age((Time.now().value() - pi.when.value()) / 60);
+            if (pi == null) { put(dc, 0, "-", Gfx.COLOR_LT_GRAY); return; }
+            if (pi.position == null) {
+                put(dc, 0, "null", Gfx.COLOR_LT_GRAY);
+                put(dc, 4, "q" + pi.accuracy, Gfx.COLOR_LT_GRAY);
+                return;
             }
-            return fmt(d[0]) + "," + fmt(d[1]) + " q" + pi.accuracy + w;
+            var d = pi.position.toDegrees();
+            put(dc, 0, fmt(d[0]) + "," + fmt(d[1]), Gfx.COLOR_WHITE);
+            put(dc, 4, "q" + pi.accuracy, Gfx.COLOR_LT_GRAY);
+            if (pi.when != null) {             // the fix's own timestamp, if any
+                put(dc, 4, age((Time.now().value() - pi.when.value()) / 60),
+                    Gfx.COLOR_LT_GRAY);
+            }
         } catch (e) {
-            return "ERR";
+            put(dc, 0, "ERR", Gfx.COLOR_RED);
         }
     }
 
@@ -134,26 +175,46 @@ class DiagComponent {
         return (m / 1440) + "d";
     }
 
-    function fixLine(state) {
-        var s = ["none", "stale", "fresh"];
-        var st = (state.gpsFix != null) ? s[state.gpsFix] : "?";
-        var age = "st0";
+    // fix: the pip state in the uplink bars' colours (fresh blue, stale
+    // amber; none grey), stamp age, lat/lng settings set Y/N, n = valid
+    // HR-history samples in the last 3 h (red if the history read threw).
+    function fixRow(dc, state, n) {
+        begin(dc, "fix");
+        var gf = state.gpsFix;
+        if (gf == 2) { put(dc, 0, "fresh", Gfx.COLOR_BLUE); }
+        else if (gf == 1) { put(dc, 0, "stale", Gfx.COLOR_YELLOW); }
+        else { put(dc, 0, (gf == 0) ? "none" : "?", Gfx.COLOR_LT_GRAY); }
+        var a = "st0";
         if (DataSource._gStamp > 0) {
-            age = ((Time.now().value() - DataSource._gStamp) / 3600) + "h";
+            a = ((Time.now().value() - DataSource._gStamp) / 3600) + "h";
         }
-        return "fix:" + st + " " + age + " set:"
-            + ((DataSource._lat != null) ? "Y" : "N");
+        put(dc, 4, a, Gfx.COLOR_WHITE);
+        put(dc, 4, "set", Gfx.COLOR_YELLOW);
+        put(dc, 2, (DataSource._lat != null) ? "Y" : "N", Gfx.COLOR_WHITE);
+        put(dc, 4, "n", Gfx.COLOR_YELLOW);
+        put(dc, 0, n.toString(), (n < 0) ? Gfx.COLOR_RED : Gfx.COLOR_WHITE);
     }
 
-    function gapLine(g) {
-        if (g._dAt < 0) { return "gap: none seen"; }
-        return "gap:" + g._dGap + "m hist:" + (g._dHist ? "Y" : "N")
-            + " @" + (g._dAt / 60) + ":" + (g._dAt % 60).format("%02d")
-            + " hr" + ((g._dHr == null) ? "-" : g._dHr.toString());
+    function gapRow(dc, g) {
+        begin(dc, "gap");
+        if (g._dAt < 0) { put(dc, 0, "none seen", Gfx.COLOR_LT_GRAY); return; }
+        put(dc, 0, g._dGap + "m", Gfx.COLOR_BLUE);
+        put(dc, 4, "@" + (g._dAt / 60) + ":" + (g._dAt % 60).format("%02d"),
+            Gfx.COLOR_WHITE);
+        put(dc, 4, "hist", Gfx.COLOR_YELLOW);
+        put(dc, 2, g._dHist ? "Y" : "N",
+            g._dHist ? Gfx.COLOR_GREEN : Gfx.COLOR_RED);
+        put(dc, 4, "hr", Gfx.COLOR_YELLOW);
+        var z = g.hrZone(g._dHr);
+        if (z < 0) { put(dc, 0, "-", Gfx.COLOR_LT_GRAY); }
+        else { put(dc, 0, g._dHr.toString(), g.zoneColor(z)); }
     }
 
-    function epLine(g) {
-        if (g._nepi == 0) { return "e: none"; }
+    // The biggest episode: index/count, duration, bead radius, slot level,
+    // then its peak-zone slots, each digit in its zone's colour.
+    function epRow(dc, g) {
+        begin(dc, "e");
+        if (g._nepi == 0) { put(dc, 0, "none", Gfx.COLOR_LT_GRAY); return; }
         var bi = 0;
         for (var i = 1; i < g._nepi; i++) {
             if (g._emag[i] > g._emag[bi]) { bi = i; }
@@ -163,13 +224,17 @@ class DiagComponent {
         var b = g._eband[bi];
         var lv = (b >> 24) & 15;
         var d = g._edur[bi];
-        var sl = "";
+        put(dc, 0, (bi + 1) + "/" + g._nepi, Gfx.COLOR_WHITE);
+        put(dc, 4, d + "m r" + bead + " L" + lv, Gfx.COLOR_WHITE);
         if (d > 0) {
             var ns = ((d - 1) >> lv) + 1;
-            for (var k = 0; k < ns; k++) { sl += ((b >> (4 * k)) & 15).toString(); }
+            var gap = 4;
+            for (var k = 0; k < ns && k < 6; k++) {
+                var zs = (b >> (4 * k)) & 15;
+                put(dc, gap, zs.toString(), g.zoneColor((zs > 8) ? 8 : zs));
+                gap = 0;
+            }
         }
-        return "e" + (bi + 1) + "/" + g._nepi + " d" + d + " r" + bead
-            + " L" + lv + " [" + sl + "]";
     }
 
     // Fill _col with the max HR per minute over the last W minutes; returns
@@ -200,8 +265,8 @@ class DiagComponent {
     }
 
     function sparkline(dc, g, state) {
-        var x0 = 18;
-        var yb = 158;                      // HR 40 at the bottom, 200 at yb-H
+        var x0 = X0;
+        var yb = YB;                       // HR 40 at the bottom, 200 at yb-H
         dc.setColor(Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
         var y105 = yb - ((105 - 40) * H) / 160;
         dc.drawLine(x0, y105, x0 + W, y105);

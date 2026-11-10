@@ -5,7 +5,7 @@ The diag build (faces/two-worlds-v2/diag/Diag.mc) swaps the moss for a
 readout one minute in ten. Today that readout is five lines of white system
 text on a black rectangle that bites pieces out of the white border, over a
 22 px HR sparkline that runs off both sides of the field. Same data, three
-treatments:
+treatments, and the mix that was picked:
 
     A  current     the shipped readout, transcribed from Diag.mc
     B  HUD         the HR history promoted to a scope across the widest part
@@ -24,6 +24,10 @@ treatments:
                    a filled plate, the biggest episode as its actual bead
                    (growth rings) and its slots as zone-colour swatches.
 
+    D  chosen      (owner, 2026-11) B, but with A's sparkline for the HR
+                   history: points, the grey 105 bpm line and the blue gap
+                   bar, moved up to B's scope position.
+
 Each over two records: a morning after a recorded run (every field live) and
 a fresh install in the simulator (every field empty).
 
@@ -32,7 +36,11 @@ sandbox stands in Liberation Sans Bold 12 (same advance to the pixel on the
 sim's "fix:none st0 set:Y n157": 130 px), so line LENGTHS are trustworthy and
 letter SHAPES are approximate; the simulator is the check after sign-off.
 
-    python3 sketches/diag_compare.py        # -> sketches/out/diag-compare.png
+Shipped as D in faces/two-worlds-v2/diag/Diag.mc (diag build only);
+out/diag-ondevice.png is the simulator capture of it (readout forced on:
+left a fresh install, right the pinned saturated record on a breach day).
+
+    python3 archive/sketches/diag_compare.py   # -> archive/sketches/out/diag-compare.png
 """
 
 import math
@@ -42,14 +50,16 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 import device
 import twchrome
 from device import (COLOR_BLACK, COLOR_WHITE, COLOR_LT_GRAY, COLOR_DK_GRAY,
                     COLOR_BLUE, COLOR_YELLOW, COLOR_RED, COLOR_GREEN,
                     COLOR_DK_GREEN, COLOR_TRANSPARENT, idiv)
 from daybuckets import HR_RAMP, hr_zi
-from harness import OUT
 from twchrome import ChromeDc, chrome_state
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 
 FONT = ImageFont.truetype(
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 12)
@@ -435,6 +445,45 @@ class Instruments(Hud):
             dc.fillCircle(cx, cy, [4, 6, 7][j])
 
 
+# ------------------------------------------------- D: B with A's sparkline --
+
+class HudSpark(Hud):
+    """CHOSEN (owner, 2026-11): B's rows and colours, but the HR history
+    stays A's sparkline -- one point per minute, the solid grey 105 bpm line,
+    the blue bar under the replayed gap -- moved up to where B's scope sits,
+    across the widest part of the field, so it no longer runs off the sides.
+    No brackets, no ticks."""
+    H = 22
+    YB = 89                    # HR 40; HR 200 at YB - H = 67
+
+    def scope(self, dc, r):
+        x0, yb, H, W = self.X0, self.YB, self.H, self.W
+        dc.setColor(COLOR_DK_GRAY, COLOR_TRANSPARENT)
+        y105 = yb - idiv((105 - 40) * H, 160)
+        dc.drawLine(x0, y105, x0 + W, y105)
+        last = -2
+        for i in range(W):
+            hr = r.col[i]
+            if hr <= 0:
+                continue
+            z = hr_zi(hr)
+            if z != last:
+                dc.setColor(HR_RAMP[z], COLOR_TRANSPARENT)
+                last = z
+            yy = yb - idiv((hr - 40) * H, 160)
+            if yy < yb - H:
+                yy = yb - H
+            dc.drawPoint(x0 + i, yy)
+        if r.gap is not None:
+            a = W - 1 - (r.now - (r.gap[2] - r.gap[0]))
+            b = W - 1 - (r.now - r.gap[2])
+            if a < 0:
+                a = 0
+            if b >= 0 and a < W:
+                dc.setColor(COLOR_BLUE, COLOR_TRANSPARENT)
+                dc.fillRectangle(x0 + a, yb + 2, b - a + 1, 2)
+
+
 # -------------------------------------------------------------------- sheet --
 
 DATE = (2026, 11, 10)
@@ -457,7 +506,8 @@ def main():
     k = 3
     recs = [after_run(), fresh_sim()]
     opts = [("A  current", Current()), ("B  HUD", Hud()),
-            ("C  instruments", Instruments())]
+            ("C  instruments", Instruments()),
+            ("D  B with A's sparkline (chosen)", HudSpark())]
     pad, lab, hdr, cap = 14, 0, 44, 22
     fw, fh = device.W * k, device.H * k
     W = pad + len(opts) * (fw + pad)
