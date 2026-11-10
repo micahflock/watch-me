@@ -6,9 +6,10 @@
 # ...except faces kept in-repo for easy sideload download
 !/bin/flashtest.prg
 !/bin/devface.prg
-!/bin/two-worlds.prg
 !/bin/two-worlds-v2.prg
 !/bin/two-worlds-v2-diag.prg
+# ...and the retired V1 face's last PRG (archive/README.md)
+!/archive/bin/two-worlds.prg
 
 # Developer keys — NEVER commit. Stored in ~/.ciq-keys/ (see scripts/gen-key.sh)
 *.der

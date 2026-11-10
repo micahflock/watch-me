@@ -1,10 +1,11 @@
 # Archive
 
-Finished experiments: every exploration that led to the shipped face, kept as
-a record. **Nothing here is part of the working set.** The build, the tests,
-the sandbox (`sketches/`) and `readme_figs.py` do not need this directory; the
-only things that reach into it are the project README, which embeds the sheets
-from `sketches/out/` to tell the design story, and the name lookup noted below.
+Finished experiments and retired faces: every exploration that led to the
+shipped face, kept as a record. **Nothing here is part of the working set.**
+The build, the tests and the sandbox (`sketches/`) do not need this directory;
+the only things that reach into it are the project README, which embeds the
+sheets from `sketches/out/` to tell the design story, and the two name lookups
+noted below.
 
 - **Frozen.** A script here records a decision that has been made. Don't
   update it to follow the face; start a new experiment in `sketches/` instead.
@@ -24,9 +25,47 @@ from `sketches/out/` to tell the design story, and the name lookup noted below.
   committed one. The committed PNG is the record; the script is how it was made.
   (As of the 2026-11 move, every script reproduced its committed sheet exactly.)
 
-The one live dependency: `sketches/harness.py` resolves algo names in
-`archive/sketches/algos/` after `sketches/algos/`, purely so the scrub command
-above works.
+The live dependencies, both through `sketches/harness.py`, which resolves algo
+names in `archive/sketches/algos/` after `sketches/algos/`:
+
+- the scrub command above;
+- **`sketches/readme_figs.py` loads `biobloom` by name** to draw the V1 half of
+  `docs/img/v1-vs-v2.png`. Moving or renaming `sketches/algos/biobloom.py`
+  here breaks that figure.
+
+## Retired faces
+
+The three faces that came before `faces/two-worlds-v2`, with their engines,
+moved here in 2026-11. **They are not expected to build from here**: their
+jungles still point at `../../core/src`, which is now two levels further away
+and no longer holds their engines (nor `GenArt.zoneIndex`, the keep-out
+registry and the other pieces removed once nothing live used them).
+
+| What | Where (relative to this directory) | Was |
+|---|---|---|
+| two-worlds (V1): the two-worlds chrome over the BioBloom dish | `faces/two-worlds/`, `bin/two-worlds.prg` (its last tracked build) | `faces/two-worlds/`, `bin/two-worlds.prg` |
+| biobloom: the BioBloom dish full-screen, no chrome | `faces/biobloom/` | `faces/biobloom/` |
+| strataflock: the first generative face, strata + flock | `faces/strataflock/` | `faces/strataflock/` |
+| Engines: `BioBloom.mc` + `BioState.mc` (V1, biobloom), `StrataField.mc` + `Flock.mc` (strataflock) | `core/genart/` | `core/src/genart/` |
+| Sandbox mirrors `biobloom.py`, `strataflock.py` and the strataflock simulator capture | `sketches/algos/`, `sketches/out/strataflock-ondevice.png` | `sketches/algos/`, `sketches/out/` |
+
+**Last commit where all three built in place: `9397fae`** ("docs: pinned
+worst-case probe for MossGrove; point at the V2 profile tests"). At that commit
+`scripts/build.sh` builds each of them and their suites pass in the simulator
+(two-worlds 5 tests, biobloom 5, strataflock 6). To build or run one again,
+check that commit out rather than repairing the paths here:
+
+```bash
+git worktree add ../watch-me-v1 9397fae
+cd ../watch-me-v1 && scripts/build.sh two-worlds && scripts/test.sh two-worlds
+```
+
+V1's glyph strips, launcher icon and settings were copied into
+`faces/two-worlds-v2/resources` before the move (V2 used to borrow them through
+its jungle), so `faces/two-worlds/resources` here is the original and V2's is
+the live copy. The hash and sine-table tests from the strataflock suite live on
+in `faces/devface/tests/TestGenArt.mc`; V1's chrome and layer-profile tests were
+ported to `faces/two-worlds-v2/tests`.
 
 ## When an experiment is finished
 
@@ -45,7 +84,7 @@ something (today: `border_aa_compare.py --emit`, `breach_compare.py --emit`).
 ## Index
 
 Sheets are in `sketches/out/`, scripts in `sketches/`, algos in
-`sketches/algos/` (all relative to this directory). Each script's docstring has
+`sketches/algos/`, faces in `faces/` (all relative to this directory). Each script's docstring has
 the full story; the project README's "design process" section shows the
 highlights in order.
 
@@ -161,13 +200,14 @@ speck on the crust — the flock precipitating into sediment.
 
 ### Ported to a face: `faces/strataflock`
 
-Concept 4 is implemented as a real watch face under `faces/strataflock`
-(`StrataField.mc` = strata, `Flock.mc` = murmuration, `GenArt.mc` = shared
+Concept 4 was implemented as a real watch face, `faces/strataflock` (retired:
+see "Retired faces" above for where it is and the commit it last built at;
+`StrataField.mc` = strata, `Flock.mc` = murmuration, `GenArt.mc` = shared
 integer hash / sine table / HR-zone ramp). All math is integer; the strata
 evolves incrementally (≤12 minutes of catch-up per `onUpdate`); the flock is
 stateless. Verified in the SDK 9.2.0 simulator on `fr735xt`:
 
-- 6 unit tests pass (`scripts/test.sh strataflock`) — hash determinism, sine
+- 6 unit tests passed (`scripts/test.sh strataflock`, at that commit) — hash determinism, sine
   table, zone mapping, strata conservation/caps/idle-drip/day-rollover.
 - Release PRG 21 KB on disk; debug runtime RAM ~39/59 KB (under the 90%
   ceiling, and the debug build carries the test suite).

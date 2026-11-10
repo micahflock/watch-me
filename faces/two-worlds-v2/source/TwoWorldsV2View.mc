@@ -7,10 +7,10 @@ using Toybox.Math as Math;
 // white border, field mask) over a NEW organic field: the MossGrove day-organism
 // (core/src/genart/MossGrove.mc) replacing BioBloom. The grove is centred 2/5 up
 // from the bottom (CY=108), the same centre BioBloom used, so the field-mask and
-// border geometry are unchanged. The grove record is tiny and always persists,
+// border geometry are V1's. The grove record is tiny and always persists,
 // so V1's save-failure "containment breach" warning is gone -- the words came
 // back as an easter egg instead (BreachComponent: the day's movement outgrew
-// the dish).
+// the dish). V1 itself is retired: archive/faces/two-worlds.
 //
 // Render order (back -> front): grove, field mask, border, phone ring, uplink,
 // battery, readout, time, breach, north, debug.
@@ -78,7 +78,7 @@ class TwoWorldsV2View extends Ui.WatchFace {
     function onSettingsChanged() {}
 }
 
-// --- pure helpers (shared geometry with V1) ----------------------------------
+// --- pure helpers --------------------------------------------------------------
 
 module Face {
     const LOW_PCT = 10;
@@ -94,6 +94,9 @@ module Face {
         return lit;
     }
 
+    // Displayed hour from a 0..23 clock hour, honoring the device 24h flag.
+    //   24h (true/null) : unchanged, 0..23.
+    //   12h (false)     : 1..12 (0 -> 12, 13..23 -> 1..11).
     function displayHour(hour24, is24Hour) {
         if (is24Hour != false) { return hour24; }
         var h = hour24 % 12;
@@ -102,20 +105,36 @@ module Face {
 }
 
 // --- components (duck-typed: each has render(dc, state)) ----------------------
-// These mirror the V1 overlay chrome verbatim; the field geometry is unchanged
-// because the grove shares BioBloom's centre.
 
+// FieldMaskComponent — paints BLACK over everything OUTSIDE the field region,
+// confining the full-frame generative art (the grove, drawn before this) to
+// the disc. The mask shape is static, so it is decomposed ONCE (in onLayout)
+// into a small set of rectangles which render() replays (one fillRectangle each,
+// zero per-tick allocation).
+//
+// Each scanline's black runs (the complement of the field interval(s) within
+// [0,215]) are coalesced VERTICALLY: a run with the same x/width as the run
+// directly above extends that rectangle's height instead of adding a new one.
+// Over the curved disc edge this nearly halves both the stored rect count
+// (~362 1px runs -> 188 rects) and the per-frame fillRectangle calls. Runs pack
+// as (x << 24) | (w << 16) | (y << 8) | h (each byte 0..215).
+//
+// Field region (same geometry as BorderComponent): offset disc r=95.8 @
+// (107.5,90.7), cut by the chord+slant on top and the battery notch at bottom.
 class FieldMaskComponent {
-    var _runs;
+    var _runs; // packed merged rects: (x << 24) | (w << 16) | (y << 8) | h
 
     function initialize() {
         _runs = [];
+        // Open rects still growing downward (ping-pong between two fixed scratch
+        // buffers so the build allocates nothing per scanline). A scanline has at
+        // most 3 black runs, so only a few rects are ever open at once.
         var openA = new [8];
         var openB = new [8];
         var open = openA;
         var nOpen = 0;
-        var cx = new [4];
-        var cw = new [4];
+        var cx = new [4];   // this scanline's run x's
+        var cw = new [4];   // ... and widths
         var used = new [4];
         for (var y = 0; y < 180; y++) {
             var nCur = scanline(y, cx, cw);
@@ -132,10 +151,10 @@ class FieldMaskComponent {
                 }
                 if (hit >= 0) {
                     used[hit] = true;
-                    nxt[nNext] = r + 1;
+                    nxt[nNext] = r + 1;          // h is the low byte; +1 grows it
                     nNext++;
                 } else {
-                    _runs.add(r);
+                    _runs.add(r);                // closed -> store
                 }
             }
             for (var c = 0; c < nCur; c++) {
@@ -150,13 +169,16 @@ class FieldMaskComponent {
         for (var o = 0; o < nOpen; o++) { _runs.add(open[o]); }
     }
 
+    // Fill this scanline's black runs into cx[]/cw[]; returns the run count (0..3).
     function scanline(y, cx, cw) {
         var dy = y - 90.7;
-        var disc = 9177.64 - dy * dy;
+        var disc = 9177.64 - dy * dy; // 95.8^2 - dy^2
         if (disc <= 0.0) { cx[0] = 0; cw[0] = 215; return 1; }
         var hw = Math.sqrt(disc);
         var xl = 107.5 - hw;
         var xr = 107.5 + hw;
+
+        // Top cut: chord at y=62 (x 16..134) + slant up to (166,15).
         if (y < 62) {
             var xcut;
             if (y < 15) {
@@ -168,6 +190,9 @@ class FieldMaskComponent {
             if (xl < xcut) { xl = xcut; }
             if (xl >= xr) { cx[0] = 0; cw[0] = 215; return 1; }
         }
+
+        // Bottom battery notch (y>=163): field is [xl,lw] and [rw,xr]; black the
+        // three gaps around them.
         if (y >= 163) {
             var t = (y - 163.0) / 9.0;
             var lw = 70.0 - 13.0 * t;
@@ -175,18 +200,21 @@ class FieldMaskComponent {
             var n = 0;
             var cur = 0.0;
             n = run(cx, cw, n, cur, xl); cur = xl;
-            if (lw > cur) { cur = lw; }
+            if (lw > cur) { cur = lw; }       // skip field run [xl,lw]
             if (rw > cur) { n = run(cx, cw, n, cur, rw); cur = rw; }
-            if (xr > cur) { cur = xr; }
+            if (xr > cur) { cur = xr; }        // skip field run [rw,xr]
             if (cur < 215.0) { n = run(cx, cw, n, cur, 215.0); }
             return n;
         }
+
+        // Normal scanline: field [xl,xr]; black the two sides.
         var n = 0;
         n = run(cx, cw, n, 0.0, xl);
         n = run(cx, cw, n, xr, 215.0);
         return n;
     }
 
+    // Append the rounded/clamped run [x0,x1) to cx[]/cw[] if non-empty.
     function run(cx, cw, n, x0, x1) {
         var a = (x0 + 0.5).toNumber();
         var b = (x1 + 0.5).toNumber();
@@ -206,6 +234,12 @@ class FieldMaskComponent {
     }
 }
 
+// BorderComponent — the single white separation line: top chord + slant, the
+// offset-circle rim (broken at the slant and the battery notch), and the notch
+// walls. Arcs are drawn as short line segments (drawLine is 1.0-safe; avoids
+// any drawArc availability question). Bearing convention: 0 deg = 12 o'clock,
+// clockwise, x = cx + r*sin, y = cy - r*cos.
+//
 // The white border is anti-aliased (owner, 2026-10): static grey pixels at
 // the stair-steps of the slant and rim arcs, where the IDEAL path (the true
 // r=95.8 circle / true segments) only partly covers a pixel -- DK_GRAY for
@@ -245,13 +279,13 @@ class BorderComponent {
 
     function render(dc, state) {
         dc.setColor(Gfx.COLOR_WHITE, Gfx.COLOR_TRANSPARENT);
-        dc.drawLine(16, 62, 134, 62);
-        dc.drawLine(134, 62, 166, 15);
-        arc(dc, 107.5, 90.7, 95.8, 37.7, 148.0);
-        arc(dc, 107.5, 90.7, 95.8, 212.0, 287.4);
-        dc.drawLine(70, 163, 145, 163);
-        dc.drawLine(70, 163, 57, 172);
-        dc.drawLine(145, 163, 158, 172);
+        dc.drawLine(16, 62, 134, 62);     // chord
+        dc.drawLine(134, 62, 166, 15);    // slant
+        arc(dc, 107.5, 90.7, 95.8, 37.7, 148.0);   // slant-top -> right notch
+        arc(dc, 107.5, 90.7, 95.8, 212.0, 287.4);  // left notch -> chord-left
+        dc.drawLine(70, 163, 145, 163);   // notch top
+        dc.drawLine(70, 163, 57, 172);    // notch left wall
+        dc.drawLine(145, 163, 158, 172);  // notch right wall
         dc.setColor(Gfx.COLOR_DK_GRAY, Gfx.COLOR_TRANSPARENT);
         points(dc, AA_DK);
         dc.setColor(Gfx.COLOR_LT_GRAY, Gfx.COLOR_TRANSPARENT);
@@ -321,16 +355,18 @@ class UplinkComponent {
         dc.setColor(c, Gfx.COLOR_TRANSPARENT);
         var x = 128;
         for (var i = 0; i < 5; i++) {
-            var w = 29.0 + (4.0 - 29.0) * i / 4.0;
+            var w = 29.0 + (4.0 - 29.0) * i / 4.0; // 29,23,17,10,4
             dc.fillRectangle(x, 12 + i * 9, (w + 0.5).toNumber(), 4);
         }
     }
 }
 
+// BatteryComponent — three chunks centered in the bottom notch. ORANGE when
+// lit, DK_GRAY otherwise; lit count from Face.batteryLevel (right-to-left drain).
 class BatteryComponent {
     function render(dc, state) {
         var level = Face.batteryLevel(state.batteryPct);
-        var x0 = 74;
+        var x0 = 74; // round(107.5 - (3*18 + 2*7)/2)
         for (var i = 0; i < 3; i++) {
             dc.setColor(i < level ? Gfx.COLOR_ORANGE : Gfx.COLOR_DK_GRAY,
                 Gfx.COLOR_TRANSPARENT);
@@ -339,6 +375,18 @@ class BatteryComponent {
     }
 }
 
+// NorthComponent — a hollow red diamond riding the rim at the sun-derived
+// true-north dial angle (reuses core SunCompass: point 12 o'clock at the sun,
+// the marker shows where true north is). Shown ONLY when the sun is sightable
+// (elevation in (-0.833, 80) deg); otherwise nothing is drawn (no location ->
+// SunCompass returns null -> hidden). The point list is allocated once and
+// rewritten in place each render.
+//
+// The rim is cut flat at the panel's top and bottom edges (rimR) and the marker
+// is drawn after the readout/time, over the battery chunks and digits it may
+// cross (owner, 2026-10: north must stay readable at every sun-up minute; the
+// overlap is fine). Drawn under them, a 24 h clock's leading "0" hid most of
+// it at summer sunrise.
 class NorthComponent {
     var _quad;
 
@@ -351,7 +399,7 @@ class NorthComponent {
             state.hour, state.minute, state.utcOffsetSec, state.lat, state.lon);
         if (res == null) { return; }
         var elev = res[1];
-        if (elev <= -0.833 || elev >= 80.0) { return; }
+        if (elev <= -0.833 || elev >= 80.0) { return; } // not sightable -> hidden
         draw(dc, res[0]);
     }
 
@@ -369,13 +417,20 @@ class NorthComponent {
         quad(cx, cy, rx, ry, tx, ty, 5.0, 4.3);
         dc.fillPolygon(_quad);
 
+        // Punch a hole (40% scale) to read as a hollow diamond.
         dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_TRANSPARENT);
         quad(cx, cy, rx, ry, tx, ty, 2.0, 1.72);
         dc.fillPolygon(_quad);
     }
 
-    // The r=101.7 rim cut flat at the panel's top/bottom edges so the marker
-    // stays on the glass at every bearing (see the V1 NorthComponent).
+    // Rim radius along the bearing ray (rx, ry) = (sin th, -cos th); only ry
+    // matters: the r=101.7 gutter circle cut flat at the panel's top and bottom
+    // edges. The glass is the r=107.5 disc clipped to 215x180, so a constant
+    // rim left the screen within ~28 deg of 12 and 6 o'clock -- and north sits
+    // at 6 around a northern-hemisphere noon. Only the radius shrinks, never
+    // the angle, so the bearing stays exact; centre y in [5.5, 172.5] keeps
+    // every pixel of the marker (corners reach ~6.6 px) on the glass.
+    // archive/sketches/north_compare.py sweeps it over every bearing.
     function rimR(ry) {
         var r = 101.7;
         if (-ry * r > 84.5) { r = 84.5 / -ry; }        // top edge: centre y 5.5
@@ -383,6 +438,8 @@ class NorthComponent {
         return r;
     }
 
+    // Diamond: +/- sR along the radial axis (rx,ry), +/- sT along tangential
+    // (tx,ty), written into the reusable _quad.
     function quad(cx, cy, rx, ry, tx, ty, sR, sT) {
         _quad[0][0] = rnd(cx + sR * rx + sT * tx);
         _quad[0][1] = rnd(cy + sR * ry + sT * ty);
@@ -397,6 +454,9 @@ class NorthComponent {
     function rnd(v) { return (v + 0.5).toNumber(); }
 }
 
+// ReadoutComponent — "WE 10": a 2-letter day sprite + day-of-month digits, white.
+// Layout reserves a 2-digit date so the day-of-week stays put (left edge fixed
+// at x=82 = readoutRight 117 - reserved 35). Day printed as-is (no leading zero).
 class ReadoutComponent {
     var _dow;
     var _date;
@@ -413,17 +473,24 @@ class ReadoutComponent {
             _dow.draw(dc, state.dayOfWeek - 1, leftX, y);
         }
         if (state.day != null) {
+            // Direct digit math (day is 1..31) -- no toString()/substring(), which
+            // allocate Strings every tick.
             var d = state.day;
-            var x = leftX + 18 + 4;
+            var x = leftX + 18 + 4; // after the day sprite + 4px space
             if (d >= 10) {
                 _date.draw(dc, (d / 10) % 10, x, y);
-                x += 6 + 1;
+                x += 6 + 1;          // digit width + 1px tracking
             }
             _date.draw(dc, d % 10, x, y);
         }
     }
 }
 
+// ClockComponent — HH:MM in the 7-seg bitmap font, honoring the device clock
+// mode (Snapshot.is24Hour). In 24h the hour keeps its leading zero; in 12h the
+// hour is 1..12 and a leading zero is blanked (the tens cell stays empty). The
+// colon is its own 4px glyph and is always drawn; a null hour/minute leaves
+// blank digit cells. Cell advance: digit 18+5, colon 4+5 (matches the handoff).
 class ClockComponent {
     var _digits;
     var _colon;
@@ -502,6 +569,6 @@ class BreachComponent {
 class DebugComponent {
     function initialize() {}
     function render(dc, state) {
-        Instrument.overlay(dc);
+        Instrument.overlay(dc); // no-op in release builds
     }
 }
