@@ -21,19 +21,17 @@ per-element method-call cost that dominates on the watch
 
 | File | Role |
 |---|---|
-| `device.py` | The device model. `hash16`, `isin`, `zoneIndex` and the 14-colour palette are bit-identical to `core/src/genart/GenArt.mc`. `Dc` exposes only real `Gfx` primitives, counts every call and snaps colours to the palette |
+| `device.py` | The device model. `hash16`, `isin` and the 14-colour palette are bit-identical to `core/src/genart/GenArt.mc` (`zoneIndex` is the retired strata/flock HR ramp, kept for the archived `strataflock` algo). `Dc` exposes only real `Gfx` primitives, counts every call and snaps colours to the palette |
 | `day.py` | The per-minute `Snapshot` feed (steps, HR, time), mirroring what `DataSource` builds. Profiles: `active`, `rest`, `heavy`, `restless`, `hiit`, `hiit_restless` |
 | `harness.py` | Shared plumbing: `load_algo`, `mins`, the watchdog-proxy sum, comparison-sheet layout. New scripts import from here rather than copying |
 | `scrub.py` | One algo across a day (above) |
 | `algos/moss_grove.py` | **Parity reference for `core/src/genart/MossGrove.mc`**, the shipping engine; checked against `out/moss_grove-ondevice.png` |
 | `daysoma.py`, `daybuckets.py`, `mossutil.py` | What `moss_grove` is built on: the time-agnostic day record, polar helpers and the HR ramp, the lumpy-cushion outline. `MossGrove.mc` ports all three |
-| `algos/biobloom.py` | State mirror of `BioBloom.mc` (V1). `readme_figs.py` uses it for the V1-vs-V2 figure |
-| `algos/strataflock.py` | Line-for-line port of `StrataField.mc` + `Flock.mc`; checked against `out/strataflock-ondevice.png` |
-| `twchrome.py` | The two-worlds V2 chrome (field mask, border, phone ring, GPS bars, battery, readout, clock, breach, north marker), a line-for-line port of `TwoWorldsV2View.mc`, blitting the real glyph strips |
+| `twchrome.py` | The two-worlds V2 chrome (field mask, border, phone ring, GPS bars, battery, readout, clock, breach, north marker), a line-for-line port of `TwoWorldsV2View.mc`, blitting the real glyph strips from `faces/two-worlds-v2/resources/drawables` |
 | `solar.py` | float32 port of `Solar.mc` / `SunCompass.mc` / `MathX.mc`. `python3 sketches/solar.py` checks it against the Monkey C test fixtures |
 | `border_aa_compare.py` | Generates the border's anti-aliasing tables: `--emit` rewrites the `BEGIN AA`/`END AA` block in `TwoWorldsV2View.mc` and `border_aa_pixels.py` |
 | `breach_compare.py` | Generates the CONTAINMENT BREACH bitmaps (`--emit`) and owns `Banner`, which `twchrome.Breach` draws |
-| `readme_figs.py`, `sim_hero.py` | Render the project README's figures into `docs/img/` |
+| `readme_figs.py`, `sim_hero.py` | Render the project README's figures into `docs/img/`. `readme_figs.py` loads the archived `biobloom` algo by name for the V1-vs-V2 figure (`harness.load_algo` falls back to `archive/sketches/algos`) |
 
 An algo module defines `build() -> {"background", "components": [...]}`. Each
 component is the same duck-typed `render(dc, state)` (plus optional
@@ -61,4 +59,6 @@ move to `archive/` (steps in `archive/README.md`), so this directory stays the
 working set: the model, the mirrors of what is on the wrist, and whatever is
 in flight.
 
-Every earlier experiment is indexed in `archive/README.md`.
+Every earlier experiment is indexed in `archive/README.md`. The mirrors of the
+retired engines live there too (`archive/sketches/algos/biobloom.py`,
+`strataflock.py`) and still render by name: `python3 sketches/scrub.py biobloom`.

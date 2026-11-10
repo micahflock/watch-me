@@ -96,12 +96,14 @@ its jungles **list the core files it uses** rather than all of `core/src`
 ## Measured status (acceptance)
 
 - devface builds clean for fr735xt at API 2.4 (SDK 9.2.0) and runs in the sim.
-- devface carries the shared-core suite: 26 tests (segment lookup, MathX,
-  Solar fixtures, SunCompass dial/rollover, GPS-fix location, MossGrove
-  bands/replay/save). `two-worlds`, `biobloom` and `strataflock` carry their
-  own; `two-worlds-v2` has none (its engine is tested from devface). Run
+- devface carries the shared-core suite: 28 tests (segment lookup, MathX,
+  Solar fixtures, SunCompass dial/rollover, GPS-fix location, GenArt hash and
+  sine table, MossGrove bands/replay/save). `two-worlds-v2` carries the
+  face's own 5: battery chunks, 12/24 h hour, the north marker staying on the
+  glass, and the layer cost and RAM profiles (logging only). Run
   `scripts/test.sh <face>`.
-- Release PRG on disk ≈ **16 KB** (`scripts/memcheck.sh`); runtime RAM sits
+- devface release PRG on disk ≈ **31 KB** (`scripts/memcheck.sh`; it compiles
+  all of `core/src`, MossGrove included); runtime RAM sits
   well under the 57.6 KB ceiling (re-read from the sim — release status bar /
   debug overlay); onUpdate ≈ **8–12 ms**, no watchdog trips. Details in
   `docs/memory-budget.md`.

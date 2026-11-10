@@ -197,6 +197,19 @@ bisect N. two-worlds V2, saturated grove + 12-min replay + breach banner:
 | anti-aliased border ON (shipped) | 200 trips | **< ~1.6k** |
 | ON, no replay (lastMin = nm - 1) | 200 ok, 500 trips | ~1.6-4k |
 
+Re-measured 2026-11 with the probe above (which pins six full growth rings
+per bead, `_edur` 768, a little heavier than the 2026-10 pin), before and
+after the dead-code cleanup, same session and host:
+
+| build | trips at N | margin |
+|---|---|---|
+| before the cleanup (PRG 41,036 B) | 100 ok, 150 trips | ~0.8-1.2k instructions |
+| after (PRG 40,380 B) | 100 ok, 150 trips | **~0.8-1.2k**, unchanged |
+
+So the working figure is **about 1k instructions to spare**. The cleanup
+removed code that never ran in `onUpdate` (bar three `has` checks in
+`DataSource.refresh`), so it freed RAM, not instructions.
+
 The border's 245 static `drawPoint`s cost a few thousand instructions -- the
 per-element-call cost again. A banner drawn as ~30 `fillPolygon` stripes
 (8 array stores + a call each) tripped this frame outright; as two bitmaps

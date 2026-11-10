@@ -173,7 +173,7 @@ Strata + flock became the first real face, **`strataflock`**, and proved
 the whole pipeline on the simulator:
 
 <p align="center">
-  <img src="sketches/out/strataflock-ondevice.png" width="300" alt="strataflock running in the Garmin simulator: 18:20 above a dot flock and a stepped pile of orange, blue, green and amber sediment">
+  <img src="archive/sketches/out/strataflock-ondevice.png" width="300" alt="strataflock running in the Garmin simulator: 18:20 above a dot flock and a stepped pile of orange, blue, green and amber sediment">
 </p>
 
 ### 3. Designing the chrome
@@ -410,7 +410,7 @@ the watch's limits.
   **pinned worst-case day** on the release build. The moss samples its
   outline once per frame into a lookup table and spends a fixed ink
   budget, so a saturated day degrades gracefully instead of crashing.
-- **Memory.** V2 uses about **48–50 KB of the 59.8 KB** the simulator
+- **Memory.** V2 uses about **46–49 KB of the 59.8 KB** the simulator
   allows. A pinned worst-case day (16 six-ring beads, max cushion, a 10 h
   broken root star, and a 12-minute workout replay in the same frame) runs
   without a crash. One early win: Monkey C doesn't strip unused classes,
@@ -509,18 +509,21 @@ The process that made this work:
 ## Repository map
 
 ```
-faces/two-worlds-v2/   the shipping face: MossGrove under the two-worlds chrome
-faces/two-worlds/      V1: the same chrome over BioBloom
-faces/strataflock/     the first generative face (sediment + murmuration)
-faces/biobloom/        BioBloom full-screen, no chrome
-faces/devface/         unstyled integration testbed; faces/flashtest: sideload check
+faces/two-worlds-v2/   the shipping face: MossGrove under the two-worlds chrome,
+                       with its own resources and tests
+faces/devface/         unstyled integration testbed and the shared-core tests;
+                       faces/flashtest: sideload check
 core/src/              shared library: data, compositor, glyphs, astronomy,
-                       generative engines (GenArt, MossGrove, BioBloom, ...)
+                       and the generative engine (GenArt, MossGrove)
 sketches/              the Python sandbox: the device model, the day feed,
-                       and the mirrors of the engines and chrome
-archive/               every finished experiment: the exploration scripts and
-                       algos, the comparison sheets in this README, and the
-                       kickoff and Claude Design prompts (index: archive/README.md)
+                       and the mirrors of the engine and chrome
+archive/               everything retired or finished (index: archive/README.md):
+  faces/               two-worlds (V1: the same chrome over BioBloom),
+                       strataflock (the first generative face), biobloom
+  core/genart/         their engines: BioBloom, StrataField, Flock
+  sketches/            the exploration scripts and algos, and the comparison
+                       sheets in this README
+  docs/                the kickoff and Claude Design prompts
 docs/                  device notes, memory and watchdog playbooks,
                        development guide
 bin/                   ready-to-sideload PRGs

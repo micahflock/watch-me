@@ -4,15 +4,16 @@ One shared core, many faces. Faces are thin: a manifest, a jungle, an App, a
 View that wires core modules together, and face-specific resources.
 
 The shipping face is `faces/two-worlds-v2`. `devface` and `flashtest` are
-tooling. `two-worlds` (V1), `biobloom` and `strataflock` are retired faces kept
-buildable; their engines are marked below.
+tooling. The earlier faces (`two-worlds` V1, `biobloom`, `strataflock`) and
+their engines (BioBloom, BioState, StrataField, Flock) are retired to
+`archive/` and no longer build; `archive/README.md` names the last commit
+where they did.
 
 ```
 core/src/
   data/    Snapshot.mc      one per-tick state object, all fields nullable
            DataSource.mc    fills the Snapshot from Toybox; caches properties
   render/  Compositor.mc    ordered component list + per-component clips
-           Region.mc        rect helpers for keep-out masking (unreferenced)
            CompassRose.mc   sun-compass dial (aim 12 at sun, red needle = N)
   glyph/   SegmentFont.mc   parametric 7-segment digits (fillPolygon)
            SegmentLayout.mc HH:MM / digit-group layout
@@ -21,27 +22,20 @@ core/src/
            Solar.mc         NOAA solar position + sunrise/sunset, pure
            SunCompass.mc    true-north dial angle from sun azimuth, pure
   debug/   Instrument.mc    (:debug) overlay/logging + (:release) stubs
-  genart/  GenArt.mc        shared generative utils (hash, sine table, HR zones)
+  genart/  GenArt.mc        shared generative utils (integer hash, sine table)
            MossGrove.mc     moss day-organism engine (+ MossState.mc
                             persistence): the shipping engine
-           BioBloom.mc      retired (V1): movement-fed living-dish engine
-                            (+ BioState.mc save/load of the day's dish)
-           StrataField.mc   retired (strataflock): day-as-sediment simulation
-           Flock.mc         retired (strataflock): murmuration in the sky
 
 faces/two-worlds-v2/         THE FACE: artificial chrome (clock/readout/gauges)
                              over the MossGrove organism, masked to a bordered
-                             disc. Owns its source, the breach bitmaps and the
-                             diag readout; fonts, launcher icon and settings
-                             still come from ../two-worlds/resources via the
-                             jungle resourcePath
+                             disc. Self-contained: source, resources (glyph
+                             strips, launcher icon, settings, breach bitmaps),
+                             the diag readout, and tests/ (chrome logic + the
+                             layer cost/RAM profiles)
 faces/devface/               integration testbed (zero styling); its tests/ is
-                             the shared-core suite and compiles all of core/src
+                             the shared-core suite (MossGrove's tests included)
+                             and compiles all of core/src
 faces/flashtest/             sideload smoke test ("FLASH OK" + update counter)
-faces/two-worlds/            retired V1: the same chrome over the BioBloom dish.
-                             Also home of the layer cost/RAM profiling tests
-faces/biobloom/              retired: the BioBloom dish full-screen, no chrome
-faces/strataflock/           retired: the first generative face, strata + flock
 ```
 
 ## How a face composes (see faces/devface)
@@ -57,6 +51,9 @@ faces/strataflock/           retired: the first generative face, strata + flock
   inside V2 and left it ~1.5 KB from Out Of Memory (docs/memory-budget.md).
   Only devface takes the whole directory, because its test suite covers it.
 - `debug.monkey.jungle` additionally appends `tests` to the source path.
+  two-worlds-v2's debug PRG is too big to run as a face (Out Of Memory in
+  `onLayout`) but runs its tests: under `monkeydo -t` the app gets a heap of
+  megabytes, not the 64 KB face limit (docs/toolchain-notes.md).
   Debug vs release is selected by the **`monkeyc -r` flag** (release strips
   `(:debug)` code and keeps `(:release)` stubs). Do NOT use
   `excludeAnnotations` for debug/release — it double-excludes both copies.
@@ -74,11 +71,10 @@ A component is any object with `render(dc, state)`. The Compositor draws them
 in order, applying an optional clip rect per component (`Dc.setClip`, API 2.3).
 Class metadata costs bytes — there is deliberately no Component superclass.
 
-Keep-outs are the inverse of clips: reserved screen rects that components must
-not paint into. The Compositor has a registry for them (`addKeepOut` /
-`keepOuts`) and `Region.mc` has the rect helpers, but **no face uses either**:
-strataflock's Flock is handed its clock keep-out directly, and the two-worlds
-faces mask with a FieldMaskComponent. Both are candidates for removal.
+There is no keep-out mechanism (reserved rects a layer must not paint into):
+the face draws the organism full-frame and then paints a `FieldMaskComponent`
+over everything outside the field. The Compositor's unused keep-out registry
+and `Region.mc` were removed in 2026-11.
 
 ## Memory ground rules
 

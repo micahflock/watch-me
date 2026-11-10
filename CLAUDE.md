@@ -8,19 +8,17 @@ Connect IQ watch faces for the **Garmin Forerunner 735XT** only
 - **The face on the wrist is `faces/two-worlds-v2`**: the MossGrove organism
   (`core/src/genart/MossGrove.mc`) under the two-worlds chrome
   (`TwoWorldsV2View.mc`). "The face" means this one unless told otherwise.
+  It owns its resources and its tests (`faces/two-worlds-v2/tests`: chrome
+  logic plus the layer cost/RAM profiles; `scripts/test.sh two-worlds-v2`).
 - `faces/devface` is the unstyled testbed and holds the shared-core unit
-  tests; `faces/flashtest` is the sideload smoke test.
+  tests, MossGrove's included; `faces/flashtest` is the sideload smoke test.
 - `sketches/` is the Python sandbox: the device model plus mirrors of the
   engine and chrome (`sketches/README.md`).
-- **Retired but still in place:** `faces/two-worlds` (V1), `faces/biobloom`,
-  `faces/strataflock`, and their engines `BioBloom`/`BioState`/`StrataField`/
-  `Flock` in `core/src/genart`. Don't read or change them unless the task is
-  about them. Two things still hang off V1: V2 takes its fonts, launcher icon
-  and settings from `faces/two-worlds/resources` (jungle `resourcePath`), and
-  the layer cost/RAM profiling tests live in `faces/two-worlds/tests`.
-- **`archive/` is finished experiments. Don't read, search or edit it unless
-  the owner asks about a past experiment** — then start at
-  `archive/README.md`, the index. `/.ignore` keeps Grep out of it by default.
+- **`archive/` is finished experiments and the retired faces** (two-worlds
+  V1, biobloom, strataflock, with their engines; they do not build from
+  there). **Don't read, search or edit it unless the owner asks about a past
+  experiment or face** — then start at `archive/README.md`, the index.
+  `/.ignore` keeps Grep out of it by default.
 
 ## Toolchain — do not set it up by hand
 
@@ -85,8 +83,8 @@ just new displays. Only after sign-off: port, build, sim, update `bin/`.
   — use `MathX`). `scripts/test.sh` lints for these.
 - 64 KB watch-face RAM; project policy ceiling 90% (~57.6 KB) for release
   builds. Watchdog: ~25–30k VM instructions per `onUpdate` — the binding
-  constraint, and V2's saturated frame measured **under ~1.6k to spare**
-  (2026-10): anything added to the face needs the margin check in
+  constraint, and V2's saturated frame measured **~1k to spare**
+  (2026-11): anything added to the face needs the margin check in
   docs/watchdog-debugging.md.
   One `onUpdate` per minute; no seconds hand. Numbers: docs/memory-budget.md.
 - **monkeyc does not strip unreferenced classes.** A face's jungle lists the
@@ -123,8 +121,10 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 - Release builds stub out `Instrument`; read release RAM from the sim's
   status bar instead of the console line.
 - The two-worlds-v2 DEBUG build runs out of memory as a face; verify render
-  changes on the RELEASE PRG.
-- `scripts/test.sh <face>` only runs tests for faces with a `tests/` dir;
+  changes on the RELEASE PRG. Its unit tests still run from that build
+  (`monkeydo -t` gives the app a far larger heap).
+- `scripts/test.sh <face>` only runs tests for faces with a `tests/` dir
+  (devface, two-worlds-v2);
   `monkeydo -t` with no (:test) cases exits silently. Killing a foreground
   `sim.sh` run (e.g. wrapping it in `timeout`) can take the whole Xvfb/sim
   stack down — launch it detached (`... & disown`) before screenshotting.
@@ -133,7 +133,6 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 
 Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
 (docs/sideload.md). The tracked PRGs are `two-worlds-v2`, `two-worlds-v2-diag`,
-`two-worlds`, `devface` and `flashtest`. The two-worlds faces (shared settings)
-need a location for the sun/north marker: a GPS fix from any GPS activity, or
-`lat`/`lng` set in the app settings. The tracked `devface` PRG predates the
-GPS fix (2026-10) and reads only `lat`/`lng` until rebuilt.
+`devface` and `flashtest`. The face needs a location for the sun/north marker:
+a GPS fix from any GPS activity, or `lat`/`lng` set in the app settings;
+`devface` likewise, else it shows the "?" compass rose.
