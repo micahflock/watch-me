@@ -34,7 +34,7 @@ CX, CY = 107, 90       # bezel centre (sandbox renders standalone, no overlays)
 # MossGrove's 9-step HR ramp (mirrors MossGrove.mc HR_BOUNDS/HR_RAMP): cool at
 # rest -> hot for hard efforts, the hot end on Garmin's zones (Z1 amber x2,
 # Z2 orange, Z3 red, Z4 pink, Z5 purple; owner 2026-10, "C keep105" in
-# zone_color_compare.py). BioBloom keeps the older ramp (algos/biobloom.py).
+# archive/sketches/zone_color_compare.py). BioBloom keeps the older ramp (algos/biobloom.py).
 HR_BOUNDS = [60, 80, 98, 105, 117, 137, 156, 176]
 HR_RAMP = [COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_YELLOW,
            COLOR_YELLOW, COLOR_ORANGE, COLOR_RED, COLOR_PINK, COLOR_PURPLE]

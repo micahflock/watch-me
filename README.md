@@ -130,7 +130,7 @@ Every visual decision went through the same loop: **prototype in a Python
 model of the watch → render comparison sheets → I pick or redirect → only
 then port to Monkey C, build, test in the simulator, and wear it.** Almost
 every image below is one of those comparison sheets, straight from
-[`sketches/out/`](sketches/out).
+[`archive/sketches/out/`](archive/sketches/out).
 
 ### 1. Groundwork: a framework for a 2016 watch
 
@@ -160,12 +160,12 @@ of the display, each shown at 07:50 (mid-run), 13:05 (after lunch) and 21:45
 (end of day):
 
 <p align="center">
-  <img src="sketches/out/weathered-truchet.png" alt="Weathered Truchet: quarter-circle arc tiles in orange, blue and grey, multiplying over the day">
+  <img src="archive/sketches/out/weathered-truchet.png" alt="Weathered Truchet: quarter-circle arc tiles in orange, blue and grey, multiplying over the day">
   <br><sub><b>Weathered Truchet</b>: arc tiles unlock through the day; step count sets their scale, HR their colour</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/strata-flock.png" alt="Strata + flock: a murmuration of coloured dots above a growing pile of sediment layers coloured by heart-rate zone">
+  <img src="archive/sketches/out/strata-flock.png" alt="Strata + flock: a murmuration of coloured dots above a growing pile of sediment layers coloured by heart-rate zone">
   <br><sub><b>Strata + flock</b>: the day settles as heart-rate-coloured sediment (the past) under a murmuration of dots (the present minute)</sub>
 </p>
 
@@ -184,13 +184,13 @@ time, day and date, signal bars, battery chunks, and a white border with a
 slanted notch that frames the organic field. To check that design against
 the real screen, I rebuilt it in **Claude Design**, set up as a
 pixel-accurate studio. The prompt in
-[`docs/claude-design-prompt.md`](docs/claude-design-prompt.md) encodes every
+[`archive/docs/claude-design-prompt.md`](archive/docs/claude-design-prompt.md) encodes every
 device rule (exact 215×180 semi-round mask, the 14-colour palette with a
 pass/fail checker, no anti-aliasing, mock data panels with stress presets
 like 23:59 and "everything null"), so my layout could be checked against
 the real constraints before any Monkey C was written.
 
-A second prompt, [`docs/claude-design-handoff.md`](docs/claude-design-handoff.md),
+A second prompt, [`archive/docs/claude-design-handoff.md`](archive/docs/claude-design-handoff.md),
 exports a finished design as a build spec: real glyph-strip PNGs, element
 table, data bindings named after the code's own fields, and keep-out
 rectangles. That made the port to Monkey C mechanical. The organic field
@@ -223,17 +223,17 @@ The first organic layer for two-worlds grew **from the centre outward**.
 Four directions were sketched:
 
 <p align="center">
-  <img src="sketches/out/chronodish-scrub.png" alt="Chronodish: concentric rings coloured by effort, growing outward through the day">
+  <img src="archive/sketches/out/chronodish-scrub.png" alt="Chronodish: concentric rings coloured by effort, growing outward through the day">
   <br><sub><b>chronodish</b>: concentric effort bands. Legible, but a chart, not an organism</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/colony-scrub.png" alt="Colony: a stippled cloud of coloured crosses spreading across a petri-dish outline">
+  <img src="archive/sketches/out/colony-scrub.png" alt="Colony: a stippled cloud of coloured crosses spreading across a petri-dish outline">
   <br><sub><b>colony</b>: stippled mould creeping across a dish. Too uniform and too expensive</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/biobloom-scrub.png" alt="BioBloom: a branching filament network that extends only with movement, with colony blooms at hard-effort moments">
+  <img src="archive/sketches/out/biobloom-scrub.png" alt="BioBloom: a branching filament network that extends only with movement, with colony blooms at hard-effort moments">
   <br><sub><b>biobloom</b> (kept): a filament skeleton that only extends when I move, with colonies blooming at hard efforts</sub>
 </p>
 
@@ -241,7 +241,7 @@ Sleep seeded the morning colony, so a good night and a bad one looked
 different from the first glance of the day:
 
 <p align="center">
-  <img src="sketches/out/scenarios.png" alt="Two rows of BioBloom over a day: an active day after a good night grows a sprawling network; a sedentary day after a bad night stays a small red clump">
+  <img src="archive/sketches/out/scenarios.png" alt="Two rows of BioBloom over a day: an active day after a good night grows a sprawling network; a sedentary day after a bad night stays a small red clump">
 </p>
 
 BioBloom shipped and ran on the wrist, and it was also where I learned how
@@ -259,12 +259,12 @@ BioBloom was alive, but hard to *read*. For V2 I asked for something more
 legible. The first answer put time on an axis:
 
 <p align="center">
-  <img src="sketches/out/dayring-active.png" alt="Dayring: a 24-hour ring coloured by heart-rate zone with wedges bulging outward for activity">
+  <img src="archive/sketches/out/dayring-active.png" alt="Dayring: a 24-hour ring coloured by heart-rate zone with wedges bulging outward for activity">
   <br><sub><b>dayring</b>: a 24 h heart-rate clock, wedges bulge with activity</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/dayspiral-active.png" alt="Dayspiral: a nautilus spiral winding out from midnight, coloured by heart rate, with spurs for activity">
+  <img src="archive/sketches/out/dayspiral-active.png" alt="Dayspiral: a nautilus spiral winding out from midnight, coloured by heart rate, with spurs for activity">
   <br><sub><b>dayspiral</b>: a nautilus winding out from midnight</sub>
 </p>
 
@@ -275,17 +275,17 @@ movement, minutes per HR zone, discrete effort episodes), drawn three
 organic ways:
 
 <p align="center">
-  <img src="sketches/out/nebula-active.png" alt="Nebula: a diffuse cloud of blue dots with haloed magenta and red stars for effort episodes">
+  <img src="archive/sketches/out/nebula-active.png" alt="Nebula: a diffuse cloud of blue dots with haloed magenta and red stars for effort episodes">
   <br><sub><b>nebula</b>: a gas cloud with haloed stars for efforts</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/neurons-active.png" alt="Neurons: a blue branching dendrite network with bright firing synapses">
+  <img src="archive/sketches/out/neurons-active.png" alt="Neurons: a blue branching dendrite network with bright firing synapses">
   <br><sub><b>neurons</b>: a dendrite network with firing synapses</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/moss-active.png" alt="Moss: a scattered bed of green crosses with amber grains and magenta sporangia clusters">
+  <img src="archive/sketches/out/moss-active.png" alt="Moss: a scattered bed of green crosses with amber grains and magenta sporangia clusters">
   <br><sub><b>moss</b>: a lumpy green bed with bright fruiting bodies</sub>
 </p>
 
@@ -296,12 +296,12 @@ by tufts that merge into one organism, was tuned through a grid of
 colour and sleep treatments:
 
 <p align="center">
-  <img src="sketches/out/moss_cushion-active.png" alt="Moss cushion variant: a solid two-tone green mound with effort beads">
+  <img src="archive/sketches/out/moss_cushion-active.png" alt="Moss cushion variant: a solid two-tone green mound with effort beads">
   <br><sub><b>moss_cushion</b>: the cohesion breakthrough, one solid two-tone mound</sub>
 </p>
 
 <p align="center">
-  <img src="sketches/out/explore-best4.png" width="720" alt="Grid of the four strongest moss_grove combinations at 06:30, 16:30 and 23:30, varying tuft colour and core colour">
+  <img src="archive/sketches/out/explore-best4.png" width="720" alt="Grid of the four strongest moss_grove combinations at 06:30, 16:30 and 23:30, varying tuft colour and core colour">
   <br><sub>The four strongest grove combinations across a day. Tufts tinted by dominant zone, sleep drawn on top, went forward</sub>
 </p>
 
@@ -323,7 +323,7 @@ broken by three wake-ups). The **silver root star** won because it gives
 sleep its own shape *and* its own colours:
 
 <p align="center">
-  <img src="sketches/out/sleep-compare-nights.png" alt="Grid: three sleep treatments (root star, concentric blue pool, lunar clump) across rested, OK, short and broken nights">
+  <img src="archive/sketches/out/sleep-compare-nights.png" alt="Grid: three sleep treatments (root star, concentric blue pool, lunar clump) across rested, OK, short and broken nights">
 </p>
 
 **Effort beads.** Where should beads sit, and should they overlap? Over
@@ -331,7 +331,7 @@ several rounds they went from riding tufts, to stalked "podetia," to a
 golden-angle ring layout that grows with the moss:
 
 <p align="center">
-  <img src="sketches/out/bead-contiguity-compare.png" alt="Two rows comparing bead placement over a day: beads on orbits versus beads hugging the rim">
+  <img src="archive/sketches/out/bead-contiguity-compare.png" alt="Two rows comparing bead placement over a day: beads on orbits versus beads hugging the rim">
 </p>
 
 **Heart-rate colours.** The ramp was remapped onto Garmin's own zone
@@ -339,14 +339,14 @@ boundaries so a bead's colour means the same thing as the watch's zone
 display. Option *C keep105* (bottom row) shipped:
 
 <p align="center">
-  <img src="sketches/out/zone-color-compare.png" alt="Four rows comparing heart-rate colour ramps on the moss at four moments, with each row's bpm-to-colour ramp at the right">
+  <img src="archive/sketches/out/zone-color-compare.png" alt="Four rows comparing heart-rate colour ramps on the moss at four moments, with each row's bpm-to-colour ramp at the right">
 </p>
 
 **The leading edge.** A 1 px dark-blue rim with 30 short perpendicular
 tendrils gives the moss a growing edge:
 
 <p align="center">
-  <img src="sketches/out/rim-tendrils-zoom.png" alt="Close-up at 6x: no rim, dark-blue rim, rim plus 30 tendrils, rim plus 15 tendrils">
+  <img src="archive/sketches/out/rim-tendrils-zoom.png" alt="Close-up at 6x: no rim, dark-blue rim, rim plus 30 tendrils, rim plus 15 tendrils">
 </p>
 
 ### 8. Polishing the chrome
@@ -356,14 +356,14 @@ off the glass for some bearings. Now it follows the screen's own edges and
 draws last, so it's visible at every bearing:
 
 <p align="center">
-  <img src="sketches/out/north-tracks.png" alt="Before and after: the north marker sampled every 10 degrees on a circular track, partly hidden, versus a track that follows the flat top and bottom screen edges, always visible">
+  <img src="archive/sketches/out/north-tracks.png" alt="Before and after: the north marker sampled every 10 degrees on a circular track, partly hidden, versus a track that follows the flat top and bottom screen edges, always visible">
 </p>
 
 **The GPS indicator** went through five rounds of a pixel-art satellite
 dish...
 
 <p align="center">
-  <img src="sketches/out/gps-dish-compare.png" alt="Grid of satellite-dish icon designs in grey, amber and blue states beside the date, each shown in context on the face">
+  <img src="archive/sketches/out/gps-dish-compare.png" alt="Grid of satellite-dish icon designs in grey, amber and blue states beside the date, each shown in context on the face">
 </p>
 
 ...and was then dropped entirely. The existing signal bars were re-tooled
@@ -371,11 +371,11 @@ to show GPS fix age instead (blue fresh / amber stale / grey none), and
 phone connection moved to a blue ring around the glass:
 
 <p align="center">
-  <img src="sketches/out/uplink-gps-compare.png" width="720" alt="Three rows: the dish icon, rejected orange GPS bars, and the shipped amber GPS bars, each across fresh, stale and no-fix states">
+  <img src="archive/sketches/out/uplink-gps-compare.png" width="720" alt="Three rows: the dish icon, rejected orange GPS bars, and the shipped amber GPS bars, each across fresh, stale and no-fix states">
 </p>
 
 <p align="center">
-  <img src="sketches/out/phone-ring-compare.png" width="560" alt="Phone-connected options: blue ring, white ring, thicker field border, each connected and disconnected">
+  <img src="archive/sketches/out/phone-ring-compare.png" width="560" alt="Phone-connected options: blue ring, white ring, thicker field border, each connected and disconnected">
 </p>
 
 **Hand-placed anti-aliasing.** The display can't anti-alias, so the white
@@ -384,7 +384,7 @@ where a pixel barely touches the ideal line and light grey where it mostly
 does (bottom row, *dk + lt ramp*, shipped):
 
 <p align="center">
-  <img src="sketches/out/border-aa-zoom.png" width="560" alt="10x close-ups of the white border's slant, rims and notch with five grey anti-aliasing treatments">
+  <img src="archive/sketches/out/border-aa-zoom.png" width="560" alt="10x close-ups of the white border's slant, rims and notch with five grey anti-aliasing treatments">
 </p>
 
 **CONTAINMENT BREACH** started as a real error state in V1, a red warning
@@ -394,7 +394,7 @@ is maxed out. Three banner styles were tried at several heights before one was
 chosen:
 
 <p align="center">
-  <img src="sketches/out/breach-compare.png" width="720" alt="Grid of three CONTAINMENT BREACH banner styles over heavy-day faces">
+  <img src="archive/sketches/out/breach-compare.png" width="720" alt="Grid of three CONTAINMENT BREACH banner styles over heavy-day faces">
 </p>
 
 ---
@@ -430,7 +430,7 @@ the watch's limits.
   replayed gap, and a 3-hour HR sparkline.
 
 <p align="center">
-  <img src="sketches/out/ram-breakdown.png" width="640" alt="Bar chart of measured RAM by UI component for the V1 face: the BioBloom dish and font bitmaps dominate">
+  <img src="archive/sketches/out/ram-breakdown.png" width="640" alt="Bar chart of measured RAM by UI component for the V1 face: the BioBloom dish and font bitmaps dominate">
   <br><sub>Measured RAM per component (V1), from an on-simulator profiling test</sub>
 </p>
 
@@ -466,7 +466,7 @@ My first step was a conversation with Opus 4.8. I wanted to:
 - find out which sensors are exposed to a watch face.
 
 The output of that conversation was a
-[prompt to kick off the software side of the project](docs/kickoff-prompt.md)
+[prompt to kick off the software side of the project](archive/docs/kickoff-prompt.md)
 in Claude Code.
 
 Separately, I used a pixel-art program to make a first pass of the watch face
@@ -516,10 +516,13 @@ faces/biobloom/        BioBloom full-screen, no chrome
 faces/devface/         unstyled integration testbed; faces/flashtest: sideload check
 core/src/              shared library: data, compositor, glyphs, astronomy,
                        generative engines (GenArt, MossGrove, BioBloom, ...)
-sketches/              the Python sandbox, every exploration script, and out/
-                       with all the comparison sheets in this README
-docs/                  device notes, memory and watchdog playbooks, the kickoff
-                       and Claude Design prompts, development guide
+sketches/              the Python sandbox: the device model, the day feed,
+                       and the mirrors of the engines and chrome
+archive/               every finished experiment: the exploration scripts and
+                       algos, the comparison sheets in this README, and the
+                       kickoff and Claude Design prompts (index: archive/README.md)
+docs/                  device notes, memory and watchdog playbooks,
+                       development guide
 bin/                   ready-to-sideload PRGs
 ```
 

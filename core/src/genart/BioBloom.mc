@@ -4,9 +4,9 @@ using Toybox.Graphics as Gfx;
 // momentum) is ported from sketches/algos/biobloom.py, the parity reference for
 // dish STATE (the unit tests pin nbloom/coln/nfil to it). The PARAMETRIC
 // skeleton — arms stored as scalars and regenerated at render with a coarse
-// fixed-amp walk, coloured by the colony LUT — mirrors sketches/algos/
+// fixed-amp walk, coloured by the colony LUT — mirrors archive/sketches/algos/
 // biobloom_parametric_coarse.py (the reference for the render + save/load). The
-// morning sleep-seed colony is ported from sketches/algos/biobloom_morning.py.
+// morning sleep-seed colony is ported from archive/sketches/algos/biobloom_morning.py.
 //
 // A filament skeleton grows from the centre, extending ONLY when you move, so a
 // lazy day stays small and an active day reaches outward. New filaments spawn as

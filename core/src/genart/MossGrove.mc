@@ -110,7 +110,7 @@ class MossGrove {
 
     // 9-step HR ramp (cool rest -> hot effort), finer than GenArt.ZONE_COLORS.
     // The hot end follows Garmin's HR zones (%-of-max floors 98/117/137/156/176,
-    // estimated max HR ~195; owner 2026-10, sketches/zone_color_compare.py
+    // estimated max HR ~195; owner 2026-10, archive/sketches/zone_color_compare.py
     // "C keep105"): Z1 amber (two slots so ACTIVE = slot 4 stays at 105 bpm),
     // Z2 orange, Z3 red, Z4 pink, Z5 purple.
     const HR_BOUNDS = [60, 80, 98, 105, 117, 137, 156, 176];

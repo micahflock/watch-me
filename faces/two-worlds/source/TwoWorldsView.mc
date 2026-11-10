@@ -2,7 +2,7 @@ using Toybox.WatchUi as Ui;
 using Toybox.Graphics as Gfx;
 using Toybox.Math as Math;
 
-// TwoWorldsView — the "two worlds" face (design: docs/claude-design-handoff.md).
+// TwoWorldsView — the "two worlds" face (design: archive/docs/claude-design-handoff.md).
 //
 // A hard-edged ARTIFICIAL layer (7-seg bitmap clock, day/date readout, phone
 // uplink bars, battery chunks, sun/north marker) floats over the organic
@@ -351,7 +351,7 @@ class NorthComponent {
     // at 6 around a northern-hemisphere noon. Only the radius shrinks, never
     // the angle, so the bearing stays exact; centre y in [5.5, 172.5] keeps
     // every pixel of the marker (corners reach ~6.6 px) on the glass.
-    // sketches/north_compare.py sweeps it over every bearing.
+    // archive/sketches/north_compare.py sweeps it over every bearing.
     function rimR(ry) {
         var r = 101.7;
         if (-ry * r > 84.5) { r = 84.5 / -ry; }        // top edge: centre y 5.5

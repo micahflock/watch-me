@@ -27,14 +27,16 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 
 import device
+import harness
 from device import idiv, imod, isin, hash16, COLOR_DK_GRAY
 from day import synthetic_day
 
 
 def load_mod(name):
-    path = os.path.join(HERE, "algos", name + ".py")
+    path = harness.algo_path(name)
     spec = importlib.util.spec_from_file_location("algo_" + name, path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)

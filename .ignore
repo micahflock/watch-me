@@ -1,0 +1,4 @@
+# Search tools that honour .ignore (ripgrep, and with it Claude Code's Grep)
+# skip the archive of finished experiments unless pointed at it directly.
+# See archive/README.md.
+archive/

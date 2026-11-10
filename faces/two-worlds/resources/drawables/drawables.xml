@@ -5,7 +5,7 @@
   - Font* : custom bitmap glyph strips exported from the design (white glyphs on
     a transparent background, already palette-exact: pure #FFFFFF + transparent,
     no antialiasing, so monkeyc keys out transparency with no dithering). Blitted
-    cell-by-cell via core StripGlyphs. See docs/claude-design-handoff.md.
+    cell-by-cell via core StripGlyphs. See archive/docs/claude-design-handoff.md.
       FontTime  180x30, ten 18px 7-seg digits (0..9)
       FontColon 4x30,   the ":" glyph (two dots), drawn directly
       FontDow   126x10, seven 18px day sprites (SU MO TU WE TH FR SA)

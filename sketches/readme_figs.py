@@ -23,11 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import device
 import twchrome
-from bead_compare import load_algo, mins
 from breach_compare import BREACH_ACT
 from day import synthetic_day
-from north_compare import chrome_state
-from twchrome import ChromeDc
+from harness import load_algo, mins
+from twchrome import ChromeDc, chrome_state
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "docs", "img")

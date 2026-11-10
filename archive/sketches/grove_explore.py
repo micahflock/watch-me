@@ -13,6 +13,7 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 
 import device
 import grove_base

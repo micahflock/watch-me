@@ -443,7 +443,8 @@ SNAPSHOTS = [(7 * 60 + 50, "07:50 mid-run"),
 
 
 def main():
-    outdir = sys.argv[1] if len(sys.argv) > 1 else "sketches/out"
+    outdir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "out")
     os.makedirs(outdir, exist_ok=True)
     seed = 20260612
     steps, hr, mov = simulate_day(seed)

@@ -30,11 +30,13 @@ All radii below are FINAL px (already scaled), like the episode bead radius.
 import importlib.util
 import os
 
+import harness
+
 from device import (idiv, imod, hash16, COLOR_TRANSPARENT, COLOR_BLACK,
                     COLOR_WHITE, COLOR_BLUE, COLOR_DK_BLUE, COLOR_DK_GRAY)
 from daybuckets import px, py
 
-_p = os.path.join(os.path.dirname(__file__), "moss_grove.py")
+_p = harness.algo_path("moss_grove")       # the live mirror, sketches/algos
 _spec = importlib.util.spec_from_file_location("moss_grove", _p)
 mg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mg)

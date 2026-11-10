@@ -16,7 +16,7 @@ using Toybox.Math as Math;
 // battery, readout, time, breach, north, debug.
 //
 // The uplink bars report GPS fix recency, not the phone link (owner, 2026-10;
-// they replaced the satellite-dish icon -- sketches/uplink_gps_compare.py);
+// they replaced the satellite-dish icon -- archive/sketches/uplink_gps_compare.py);
 // the phone link is a blue ring round the glass edge instead (PhoneRing).
 class TwoWorldsV2View extends Ui.WatchFace {
 
@@ -293,7 +293,7 @@ class BorderComponent {
 // between rows 89 and 90, so r 107 and 106 about both, plus the two flat
 // chord rows at the top and bottom. Fitted to the SDK sim's midpoint
 // drawCircle: no gaps against the ideal 2 px edge band, a few 3 px spots on
-// the diagonals. sketches/phone_ring_compare.py option A.
+// the diagonals. archive/sketches/phone_ring_compare.py option A.
 class PhoneRingComponent {
     function render(dc, state) {
         if (state.phoneConnected != true) { return; }

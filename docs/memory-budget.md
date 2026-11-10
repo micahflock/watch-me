@@ -37,7 +37,7 @@ limit, split the test suite or trim fixtures.
 analog of `testLayerCostProfile`: it allocates each `onLayout` component in render
 order and records the `getSystemStats().usedMemory` **delta** each one adds. Run
 `scripts/test.sh two-worlds` and read the `RAM bytes:` debug line. Render the chart
-with `python3 sketches/ram_breakdown.py` (→ `sketches/out/ram-breakdown.png`).
+with `python3 archive/sketches/ram_breakdown.py` (→ `archive/sketches/out/ram-breakdown.png`).
 
 Measured deltas (SDK 9.2.0, debug sim) — the face's own allocation footprint:
 

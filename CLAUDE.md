@@ -1,19 +1,36 @@
 # CLAUDE.md
 
-Connect IQ watch-face framework for the **Garmin Forerunner 735XT** only
+Connect IQ watch faces for the **Garmin Forerunner 735XT** only
 (`fr735xt`, API **2.4 max** — nothing from CIQ 3.0+ compiles or runs).
+
+## What is live, and what to leave alone
+
+- **The face on the wrist is `faces/two-worlds-v2`**: the MossGrove organism
+  (`core/src/genart/MossGrove.mc`) under the two-worlds chrome
+  (`TwoWorldsV2View.mc`). "The face" means this one unless told otherwise.
+- `faces/devface` is the unstyled testbed and holds the shared-core unit
+  tests; `faces/flashtest` is the sideload smoke test.
+- `sketches/` is the Python sandbox: the device model plus mirrors of the
+  engine and chrome (`sketches/README.md`).
+- **Retired but still in place:** `faces/two-worlds` (V1), `faces/biobloom`,
+  `faces/strataflock`, and their engines `BioBloom`/`BioState`/`StrataField`/
+  `Flock` in `core/src/genart`. Don't read or change them unless the task is
+  about them. Two things still hang off V1: V2 takes its fonts, launcher icon
+  and settings from `faces/two-worlds/resources` (jungle `resourcePath`), and
+  the layer cost/RAM profiling tests live in `faces/two-worlds/tests`.
+- **`archive/` is finished experiments. Don't read, search or edit it unless
+  the owner asks about a past experiment** — then start at
+  `archive/README.md`, the index. `/.ignore` keeps Grep out of it by default.
 
 ## Toolchain — do not set it up by hand
 
 `scripts/build.sh`, `scripts/test.sh`, and `scripts/sim.sh` provision the
-entire toolchain themselves on first use (`scripts/ensure-toolchain.sh`: SDK
-manager CLI → agreement+login → SDK 9.2.0 with simulator → fr735xt device
-files → signing key → headless-sim libs). Requirements: `GARMIN_USERNAME` /
-`GARMIN_PASSWORD` in the environment. On Claude Code on the web the container
-is cached after first use, so warm sessions have everything already. If a cold
-provision or an SDK tool misbehaves (403/truncated download fetching the
-manager CLI, monkeydo exiting silently, debug-build OOM), read
-**docs/toolchain-notes.md** FIRST — the known failures and fixes are there.
+entire toolchain themselves on first use (`scripts/ensure-toolchain.sh`).
+Requirements: `GARMIN_USERNAME` / `GARMIN_PASSWORD` in the environment;
+without them nothing builds, so say so rather than guessing at build results.
+On Claude Code on the web the container is cached after first use. If a cold
+provision or an SDK tool misbehaves (403/truncated download, monkeydo exiting
+silently, debug-build OOM), read **docs/toolchain-notes.md** FIRST.
 
 ## Workflows
 
@@ -23,64 +40,42 @@ scripts/test.sh [face]              # API-2.4 symbol lint + the face's unit test
 scripts/sim.sh <face> --debug       # headless sim; console prints "used/totalK p<peak> <ms>"
 scripts/memcheck.sh <face>          # memory limit / ceiling / PRG size
 scripts/build.sh two-worlds-v2 --diag  # on-wrist diagnostic readout (release build)
+python3 sketches/scrub.py <algo>    # sandbox: one algo across a simulated day, no SDK
 ```
 
 **Wrist-only behaviour → the diag build.** `bin/two-worlds-v2-diag.prg` has the
 face's app id (sideload it IN PLACE of `two-worlds-v2.prg`) and swaps the moss
-for a readout one minute in ten (:00, :10, ...): GPS from `Activity.currentLocation` and
-`Position.getInfo()`, the remembered fix, the last replayed gap, the biggest
-bead's slots, and a 3-hour HR-history sparkline (`faces/two-worlds-v2/diag/`;
-the release build compiles `release/DiagStub.mc` instead).
+for a readout one minute in ten (:00, :10, ...): GPS from both position APIs,
+the remembered fix, the last replayed gap, the biggest bead's slots, and a
+3-hour HR-history sparkline (`faces/two-worlds-v2/diag/`; the release build
+compiles `release/DiagStub.mc` instead).
 
-### Generative-art sandbox — iterate without building a PRG
+After a change to the face, rebuild and commit the tracked PRGs
+(`bin/two-worlds-v2.prg` and `-diag.prg`) so the repo's download matches the
+source.
 
-**Required first step for any new biomorphic/generative display:** prototype
-it as a `sketches/algos/<name>.py` module and iterate on it with `scrub.py`
-in the Python sandbox BEFORE writing any Monkey C or touching the Garmin SDK.
-Do not skip this even for "simple" ideas — the sandbox renders in under a
-second; a PRG build/sim cycle is minutes.
+### Visual changes go through the sandbox first
 
-**STOP after the sandbox and confirm.** Show the sandbox renders (scrub strip
-and/or before/after comparison) and wait for explicit approval before porting
-anything to Monkey C or building a PRG — the owner usually wants to iterate
-on the sandbox output first. This applies to tweaks of existing faces, not
-just new displays. Only after sign-off: port, build, sim, and update the
-tracked `bin/<face>.prg`.
+**Required first step for any new or changed display (organism or chrome):**
+prototype it in the Python sandbox and iterate there BEFORE writing any
+Monkey C or touching the Garmin SDK. Do not skip this even for "simple" ideas.
 
-```bash
-python3 sketches/scrub.py <algo> [--seed N] [--at 7:50,13:05,21:45]
-```
+**STOP after the sandbox and confirm.** Show the renders (scrub strip and/or
+before/after comparison sheet) and wait for explicit approval before porting
+anything to Monkey C or building a PRG — the owner usually wants to iterate on
+the sandbox output first. This applies to tweaks of the existing face, not
+just new displays. Only after sign-off: port, build, sim, update `bin/`.
 
-Renders `sketches/algos/<algo>.py` across a simulated biometric day into a
-captioned strip PNG (`sketches/out/<algo>-scrub.png`) in well under a second —
-no SDK, no PRG. Captions show the watchdog proxy (estimated VM instructions vs
-~25k), state bytes (RAM proxy), and any off-palette color use. **The proxy is a
-loose LOWER BOUND, not proof of safety** — it cannot see the per-element
-method-call cost (`coordX`/`packPt`/`setColor`/`drawLine` dispatch) that
-dominates on-device, so a frame it calls fine can still trip the watchdog on the
-wrist. When a trip happens, the simulator is ground truth: **docs/watchdog-debugging.md**.
-
-- `sketches/device.py` is a **faithful** fr735xt model, not a loose mock:
-  `hash16` / `isin` (integer sine LUT) / `zoneIndex` / the 14-color palette
-  are bit-identical to `core/src/genart/GenArt.mc`. Use `idiv`/`imod` wherever
-  Monkey C writes `a / b` / `a % b` on Numbers — Python's `//`/`%` floor and
-  so DISAGREE on negatives (e.g. `-6200 / 127` is `-48` on the watch, `-49`
-  with `//`). The `Dc` exposes only real `Gfx` primitives, counts every call,
-  and snaps colors to the palette.
-- An algo module defines `build() -> {"background", "components": [...]}`;
-  each component is the same duck-typed `render(dc, state)` (+ optional
-  `advance(state)`, `state_bytes()`) the Compositor draws. scrub replays the
-  day minute by minute so stateful engines accrete exactly as on-device.
-- Because the primitives match 1:1, a sandbox algo ports to a `.mc` face
-  **mechanically** (`Gfx.` → `using`, `idiv(a,b)` → `a / b`, `var`/syntax).
-  `sketches/algos/strataflock.py` is the line-for-line port of the shipped
-  face, kept as the **parity reference** — if it stops matching
-  `sketches/out/strataflock-ondevice.png`, the mirror has drifted from
-  `GenArt.mc`/`StrataField.mc`/`Flock.mc` and `device.py` is what to fix.
-- Arc/circle rasterization is the one thing only the SDK sim renders exactly,
-  so the final fidelity check is still `scripts/build.sh` + `scripts/sim.sh`.
-- The older `sketches/genart_sketches.py` is the pre-port concept sketchbook
-  (loose float math, separate `ihash`); it predates this faithful harness.
+- New work starts in `sketches/` on `harness.py` (don't copy helpers between
+  scripts). When its decision has shipped, move the script and sheets to
+  `archive/` and add an index row (`archive/README.md`).
+- Port with `idiv`/`imod` wherever Monkey C writes `a / b` / `a % b` on
+  Numbers: Python's `//` and `%` floor, so they DISAGREE on negatives.
+- The scrub caption's VM-instruction figure is a **loose LOWER BOUND, not
+  proof of safety** — it cannot see per-element method-call cost. The
+  simulator is ground truth: **docs/watchdog-debugging.md**.
+- Everything else (the mirrors, parity references, generators):
+  `sketches/README.md`.
 
 ## Hard constraints (details: docs/api-2.4-notes.md)
 
@@ -90,23 +85,23 @@ wrist. When a trip happens, the simulator is ground truth: **docs/watchdog-debug
   — use `MathX`). `scripts/test.sh` lints for these.
 - 64 KB watch-face RAM; project policy ceiling 90% (~57.6 KB) for release
   builds. Watchdog: ~25–30k VM instructions per `onUpdate` — the binding
-  constraint. One `onUpdate` per minute; no seconds hand. Measured numbers
-  and how to re-measure: docs/memory-budget.md.
+  constraint, and V2's saturated frame measured **under ~1.6k to spare**
+  (2026-10): anything added to the face needs the margin check in
+  docs/watchdog-debugging.md.
+  One `onUpdate` per minute; no seconds hand. Numbers: docs/memory-budget.md.
+- **monkeyc does not strip unreferenced classes.** A face's jungle lists the
+  core files it uses, one by one; pulling in all of `core/src` has twice
+  pushed a face out of memory.
 - **Debugging a watchdog trip / "Code Executed Too Long" crash / render-cost
   regression → read `docs/watchdog-debugging.md` FIRST.** It has the sim
-  watchdog reproduction (pin a saturated dish, run the *release* PRG), the
-  crash-PC decode against `bin/<face>.prg.debug.xml`, the real per-layer cost
-  profile (`testLayerCostProfile`), the cost levers that worked, and the dead
-  ends (the sandbox proxy's blind spot, `INK_MAX` shuffling, the midnight-reset
-  red herring) — four rounds of lessons so the next trip takes one.
+  reproduction (pin a saturated record, run the *release* PRG), the crash-PC
+  decode, the per-layer cost profile, the levers that worked and the dead ends.
 - Display 215×180 semiround, fixed 14-color palette (COLOR_YELLOW is amber
   0xFFAA00). No live GPS in watch faces, but with the **`Positioning`
   permission in the manifest** `Position.getInfo()` (and
   `Activity.Info.currentLocation`) give the device's last known fix — without
   the permission the fr735xt returns NO position at all (wrist, 2026-10).
-  `DataSource` prefers it, falls back to the `lat`/`lng` app properties, and
-  infers fix recency (docs/api-2.4-notes.md). Every face that compiles
-  `core/src/data` must declare `Positioning`.
+  Every face that compiles `core/src/data` must declare `Positioning`.
 
 ## Architecture (details: docs/architecture.md)
 
@@ -115,7 +110,7 @@ duck-typed `render(dc, state)` objects drawn by the Compositor; allocate
 everything in `onLayout`, zero per-tick allocation in `onUpdate`. Old-style
 Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
 
-## Simulator gotchas (learned the hard way)
+## Simulator gotchas (more: docs/toolchain-notes.md)
 
 - Loading a PRG onto an already-running simulator hangs monkeydo with no
   output. Always go through the scripts (`ciq_start_sim fresh` restarts the
@@ -127,19 +122,18 @@ Monkey C: `using` not `import`, untyped vars, build with `-l 0`.
   `pgrep -af Xvfb`), then ImageMagick `convert`.
 - Release builds stub out `Instrument`; read release RAM from the sim's
   status bar instead of the console line.
-- `scripts/test.sh <face>` only runs tests for faces with a `tests/` dir
-  (devface holds the shared-core suite); `monkeydo -t` with no (:test) cases
-  exits silently. Killing a foreground `sim.sh` run (e.g. wrapping it in
-  `timeout`) can take the whole Xvfb/sim stack down with it — launch it
-  detached (`... & disown`) before screenshotting. More: docs/toolchain-notes.md.
+- The two-worlds-v2 DEBUG build runs out of memory as a face; verify render
+  changes on the RELEASE PRG.
+- `scripts/test.sh <face>` only runs tests for faces with a `tests/` dir;
+  `monkeydo -t` with no (:test) cases exits silently. Killing a foreground
+  `sim.sh` run (e.g. wrapping it in `timeout`) can take the whole Xvfb/sim
+  stack down — launch it detached (`... & disown`) before screenshotting.
 
 ## Sideloading
 
 Copy `bin/<face>.prg` to the watch's `/GARMIN/APPS` over USB
-(docs/sideload.md). `bin/flashtest.prg`, `bin/devface.prg`,
-`bin/two-worlds.prg`, and `bin/two-worlds-v2.prg` are tracked in the repo for
-direct download. `devface` needs a location (a GPS fix from any GPS activity,
-or `lat`/`lng` set in the app settings on the watch), else it shows the "?"
-compass rose; `two-worlds` and `two-worlds-v2` (shared settings) likewise need
-one for their sun/north marker. The tracked `devface` PRG predates the GPS fix
-(2026-10) and reads only `lat`/`lng` until rebuilt.
+(docs/sideload.md). The tracked PRGs are `two-worlds-v2`, `two-worlds-v2-diag`,
+`two-worlds`, `devface` and `flashtest`. The two-worlds faces (shared settings)
+need a location for the sun/north marker: a GPS fix from any GPS activity, or
+`lat`/`lng` set in the app settings. The tracked `devface` PRG predates the
+GPS fix (2026-10) and reads only `lat`/`lng` until rebuilt.

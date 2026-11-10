@@ -31,8 +31,10 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 
 import device
+import harness
 from day import synthetic_day
 
 OUT = os.path.join(os.path.dirname(__file__), "out")
@@ -61,7 +63,7 @@ def mins(s):
 
 
 def load_algo(name):
-    path = os.path.join(os.path.dirname(__file__), "algos", name + ".py")
+    path = harness.algo_path(name)
     spec = importlib.util.spec_from_file_location("algo_" + name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

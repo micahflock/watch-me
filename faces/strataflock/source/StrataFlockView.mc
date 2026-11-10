@@ -1,7 +1,7 @@
 using Toybox.WatchUi as Ui;
 using Toybox.Graphics as Gfx;
 
-// StrataFlockView — biometric algorithmic art (docs in sketches/README.md,
+// StrataFlockView — biometric algorithmic art (docs in archive/README.md,
 // concept 4). Bottom: StrataField, the day accreting as colored sediment.
 // Sky: Flock, a murmuration living in the present minute. A small 7-seg
 // clock sits top-center; the flock treats its rect as a keep-out, so the

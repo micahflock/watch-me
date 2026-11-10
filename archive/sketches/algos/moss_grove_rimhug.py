@@ -23,6 +23,8 @@ visible before anything ports.
 import importlib.util
 import os
 
+import harness
+
 from device import (idiv, imod, hash16, isin, account,
                     COLOR_TRANSPARENT, COLOR_BLACK,
                     COLOR_DK_GREEN, COLOR_GREEN, COLOR_YELLOW)
@@ -30,7 +32,7 @@ from daybuckets import px, py
 from daysoma import zone_color, dominant_zone, ACTIVE
 from mossutil import edge, shape_params
 
-_p = os.path.join(os.path.dirname(__file__), "moss_grove.py")
+_p = harness.algo_path("moss_grove")       # the live mirror, sketches/algos
 _spec = importlib.util.spec_from_file_location("moss_grove", _p)
 mg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mg)

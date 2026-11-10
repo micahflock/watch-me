@@ -37,11 +37,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import device
 import twchrome
-from bead_compare import OUT, load_algo, mins, sheet
 from day import synthetic_day
+from harness import OUT, load_algo, mins, sheet
 from device import COLOR_DK_GRAY, COLOR_LT_GRAY, COLOR_TRANSPARENT
-from north_compare import chrome_state
-from twchrome import ChromeDc
+from twchrome import ChromeDc, chrome_state
 
 W, H = device.W, device.H
 CX, CY, R = 107.5, 90.7, 95.8

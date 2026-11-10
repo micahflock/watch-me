@@ -6,7 +6,7 @@ using Toybox.Graphics as Gfx;
 // Two definitions of the SAME module symbol exist:
 //   - the (:debug) version below does real work,
 //   - the (:release) version is zero-cost stubs,
-// and the active jungle's excludeAnnotations strips one. Because the stubs share
+// and the build type strips one (monkeyc -r = release). Because the stubs share
 // the call signatures, call sites never need their own guards.
 //
 // There is NO peak-memory field in System.getSystemStats at any API level, so we

@@ -111,7 +111,7 @@ BAND_SQ = [[], [100], [71, 100], [58, 82, 100], [50, 71, 87, 100],
 #            mound + tufts; NA fillPolygons + ntuft fillCircles
 # Fixed cost, outside the ink budget like the root star, so a saturated day
 # keeps it. Only the shipped "under" + tendrils combination is ported;
-# "over"/"halo" are the not-chosen sandbox alternatives (rim_compare.py).
+# "over"/"halo" are the not-chosen sandbox alternatives (archive/sketches/rim_compare.py).
 RIM = COLOR_DK_BLUE
 RIM_MODE = "under"
 # Tendrils off the rim line (owner, 2026-10): 1 px x TENDRIL_LEN px lines from
@@ -136,7 +136,7 @@ def bead_radius(mag):
     spreads the small efforts (stairs 2, a hurry 3, a walk ~8-11) while a
     ~50-min run still reaches the cap. The .mc takes Math.sqrt(mag).toNumber()
     for mag < 529 (= 23^2; exact-squares are exact in float, so it truncates
-    the same as isqrt) -- see sketches/bead_size_compare.py."""
+    the same as isqrt) -- see archive/sketches/bead_size_compare.py."""
     if mag >= 529:
         return 24
     return 1 + math.isqrt(mag)

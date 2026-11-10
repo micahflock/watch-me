@@ -2,7 +2,7 @@
 <!--
   two-worlds manifest — "artificial" clock/readout chrome over an organic
   generative field, split by a single white border (design: Claude Design
-  handoff, docs/claude-design-handoff.md).
+  handoff, archive/docs/claude-design-handoff.md).
   Targets ONLY the Forerunner 735XT (SDK device id "fr735xt") at CIQ API 2.4.
   Do not add other products unless they share the 2.4 constraint set documented
   in docs/api-2.4-notes.md.

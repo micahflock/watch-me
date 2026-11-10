@@ -23,7 +23,7 @@ North takes a `track(rx, ry) -> r` callable: the rim radius along the unit ray
 (rx, ry) = (sin th, -cos th). The face ships track_edge -- the r=101.7 gutter
 circle cut flat at the panel's top and bottom edges -- and draws the marker
 LAST, over the clock/date/battery (owner, 2026-10). track_circle is the
-pre-2026-10 constant rim; sketches/north_compare.py compares the two.
+pre-2026-10 constant rim; archive/sketches/north_compare.py compares the two.
 """
 
 import math
@@ -117,6 +117,20 @@ class ChromeState:
         self.second = 0
         for k, v in kw.items():
             setattr(self, k, v)
+
+
+PORTLAND = (45.52, -122.68)      # downtown, city precision
+
+
+def chrome_state(date, off, dow, t, where=PORTLAND, snap=None, is24=False):
+    """A ChromeState for local minute-of-day t on `date` (y, m, d): the
+    sheets' default wrist (80% battery, phone connected, fresh GPS fix)."""
+    y, m, d = date
+    return ChromeState(year=y, month=m, day=d, dayOfWeek=dow, hour=t // 60,
+                       minute=t % 60, utcOffsetSec=off, lat=where[0], lon=where[1],
+                       batteryPct=80, phoneConnected=True, is24Hour=is24, gpsFix=2,
+                       steps=snap.steps if snap else None,
+                       heartRate=snap.heartRate if snap else None)
 
 
 def battery_level(pct):
@@ -306,7 +320,7 @@ class Uplink:
 
 class PhoneRing:
     """PhoneRingComponent (2026-10): a 2 px BLUE ring round the glass edge
-    while the phone is connected (sketches/phone_ring_compare.py A)."""
+    while the phone is connected (archive/sketches/phone_ring_compare.py A)."""
 
     def render(self, dc, state):
         if state.phoneConnected is not True:
@@ -342,7 +356,7 @@ def track_edge(rx, ry):
     """NorthComponent.rimR: the r=101.7 rim cut flat at the panel's top and
     bottom edges. Only the radius changes, never the angle, so the marker stays
     on the bearing ray; centre y in [5.5, 172.5] keeps every pixel of it on
-    the glass at every bearing (north_compare.py sweeps them)."""
+    the glass at every bearing (archive/sketches/north_compare.py sweeps them)."""
     r = F(TRACK_R)
     if -ry * r > TOP_DY:
         r = TOP_DY / -ry
@@ -420,7 +434,7 @@ class Gps:
     """The retired GpsComponent (pre-2026-10 V2; v2_chrome(dish=True)):
     the cross-section satellite dish, coloured
     by fix recency, waves none / 1 stale / 2 fresh. See
-    sketches/gps_dish_compare.py big(67, 15) for the design rounds."""
+    archive/sketches/gps_dish_compare.py big(67, 15) for the design rounds."""
     DISH = [(73, 9), (74, 11), (74, 13), (74, 16), (73, 18), (72, 20),
             (70, 21), (68, 22), (65, 22), (63, 22), (61, 21)]
     W1 = [(63, 5), (60, 6), (58, 8), (57, 11)]

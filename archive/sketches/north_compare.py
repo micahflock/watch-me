@@ -37,8 +37,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 
 import device
+import harness
 import solar
 import twchrome
 from day import synthetic_day
@@ -228,8 +230,7 @@ def day_coverage(obs):
 # --------------------------------------------------------------- figures -----
 
 def load_grove():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "algos",
-                        "moss_grove.py")
+    path = harness.algo_path("moss_grove")
     spec = importlib.util.spec_from_file_location("algo_moss_grove", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

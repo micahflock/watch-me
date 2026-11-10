@@ -14,6 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _live  # noqa: F401  (the live sandbox: ../../sketches)
 
 from bead_compare import OUT, cell, load_algo, mins, render, sheet
 from day import synthetic_day

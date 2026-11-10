@@ -72,40 +72,34 @@ scripts/test.sh [face]               # API-2.4 symbol lint + Run No Evil unit
 `scripts/memcheck.sh devface` prints the memory limit as read from the device
 files, the 90% ceiling, and the current PRG size.
 
-## Module map
+## Where things are
+
+The module-by-module map of `core/src` and the list of faces is in
+[architecture.md](architecture.md). Around it:
 
 ```
-core/src/data/    Snapshot, DataSource   per-tick state (all fields nullable)
-core/src/render/  Compositor, Region,    ordered components, clips, keep-outs;
-                  CompassRose            sun-compass dial renderer
-core/src/glyph/   SegmentFont/Layout,    parametric 7-segment digits;
-                  StripGlyphs            bitmap-strip blitter
-core/src/astro/   MathX, Solar,          2.4-safe math; NOAA sun position +
-                  SunCompass             sunrise/sunset; true-north-from-sun
-                                         dial math (all pure, unit-tested)
-core/src/debug/   Instrument             (:debug) overlay/logging, (:release) stubs
-core/src/genart/  GenArt, StrataField,   biometric generative-art engines +
-                  Flock, BioBloom/-State, shared hash/sine/zone utils and
-                  MossGrove/-State       object-store persistence
-faces/            flashtest, devface,    see docs/architecture.md for what each
-                  strataflock, biobloom, face is; devface is the always-buildable
-                  two-worlds, -v2        integration testbed
-docs/             architecture, api-2.4-notes, memory-budget,
-                  watchdog-debugging, sideload, claude-design-prompt/-handoff
-sketches/         Python sandbox         faithful fr735xt model for iterating on
-                                         generative art without a PRG build
-tools/            make-dow-strip.sh      offline 16-color glyph-strip pipeline
+docs/       architecture, api-2.4-notes, memory-budget, watchdog-debugging,
+            toolchain-notes, sideload
+sketches/   the Python sandbox: a faithful fr735xt model for iterating on the
+            face without a PRG build (sketches/README.md)
+archive/    finished experiments and the original prompts (archive/README.md)
+tools/      make-dow-strip.sh: offline 16-color glyph-strip pipeline
+bin/        the tracked, ready-to-sideload PRGs
 ```
 
 Adding a face: copy `faces/devface`, change the manifest `id` and app name,
-keep `base.sourcePath = source;../../core/src` in its jungles, and build with
+declare the `Positioning` permission if it compiles `core/src/data`, and in
+its jungles **list the core files it uses** rather than all of `core/src`
+(monkeyc does not strip unreferenced classes; see architecture.md). Build with
 `scripts/build.sh <name>`.
 
 ## Measured status (acceptance)
 
 - devface builds clean for fr735xt at API 2.4 (SDK 9.2.0) and runs in the sim.
-- devface's 16 unit tests pass (segment lookup, MathX, Solar fixtures,
-  SunCompass dial/rollover). The other faces carry their own suites — run
+- devface carries the shared-core suite: 26 tests (segment lookup, MathX,
+  Solar fixtures, SunCompass dial/rollover, GPS-fix location, MossGrove
+  bands/replay/save). `two-worlds`, `biobloom` and `strataflock` carry their
+  own; `two-worlds-v2` has none (its engine is tested from devface). Run
   `scripts/test.sh <face>`.
 - Release PRG on disk ≈ **16 KB** (`scripts/memcheck.sh`); runtime RAM sits
   well under the 57.6 KB ceiling (re-read from the sim — release status bar /
