@@ -796,11 +796,12 @@ class MossGrove {
     }
 
     // ---- persistence (compact flat Number array) -----------------------------
-    // The record is tiny (a few scalars + zoneMin[9] + nepi episode pairs), so a
-    // reload restores it exactly. Validated on load: a wrong magic or out-of-range
-    // count drops to a blank record rather than half-loading.
+    // The record is tiny (16 scalars + zoneMin[9] + 4 Numbers per episode), so
+    // a reload restores it exactly. Validated on load: a wrong magic (including
+    // the pre-2026-10 layout, 0x6033F, whose loader was removed 2026-11) is
+    // ignored, and a truncated record or out-of-range count drops to a blank
+    // record rather than half-loading.
     const SAVE_MAGIC = 0x60340;  // bumped: step pool + episode bands (2026-10)
-    const SAVE_MAGIC_V1 = 0x6033F; // pre-2026-10 layout: loads, bands empty
 
     function save() {
         var n = 16 + 9 + _nepi * 4;
@@ -831,10 +832,8 @@ class MossGrove {
     }
 
     function load(a) {
-        if (a == null || a.size() < 24) { return; }
-        var v1 = (a[0] == SAVE_MAGIC_V1);  // old layout: no pool, pair episodes
-        if (!v1 && a[0] != SAVE_MAGIC) { return; }
-        var ew = v1 ? 2 : 4;               // Numbers per stored episode
+        if (a == null || a.size() < 25) { return; }
+        if (a[0] != SAVE_MAGIC) { return; }
         var sz = a.size();
         var p = 1;
         _lastDay = a[p]; p++;
@@ -852,21 +851,13 @@ class MossGrove {
         _epiIdx = a[p]; p++;
         var ne = a[p]; p++;
         if (ne < 0 || ne > EMAX) { reset(); return; }
-        _pool = 0;
-        if (!v1) {
-            if (p >= sz) { reset(); return; }
-            _pool = a[p]; p++;
-        }
-        for (var i = 0; i < 9; i++) {
-            if (p >= sz) { reset(); return; }
-            _zoneMin[i] = a[p]; p++;
-        }
-        if (p + ne * ew > sz) { reset(); return; }
+        _pool = a[p]; p++;
+        for (var i = 0; i < 9; i++) { _zoneMin[i] = a[p]; p++; }
+        if (p + ne * 4 > sz) { reset(); return; }
         _nepi = ne;
         for (var i = 0; i < _nepi; i++) {
             _epz[i] = a[p]; p++; _emag[i] = a[p]; p++;
-            _edur[i] = 0; _eband[i] = 0;   // v1: beads draw solid
-            if (!v1) { _edur[i] = a[p]; p++; _eband[i] = a[p]; p++; }
+            _edur[i] = a[p]; p++; _eband[i] = a[p]; p++;
         }
     }
 }

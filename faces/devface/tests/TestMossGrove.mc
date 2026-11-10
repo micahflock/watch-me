@@ -70,18 +70,24 @@ function testMossSaveLoadKeepsBands(logger) {
 }
 
 (:test)
-function testMossLoadsPreBandSave(logger) {
-    // A pre-2026-10 record (magic 0x6033F, no pool, [zone, mag] episodes)
-    // still loads after the upgrade; its beads have no bands (draw solid).
-    var a = [0x6033F, 14, 5000, 600, 77, 0, 420, 0, 1, 2400, 300, 400,
-             0, -1, 2,
-             0, 0, 10, 20, 30, 40, 5, 3, 1,
-             6, 330, 4, 12];
+function testMossLoadRejectsForeignRecords(logger) {
+    // A wrong magic -- here the pre-2026-10 layout (0x6033F), whose loader was
+    // removed 2026-11 -- and a truncated record both leave the grove as it
+    // was: a blank day, not a half-loaded one.
+    var old = [0x6033F, 14, 5000, 600, 77, 0, 420, 0, 1, 2400, 300, 400,
+               0, -1, 2,
+               0, 0, 10, 20, 30, 40, 5, 3, 1,
+               6, 330, 4, 12];
     var g = new MossGrove();
-    g.load(a);
-    Test.assert(g._lastMin == 600 && g._actUnits == 2400 && g._pool == 0);
-    Test.assert(g._nepi == 2);
-    Test.assert(g._epz[0] == 6 && g._emag[0] == 330 && g._edur[0] == 0);
-    Test.assert(g._epz[1] == 4 && g._emag[1] == 12 && g._eband[1] == 0);
+    g.load(old);
+    Test.assert(g._lastDay == -1 && g._lastMin == -1);
+    Test.assert(g._actUnits == 0 && g._nepi == 0 && g._pool == 0);
+    var src = new MossGrove();
+    var full = src.save();              // 25 Numbers: header + zones, no episodes
+    var cut = new [24];
+    for (var i = 0; i < 24; i++) { cut[i] = full[i]; }
+    cut[1] = 9;                         // would become _lastDay if half-loaded
+    g.load(cut);
+    Test.assert(g._lastDay == -1 && g._nepi == 0);
     return true;
 }
