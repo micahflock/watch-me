@@ -20,9 +20,6 @@ class Snapshot {
 
     // Activity
     var steps;         // Number or null
-    var stepGoal;
-    var distanceCm;    // hundredths of a metre (ActivityMonitor raw units)
-    var calories;      // kcal
 
     // Physio
     var heartRate;     // most recent bpm sample, or null if none valid
@@ -47,7 +44,7 @@ class Snapshot {
         hour = null; minute = null; second = null; utcOffsetSec = null;
         is24Hour = null;
         year = null; month = null; day = null; dayOfWeek = null;
-        steps = null; stepGoal = null; distanceCm = null; calories = null;
+        steps = null;
         heartRate = null;
         batteryPct = null; phoneConnected = null;
         lat = null; lon = null; gpsFix = null;

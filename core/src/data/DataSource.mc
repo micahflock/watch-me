@@ -176,10 +176,7 @@ module DataSource {
         // --- activity ---
         var am = Act.getInfo();
         if (am != null) {
-            if (am has :steps)     { snap.steps = am.steps; }
-            if (am has :stepGoal)  { snap.stepGoal = am.stepGoal; }
-            if (am has :distance)  { snap.distanceCm = am.distance; }
-            if (am has :calories)  { snap.calories = am.calories; }
+            if (am has :steps) { snap.steps = am.steps; }
         }
 
         // --- heart rate: most recent valid sample from history ---
