@@ -1,9 +1,12 @@
-# Debug jungle for two-worlds-v2. Built WITHOUT monkeyc -r so (:debug)
-# instrumentation compiles in and (:release) stubs drop out.
+# Debug + unit-test jungle for two-worlds-v2. Built WITHOUT monkeyc -r so
+# (:debug) instrumentation and the (:test) cases in tests/ compile in and
+# (:release) stubs drop out. This PRG runs out of memory when loaded AS A FACE
+# (docs/toolchain-notes.md); it exists to run the tests
+# (scripts/test.sh two-worlds-v2), where the runner's heap is far larger.
 
 project.manifest = manifest.xml
 
 # Same narrowed core file list as the release jungle (see the RAM note there).
-base.sourcePath = source;release;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc
+base.sourcePath = source;release;../../core/src/astro;../../core/src/data;../../core/src/debug;../../core/src/genart/GenArt.mc;../../core/src/genart/MossGrove.mc;../../core/src/genart/MossState.mc;../../core/src/glyph/StripGlyphs.mc;../../core/src/render/Compositor.mc;tests
 
 base.resourcePath = resources
