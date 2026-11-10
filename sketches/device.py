@@ -4,8 +4,10 @@
 This is NOT a loose visual mock. It mirrors the real watch closely enough that
 an algorithm proven here ports to Monkey C mechanically:
 
-  - hash16 / isin / zoneIndex / the palette are bit-identical to
+  - hash16 / isin / the palette are bit-identical to
     core/src/genart/GenArt.mc (same constants, same integer sine LUT).
+    zoneIndex / ZONE_COLORS mirror the 7-step HR ramp GenArt.mc had until
+    2026-11; only the archived strataflock algo still uses them.
   - Integer math is the only math: use idiv()/imod() wherever the Monkey C
     writes `a / b` / `a % b` on Numbers. Monkey C truncates toward zero;
     Python's // and % floor toward negative infinity, so on negative operands
@@ -20,7 +22,7 @@ Porting rule of thumb (Python sandbox -> Monkey C face):
     Gfx.COLOR_RED        -> dev.COLOR_RED          (or `using ... as Gfx`)
     a / b   (ints)       -> idiv(a, b)
     a % b   (ints)       -> imod(a, b)
-    hash16/isin/zoneIndex are spelled the same in both.
+    hash16/isin are spelled the same in both.
 Everything else is `var`/syntax. If a frame looks right here, it looks right
 on the watch (modulo arc/circle rasterization, which only the SDK sim nails;
 see CLAUDE.md / sketches/README.md).
@@ -169,6 +171,8 @@ def isin(p):
     return _SIN[p & 255]
 
 
+# The strata/flock HR ramp. No longer in GenArt.mc (removed 2026-11 with the
+# engines that used it); kept for archive/sketches/algos/strataflock.py.
 ZONE_BOUNDS = [65, 90, 105, 125, 145, 160]
 ZONE_COLORS = [
     COLOR_DK_BLUE, COLOR_BLUE, COLOR_DK_GREEN, COLOR_GREEN,
@@ -177,7 +181,7 @@ ZONE_COLORS = [
 
 
 def zoneIndex(hr):
-    """GenArt.zoneIndex: HR bpm -> zone color index (7 if hr is None)."""
+    """HR bpm -> strata/flock zone color index (7 if hr is None)."""
     if hr is None:
         return 7
     for i in range(6):

@@ -108,7 +108,7 @@ class MossGrove {
     const WAKE_WIN_END = 6;    // wake EVENTS counted only for hours [0, this)
     const WAKE_SPM = 6;        // steps/min burst that marks a wake-up
 
-    // 9-step HR ramp (cool rest -> hot effort), finer than GenArt.ZONE_COLORS.
+    // 9-step HR ramp (cool rest -> hot effort).
     // The hot end follows Garmin's HR zones (%-of-max floors 98/117/137/156/176,
     // estimated max HR ~195; owner 2026-10, archive/sketches/zone_color_compare.py
     // "C keep105"): Z1 amber (two slots so ACTIVE = slot 4 stays at 105 bpm),

@@ -1,7 +1,7 @@
 using Toybox.Math as Math;
-using Toybox.Graphics as Gfx;
 
-// GenArt — shared utilities for the generative layers. All integer math:
+// GenArt — shared utilities for the generative layers (integer hash + sine
+// table). All integer math:
 // the watchdog (~25-30k VM instructions per onUpdate, docs/memory-budget.md)
 // is the binding constraint, so the hot paths avoid Float entirely.
 module GenArt {
@@ -36,21 +36,5 @@ module GenArt {
     // p is a phase in 1/256ths of a turn; any Number is accepted (masked).
     function isin(p) {
         return _sin[p & 255];
-    }
-
-    // HR-zone color ramp shared by strata and flock. Index 7 = HR unknown.
-    const ZONE_BOUNDS = [65, 90, 105, 125, 145, 160];
-    const ZONE_COLORS = [
-        Gfx.COLOR_DK_BLUE, Gfx.COLOR_BLUE, Gfx.COLOR_DK_GREEN,
-        Gfx.COLOR_GREEN, Gfx.COLOR_YELLOW, Gfx.COLOR_ORANGE,
-        Gfx.COLOR_RED, Gfx.COLOR_DK_GRAY
-    ];
-
-    function zoneIndex(hr) {
-        if (hr == null) { return 7; }
-        for (var i = 0; i < 6; i++) {
-            if (hr < ZONE_BOUNDS[i]) { return i; }
-        }
-        return 6;
     }
 }
