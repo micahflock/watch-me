@@ -39,6 +39,9 @@ letter SHAPES are approximate; the simulator is the check after sign-off.
 Shipped as D in faces/two-worlds-v2/diag/Diag.mc (diag build only);
 out/diag-ondevice.png is the simulator capture of it (readout forced on:
 left a fresh install, right the pinned saturated record on a breach day).
+One change after this sheet (owner, 2026-11): the readout is drawn in the
+moss's layer, under the chrome, so on a breach day the banner occludes it
+across the whole display -- the sheet's Hud clears the banner instead.
 
     python3 archive/sketches/diag_compare.py   # -> archive/sketches/out/diag-compare.png
 """

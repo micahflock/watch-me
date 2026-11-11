@@ -125,8 +125,8 @@ from a screenshot (CLAUDE.md, "Simulator gotchas"); release stubs `Instrument`,
 so there is no console line.
 
 **Diag build (2026-11, colour-coded readout):** `two-worlds-v2-diag.prg`
-44,108 -> 45,164 B; on a readout minute **52.1/59.8 kB** (51.0 before, on a
-face minute), **54.7/59.8 kB** under the pinned saturated probe with the
+44,108 -> 45,100 B; on a readout minute **52.1/59.8 kB** (51.0 before, on a
+face minute), **54.6/59.8 kB** under the pinned saturated probe with the
 breach bitmaps loaded and a 12-minute replay in the same `onUpdate` -- no
 watchdog trip (the moss is skipped on a readout minute). Still under the
 57.6 kB ceiling, but the diag build is the tight one: measure before adding

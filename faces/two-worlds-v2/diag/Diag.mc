@@ -14,7 +14,7 @@ using Toybox.Math as Math;
 // The readout shows ONE minute in ten (:00, :10, :20 ...; owner, 2026-10);
 // the other nine are the normal face. On a readout minute the moss is
 // skipped (keeps the watchdog budget for the readout) and the field shows,
-// top to bottom (amber labels, white values, state words in colour):
+// in the moss's place and under the chrome and any breach banner, top to bottom (amber labels, white values, state words in colour):
 //   a 3-hour HR history sparkline across the widest part of the field (one
 //   point per minute, zone colours, gray line = 105 bpm), blue bar under
 //   the last replayed gap
@@ -44,7 +44,9 @@ module Diag {
         return new DiagGrove(grove);
     }
 
-    function component() { return new DiagComponent(); }
+    // No overlay component: the readout is drawn by DiagGrove, in the
+    // moss's own layer (see there).
+    function component() { return null; }
 
     function save(grove) {
         try {
@@ -59,11 +61,19 @@ module Diag {
     }
 }
 
+// Stands in for the grove in the render list. On a readout minute it draws
+// the readout INSTEAD of the moss, in the moss's layer at the back: the
+// readout lies wholly inside the field, so the field mask, border and chrome
+// draw over it untouched, and on a breach day the CONTAINMENT BREACH banner
+// occludes it across the whole display exactly as it occludes the moss
+// (owner, 2026-11).
 class DiagGrove {
     var _g;
-    function initialize(g) { _g = g; }
+    var _readout;
+    function initialize(g) { _g = g; _readout = new DiagComponent(); }
     function render(dc, state) {
-        if (!Diag.page(state)) { _g.render(dc, state); }
+        if (Diag.page(state)) { _readout.render(dc, state); }
+        else { _g.render(dc, state); }
     }
 }
 
@@ -86,16 +96,10 @@ class DiagComponent {
     function initialize() { _col = new [W]; }
 
     // Layout and colours: sketches "D" in archive/sketches/diag_compare.py
-    // (owner, 2026-11). Nothing is blacked out -- the moss is skipped on a
-    // readout minute, so the field is already empty and the border stays
-    // whole; only a breach banner needs clearing from under the readout.
+    // (owner, 2026-11). Called by DiagGrove on a readout minute only, on the
+    // freshly cleared frame, before the field mask and the chrome.
     function render(dc, state) {
-        if (!Diag.page(state)) { return; }
         var g = Diag._g;
-        if (g.actUnits() >= 4200) {
-            dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
-            dc.fillRectangle(14, 79, 188, 22);
-        }
         var n = history(state);
         sparkline(dc, g, state);
         _row = 0;
