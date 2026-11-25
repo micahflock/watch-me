@@ -123,6 +123,12 @@ highlights in order.
 | Halftone texture in the chrome | `halftone_compare.py` | `halftone-compare`, `-zoom` | Not shipped |
 | CONTAINMENT BREACH banner | `sketches/breach_compare.py` (live: it generates the face's bitmaps) | `breach-compare`, `breach-zoom`, `breach-mid*`, `breach-tall*` | Style B at 12 px (2026-10) |
 
+### Other platforms
+
+| Question | Where | Outcome |
+|---|---|---|
+| A cheaper, modern watch with GPS + HR for the face? Garmin, Bangle.js 2, Amazfit, custom firmware compared; Zepp OS watch-face canvas probed in Zepp's emulator on real Bip 6 firmware | `platforms/zepp-bip6/` (write-up, probe face, emulator scripts, sheet) | Not pursued yet. The Bip 6 passes in the emulator: canvas in a watch face, per-minute redraw, always-on included. Real-hardware speed and battery untested (2026-11) |
+
 ### Documents
 
 | File | What it is |
