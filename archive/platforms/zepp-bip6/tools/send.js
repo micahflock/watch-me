@@ -1,0 +1,5 @@
+const WebSocket = require(process.env.WS_PATH)
+const ws = new WebSocket('ws://localhost:7833/SIMULATOR')
+ws.on('message', (m) => console.log('RECV', String(m).slice(0, 200)))
+ws.on('open', () => { ws.send(process.argv[2]); setTimeout(() => process.exit(0), 2500) })
+ws.on('error', (e) => { console.log('ERR', e.message); process.exit(1) })

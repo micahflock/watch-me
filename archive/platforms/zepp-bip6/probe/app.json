@@ -1,0 +1,58 @@
+{
+  "configVersion": "v3",
+  "app": {
+    "appId": 1000777,
+    "appName": "MossProbe",
+    "appType": "watchface",
+    "version": {
+      "code": 1,
+      "name": "1.0.0"
+    },
+    "icon": "icon.png",
+    "vender": "probe",
+    "description": "capability probe"
+  },
+  "permissions": [
+    "data:user.hd.heart_rate",
+    "device:os.local_storage",
+    "device:os.compass",
+    "device:os.geolocation"
+  ],
+  "runtime": {
+    "apiVersion": {
+      "compatible": "3.0.0",
+      "target": "4.2",
+      "minVersion": "3.0"
+    }
+  },
+  "targets": {
+    "default": {
+      "module": {
+        "watchface": {
+          "path": "watchface/index",
+          "main": 1,
+          "editable": 0,
+          "lockscreen": 1
+        }
+      },
+      "platforms": [
+        {
+          "deviceSource": 9765120
+        },
+        {
+          "deviceSource": 9765121
+        },
+        {
+          "deviceSource": 10158337
+        }
+      ],
+      "designWidth": 390
+    }
+  },
+  "i18n": {
+    "en-US": {
+      "appName": "MossProbe"
+    }
+  },
+  "defaultLanguage": "en-US"
+}
